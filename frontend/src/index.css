@@ -1,0 +1,57 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Warm grays only; one accent per page is added by the pages themselves. */
+:root {
+  --background: oklch(0.985 0.002 75);
+  --foreground: oklch(0.216 0.006 56);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.216 0.006 56);
+  --primary: oklch(0.216 0.006 56);
+  --primary-foreground: oklch(0.985 0.002 75);
+  --secondary: oklch(0.97 0.001 106);
+  --secondary-foreground: oklch(0.216 0.006 56);
+  --muted: oklch(0.97 0.001 106);
+  --muted-foreground: oklch(0.553 0.013 58);
+  --accent: oklch(0.97 0.001 106);
+  --accent-foreground: oklch(0.216 0.006 56);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.923 0.003 49);
+  --input: oklch(0.923 0.003 49);
+  --ring: oklch(0.709 0.01 56);
+  --radius: 0.5rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

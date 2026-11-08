@@ -1,0 +1,107 @@
+# Local environment for `podman compose` (DESIGN 11.1).
+#   podman compose up -d                 postgres, redis, moto, migrate, api, worker
+#   podman compose up -d postgres redis  just what the tests need
+
+x-app-env: &app-env
+  DATABASE_URL: postgresql+psycopg://inventory:inventory@postgres:5432/inventory
+  DATABASE_SCHEMA: inventory
+  REDIS_URL: redis://redis:6379/0
+  # boto3 reads this natively: every AWS call goes to moto. Never set in production.
+  AWS_ENDPOINT_URL: http://moto:5000
+  AWS_DEFAULT_REGION: ap-east-1
+  AWS_ACCESS_KEY_ID: testing
+  AWS_SECRET_ACCESS_KEY: testing
+  # Future `fake-aws` service (M2): Cloud Control, account registry (1), credentials (2).
+  ACCOUNT_REGISTRY_URL: http://fake-aws:4567/registry
+  CREDENTIAL_SERVICE_URL: http://fake-aws:4567/credentials
+
+x-app-build: &app-build
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+  image: aws-inventory-discovery:dev
+
+services:
+  postgres:
+    image: docker.io/library/postgres:17
+    container_name: aws-inventory-discovery-postgres
+    environment:
+      POSTGRES_USER: inventory
+      POSTGRES_PASSWORD: inventory
+      POSTGRES_DB: inventory
+    ports:
+      - "55432:5432"
+    volumes:
+      - ./devtools/postgres-init:/docker-entrypoint-initdb.d:ro,Z
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inventory -d inventory"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: docker.io/library/redis:7
+    container_name: aws-inventory-discovery-redis
+    ports:
+      - "56379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  moto:
+    image: docker.io/motoserver/moto:latest
+    container_name: aws-inventory-discovery-moto
+    ports:
+      - "5000:5000"
+
+  # --- M2 will add the services below -------------------------------------
+  # fake-aws:
+  #   build: { context: ., dockerfile: devtools/fake_aws/Dockerfile }
+  #   container_name: aws-inventory-discovery-fake-aws
+  #   ports: ["4567:4567"]
+  #
+  # seed:   # one-shot: `podman compose run --rm seed`
+  #   <<: *app-build
+  #   container_name: aws-inventory-discovery-seed
+  #   command: ["python", "devtools/seed.py"]
+  #   environment: *app-env
+  #   depends_on: [migrate, moto, fake-aws]
+  #   profiles: ["seed"]
+  # -------------------------------------------------------------------------
+
+  migrate:
+    <<: *app-build
+    container_name: aws-inventory-discovery-migrate
+    command: ["alembic", "upgrade", "head"]
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *app-build
+    container_name: aws-inventory-discovery-api
+    environment: *app-env
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    <<: *app-build
+    container_name: aws-inventory-discovery-worker
+    command: ["python", "-m", "app.cli", "worker"]
+    environment: *app-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      moto:
+        condition: service_started

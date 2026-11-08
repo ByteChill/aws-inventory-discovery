@@ -1,0 +1,40 @@
+[project]
+name = "aws-inventory-discovery"
+version = "0.1.0"
+description = "Discovers the current real state of AWS resources across an AWS Organization."
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi[standard]",
+    "sqlmodel",
+    "alembic",
+    "psycopg[binary]",
+    "pydantic-settings",
+    "boto3",
+    "redis",
+    "httpx",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+    "ty",
+    "moto[server]",
+]
+
+[tool.fastapi]
+entrypoint = "app.main:app"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+exclude = ["app/alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "ARG001", "T201"]
+
+[tool.ruff.lint.per-file-ignores]
+"app/cli.py" = ["T201"]

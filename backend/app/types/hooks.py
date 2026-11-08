@@ -139,7 +139,23 @@ def ecs_service_identifier(service_arn: str) -> str:
     return f"{service_arn}|{prefix}:cluster/{cluster}"
 
 
+# --- ECS cluster (resource id is the ARN, Cloud Control identifier is `ClusterName`) --------
+
+
+def ecs_cluster_identifier(cluster_arn: str) -> str:
+    """The cluster name of `arn:<partition>:ecs:<region>:<account>:cluster/<name>`."""
+    parts = cluster_arn.split(":", 5)
+    kind, _, name = parts[5].partition("/") if len(parts) == 6 else ("", "", "")
+    if parts[:1] != ["arn"] or parts[2] != "ecs" or kind != "cluster" or not name or "/" in name:
+        raise MappingError(
+            f"not an ECS cluster ARN: {cluster_arn!r}; "
+            "use arn:<partition>:ecs:<region>:<account>:cluster/<name>"
+        )
+    return name
+
+
 TYPE_HOOKS: dict[str, Hooks] = {
+    "AWS::ECS::Cluster": Hooks(cloudcontrol_identifier=ecs_cluster_identifier),
     "AWS::ECS::Service": Hooks(cloudcontrol_identifier=ecs_service_identifier),
     "AWS::EC2::Image": Hooks(list_live=list_amis, get_live=get_ami),
 }

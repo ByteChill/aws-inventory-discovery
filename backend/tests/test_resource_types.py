@@ -188,6 +188,23 @@ def test_mapped_cloud_control_data_equals_config(case: Case) -> None:
 
 
 @pytest.mark.parametrize("case", CASES)
+def test_cloud_control_identifier_can_be_derived_from_the_resource_id_alone(case: Case) -> None:
+    """A first-time refresh has only the resource id (no stored configuration): it must yield
+    the Cloud Control Identifier the type's fixture documents (`ClusterName` for an ECS cluster
+    whose resource id is its ARN)."""
+    spec = case.spec
+    resource_id = map_case(case).resource_id
+    hooks = TYPE_HOOKS.get(spec.type_name, Hooks())
+    if hooks.cloudcontrol_identifier is not None:
+        derived = hooks.cloudcontrol_identifier(resource_id)
+    elif spec.identity.identifier_fields == [spec.identity.resource_id_from]:
+        derived = resource_id
+    else:
+        pytest.fail(f"{spec.type_name}: no way to derive the identifier from the resource id")
+    assert derived == case.identifier
+
+
+@pytest.mark.parametrize("case", CASES)
 def test_every_fixture_property_is_accounted_for(case: Case) -> None:
     mapping = case.spec.mapping
     known = {*mapping.properties, *mapping.rename, *mapping.exclude, "Tags"}

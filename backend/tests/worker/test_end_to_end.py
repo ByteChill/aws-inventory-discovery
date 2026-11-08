@@ -366,6 +366,25 @@ def test_refreshing_an_ecs_service_that_is_not_in_the_inventory_derives_the_clus
     assert rejected["code"] == "validation_error" and "short format" in rejected["message"]
 
 
+def test_refreshing_an_ecs_cluster_that_is_not_in_the_inventory_derives_the_name(
+    stack: Stack,
+) -> None:
+    account, ecs_cluster = stack.accounts[0], "AWS::ECS::Cluster"
+    cluster = stack.cc_resources(account, REGION, ecs_cluster)[0]
+    cluster_arn = cluster["properties"]["Arn"]  # the resource id; the identifier is the name
+    key = {"accountId": account, "awsRegion": REGION, "resourceType": ecs_cluster}
+    assert stack.resources(accountId=account, resourceType=ecs_cluster) == []
+
+    refreshed = stack.post(
+        "/resources/refresh?wait=10", {**key, "resourceId": cluster_arn}, expect=200
+    )
+    assert refreshed["resourceId"] == cluster_arn and refreshed["status"] == "active"
+    assert refreshed["refreshError"] is None
+
+    bad = stack.post("/resources/refresh", {**key, "resourceId": "telemetry"}, expect=422)
+    assert bad["code"] == "validation_error" and "cluster ARN" in bad["message"]
+
+
 def test_cancel_stops_a_queued_scan(stack: Stack, engine: Engine) -> None:
     # no sweep can start before the cancel: the worker's claim loop is not that fast, so the
     # scan is cancelled while its first tasks are queued or running

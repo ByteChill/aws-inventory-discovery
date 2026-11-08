@@ -51,13 +51,56 @@ export function useScanColumns(): Column[] {
   const { t } = useI18n()
   return useMemo(
     () => [
-      col("startedAt", t("scans.column.time"), "datetime", {
+      col("createdAt", t("scans.column.time"), "datetime", {
+        sortable: false,
+      }),
+      col("trigger", t("scans.column.trigger"), "enum", {
+        sortable: false,
         filterable: true,
       }),
-      col("trigger", t("scans.column.trigger"), "enum"),
       col("scope", t("scans.column.scope"), "text", { sortable: false }),
-      col("status", t("scans.column.status"), "enum"),
+      col("status", t("scans.column.status"), "enum", {
+        sortable: false,
+        filterable: true,
+      }),
       col("result", t("scans.column.result"), "text", { sortable: false }),
+    ],
+    [t],
+  )
+}
+
+export function useTaskColumns(): Column[] {
+  const { t } = useI18n()
+  return useMemo(
+    () => [
+      col("id", "ID", "text", { mono: true, sortable: false }),
+      col("kind", t("tasks.column.kind"), "enum", {
+        sortable: false,
+        filterable: true,
+      }),
+      col("accountId", t("tasks.column.account"), "text", {
+        mono: true,
+        sortable: false,
+      }),
+      col("region", t("tasks.column.region"), "text", {
+        mono: true,
+        sortable: false,
+      }),
+      col("resourceType", t("tasks.column.resource"), "text", {
+        sortable: false,
+      }),
+      col("status", t("tasks.column.status"), "enum", {
+        sortable: false,
+        filterable: true,
+      }),
+      col("attempt", t("tasks.column.attempt"), "text", { sortable: false }),
+      col("errorCode", t("tasks.column.reason"), "enum", {
+        sortable: false,
+        filterable: true,
+      }),
+      col("finishedAt", t("tasks.column.finished"), "datetime", {
+        sortable: false,
+      }),
     ],
     [t],
   )

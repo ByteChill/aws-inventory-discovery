@@ -187,6 +187,28 @@ export type AccountTypeCount = {
 };
 
 /**
+ * Backlog
+ */
+export type Backlog = {
+    /**
+     * Queued
+     */
+    queued: number;
+    /**
+     * Oldestwaitseconds
+     */
+    oldestWaitSeconds: number;
+};
+
+/**
+ * BacklogPair
+ */
+export type BacklogPair = {
+    onDemand: Backlog;
+    scheduled: Backlog;
+};
+
+/**
  * Column
  */
 export type Column = {
@@ -218,6 +240,24 @@ export type Column = {
      * Scope
      */
     scope: 'common' | 'type';
+};
+
+/**
+ * ConfirmChangeBody
+ */
+export type ConfirmChangeBody = {
+    /**
+     * Accountid
+     */
+    accountId: string;
+    /**
+     * Awsregion
+     */
+    awsRegion: string;
+    /**
+     * Resourcetype
+     */
+    resourceType: string;
 };
 
 /**
@@ -265,6 +305,20 @@ export type FacetBucket = {
 };
 
 /**
+ * FailureCount
+ */
+export type FailureCount = {
+    /**
+     * Errorcode
+     */
+    errorCode: string;
+    /**
+     * Count
+     */
+    count: number;
+};
+
+/**
  * HTTPValidationError
  */
 export type HttpValidationError = {
@@ -302,6 +356,30 @@ export type LiveData = {
      * Observedat
      */
     observedAt: string;
+};
+
+/**
+ * LogEvent
+ */
+export type LogEvent = {
+    /**
+     * Timestamp
+     */
+    timestamp: string;
+    /**
+     * Level
+     */
+    level: string;
+    /**
+     * Message
+     */
+    message: string;
+    /**
+     * Data
+     */
+    data: {
+        [key: string]: unknown;
+    };
 };
 
 /**
@@ -371,6 +449,225 @@ export type PageResourceItem = {
 };
 
 /**
+ * Page[ScanRequestOut]
+ */
+export type PageScanRequestOut = {
+    /**
+     * Items
+     */
+    items: Array<ScanRequestOut>;
+    /**
+     * Page
+     */
+    page: number;
+    /**
+     * Pagesize
+     */
+    pageSize: number;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
+ * Page[ScanScopeOut]
+ */
+export type PageScanScopeOut = {
+    /**
+     * Items
+     */
+    items: Array<ScanScopeOut>;
+    /**
+     * Page
+     */
+    page: number;
+    /**
+     * Pagesize
+     */
+    pageSize: number;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
+ * Page[TaskOut]
+ */
+export type PageTaskOut = {
+    /**
+     * Items
+     */
+    items: Array<TaskOut>;
+    /**
+     * Page
+     */
+    page: number;
+    /**
+     * Pagesize
+     */
+    pageSize: number;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
+ * RefreshAccepted
+ */
+export type RefreshAccepted = {
+    /**
+     * Taskid
+     */
+    taskId: number;
+};
+
+/**
+ * RefreshByArn
+ */
+export type RefreshByArn = {
+    /**
+     * Arn
+     */
+    arn: string;
+};
+
+/**
+ * RefreshByKey
+ */
+export type RefreshByKey = {
+    /**
+     * Accountid
+     */
+    accountId: string;
+    /**
+     * Awsregion
+     */
+    awsRegion: string;
+    /**
+     * Resourcetype
+     */
+    resourceType: string;
+    /**
+     * Resourceid
+     */
+    resourceId: string;
+};
+
+/**
+ * RefreshError
+ */
+export type RefreshError = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Message
+     */
+    message: string;
+};
+
+/**
+ * RefreshedResource
+ */
+export type RefreshedResource = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Arn
+     */
+    arn: string;
+    /**
+     * Accountid
+     */
+    accountId: string;
+    /**
+     * Awsregion
+     */
+    awsRegion: string;
+    /**
+     * Resourcetype
+     */
+    resourceType: string;
+    /**
+     * Resourceid
+     */
+    resourceId: string;
+    /**
+     * Resourcename
+     */
+    resourceName: string | null;
+    /**
+     * Tags
+     */
+    tags: Array<Tag>;
+    account: AccountRef;
+    /**
+     * Attrs
+     */
+    attrs: {
+        [key: string]: unknown;
+    };
+    /**
+     * Relationshipcount
+     */
+    relationshipCount: number;
+    /**
+     * Status
+     */
+    status: 'active' | 'missing' | 'deleted';
+    /**
+     * Stale
+     */
+    stale: boolean;
+    /**
+     * Configurationitemcapturetime
+     */
+    configurationItemCaptureTime: string | null;
+    /**
+     * Firstseenat
+     */
+    firstSeenAt: string;
+    /**
+     * Lastchangedat
+     */
+    lastChangedAt: string;
+    /**
+     * Missingsince
+     */
+    missingSince: string | null;
+    /**
+     * Deletedat
+     */
+    deletedAt: string | null;
+    /**
+     * Configuration
+     */
+    configuration: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * Relationships
+     */
+    relationships: Array<RelationshipRef>;
+    live: LiveData | null;
+    /**
+     * Observedat
+     */
+    observedAt: string;
+    /**
+     * Observedsource
+     */
+    observedSource: 'config' | 'cloudcontrol' | 'native';
+    refreshError?: RefreshError | null;
+};
+
+/**
  * RelationshipEntry
  */
 export type RelationshipEntry = {
@@ -409,6 +706,38 @@ export type RelationshipRef = {
      * Name
      */
     name: string;
+};
+
+/**
+ * Requeued
+ */
+export type Requeued = {
+    /**
+     * Requeued
+     */
+    requeued: number;
+};
+
+/**
+ * ResourceCounts
+ */
+export type ResourceCounts = {
+    /**
+     * New
+     */
+    new?: number;
+    /**
+     * Updated
+     */
+    updated?: number;
+    /**
+     * Missing
+     */
+    missing?: number;
+    /**
+     * Deleted
+     */
+    deleted?: number;
 };
 
 /**
@@ -603,6 +932,218 @@ export type ResourceTypeInfo = {
 };
 
 /**
+ * ScanCounts
+ */
+export type ScanCounts = {
+    /**
+     * Tasks
+     */
+    tasks: {
+        [key: string]: number;
+    };
+    resources: ResourceCounts;
+};
+
+/**
+ * ScanCreated
+ */
+export type ScanCreated = {
+    /**
+     * Scanrequestid
+     */
+    scanRequestId: number;
+};
+
+/**
+ * ScanDetail
+ */
+export type ScanDetail = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Trigger
+     */
+    trigger: 'schedule' | 'api';
+    /**
+     * Callerid
+     */
+    callerId: string | null;
+    scope: ScanScope | null;
+    /**
+     * Target
+     */
+    target: {
+        [key: string]: string;
+    } | null;
+    /**
+     * Status
+     */
+    status: 'queued' | 'running' | 'succeeded' | 'partial' | 'failed' | 'cancelled';
+    counts: ScanCounts;
+    /**
+     * Createdat
+     */
+    createdAt: string;
+    /**
+     * Startedat
+     */
+    startedAt: string | null;
+    /**
+     * Finishedat
+     */
+    finishedAt: string | null;
+    /**
+     * Failuresbycode
+     */
+    failuresByCode: Array<FailureCount>;
+};
+
+/**
+ * ScanRequestOut
+ */
+export type ScanRequestOut = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Trigger
+     */
+    trigger: 'schedule' | 'api';
+    /**
+     * Callerid
+     */
+    callerId: string | null;
+    scope: ScanScope | null;
+    /**
+     * Target
+     */
+    target: {
+        [key: string]: string;
+    } | null;
+    /**
+     * Status
+     */
+    status: 'queued' | 'running' | 'succeeded' | 'partial' | 'failed' | 'cancelled';
+    counts: ScanCounts;
+    /**
+     * Createdat
+     */
+    createdAt: string;
+    /**
+     * Startedat
+     */
+    startedAt: string | null;
+    /**
+     * Finishedat
+     */
+    finishedAt: string | null;
+};
+
+/**
+ * ScanScope
+ */
+export type ScanScope = {
+    /**
+     * Accountids
+     */
+    accountIds?: Array<string> | null;
+    /**
+     * Awsregions
+     */
+    awsRegions?: Array<string> | null;
+    /**
+     * Resourcetypes
+     */
+    resourceTypes?: Array<string> | null;
+    /**
+     * All
+     */
+    all?: boolean | null;
+};
+
+/**
+ * ScanScopeOut
+ */
+export type ScanScopeOut = {
+    /**
+     * Accountid
+     */
+    accountId: string;
+    /**
+     * Region
+     */
+    region: string;
+    /**
+     * Resourcetype
+     */
+    resourceType: string;
+    /**
+     * Guardstate
+     */
+    guardState: string;
+    /**
+     * Guarddetectedat
+     */
+    guardDetectedAt: string | null;
+    /**
+     * Candidatecount
+     */
+    candidateCount: number;
+    /**
+     * Activecount
+     */
+    activeCount: number;
+};
+
+/**
+ * ScanSpec
+ *
+ * The body of `POST /scans`: either a list of accounts or `all` (`all_accounts`).
+ */
+export type ScanSpec = {
+    /**
+     * Accountids
+     */
+    accountIds?: Array<string>;
+    /**
+     * Awsregions
+     */
+    awsRegions?: Array<string>;
+    /**
+     * Resourcetypes
+     */
+    resourceTypes?: Array<string>;
+    /**
+     * All
+     */
+    all?: boolean;
+};
+
+/**
+ * ScanSummary
+ */
+export type ScanSummary = {
+    sweep: SweepProgress | null;
+    backlog: BacklogPair;
+    /**
+     * Failures24H
+     */
+    failures24h: Array<FailureCount>;
+    /**
+     * Missingcount
+     */
+    missingCount: number;
+    /**
+     * Abnormalscopecount
+     */
+    abnormalScopeCount: number;
+    workers: WorkerActivity;
+};
+
+/**
  * StatsOverview
  */
 export type StatsOverview = {
@@ -633,6 +1174,36 @@ export type StatsOverview = {
 };
 
 /**
+ * SweepProgress
+ */
+export type SweepProgress = {
+    /**
+     * Scanrequestid
+     */
+    scanRequestId: number;
+    /**
+     * Accountsdone
+     */
+    accountsDone: number;
+    /**
+     * Accountstotal
+     */
+    accountsTotal: number;
+    /**
+     * Startedat
+     */
+    startedAt: string;
+    /**
+     * Estimatedfinishat
+     */
+    estimatedFinishAt: string | null;
+    /**
+     * Behindschedule
+     */
+    behindSchedule: boolean;
+};
+
+/**
  * Tag
  */
 export type Tag = {
@@ -644,6 +1215,96 @@ export type Tag = {
      * Value
      */
     value: string;
+};
+
+/**
+ * TaskLogs
+ */
+export type TaskLogs = {
+    /**
+     * Events
+     */
+    events: Array<LogEvent>;
+    /**
+     * Nexttoken
+     */
+    nextToken: string | null;
+};
+
+/**
+ * TaskOut
+ */
+export type TaskOut = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Scanrequestid
+     */
+    scanRequestId: number;
+    /**
+     * Kind
+     */
+    kind: string;
+    /**
+     * Source
+     */
+    source: string | null;
+    /**
+     * Accountid
+     */
+    accountId: string;
+    /**
+     * Region
+     */
+    region: string | null;
+    /**
+     * Resourcetype
+     */
+    resourceType: string | null;
+    /**
+     * Resourceid
+     */
+    resourceId: string | null;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Attempt
+     */
+    attempt: number;
+    /**
+     * Maxattempts
+     */
+    maxAttempts: number;
+    /**
+     * Errorcode
+     */
+    errorCode: string | null;
+    /**
+     * Errormessage
+     */
+    errorMessage: string | null;
+    /**
+     * Stats
+     */
+    stats: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * Createdat
+     */
+    createdAt: string;
+    /**
+     * Startedat
+     */
+    startedAt: string | null;
+    /**
+     * Finishedat
+     */
+    finishedAt: string | null;
 };
 
 /**
@@ -690,6 +1351,20 @@ export type ValidationError = {
     ctx?: {
         [key: string]: unknown;
     };
+};
+
+/**
+ * WorkerActivity
+ */
+export type WorkerActivity = {
+    /**
+     * Activetasks
+     */
+    activeTasks: number;
+    /**
+     * Lastheartbeatat
+     */
+    lastHeartbeatAt: string | null;
 };
 
 export type HealthData = {
@@ -1048,6 +1723,10 @@ export type ExportResourcesData = {
          * Sort
          */
         sort?: string | null;
+        /**
+         * Lang
+         */
+        lang?: 'zh-CN' | 'en' | null;
     };
     url: '/api/v1/resources/export';
 };
@@ -1099,6 +1778,51 @@ export type LookupResourceResponses = {
 };
 
 export type LookupResourceResponse = LookupResourceResponses[keyof LookupResourceResponses];
+
+export type RefreshResourceData = {
+    /**
+     * Body
+     */
+    body: RefreshByKey | RefreshByArn;
+    headers?: {
+        /**
+         * X-Caller-Id
+         */
+        'x-caller-id'?: string | null;
+    };
+    path?: never;
+    query?: {
+        /**
+         * Wait
+         */
+        wait?: number;
+    };
+    url: '/api/v1/resources/refresh';
+};
+
+export type RefreshResourceErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RefreshResourceError = RefreshResourceErrors[keyof RefreshResourceErrors];
+
+export type RefreshResourceResponses = {
+    /**
+     * Response Refresh Resource Api V1 Resources Refresh Post
+     *
+     * Successful Response
+     */
+    200: RefreshedResource | RefreshAccepted;
+    /**
+     * Accepted
+     */
+    202: RefreshAccepted;
+};
+
+export type RefreshResourceResponse = RefreshResourceResponses[keyof RefreshResourceResponses];
 
 export type GetResourceData = {
     body?: never;
@@ -1398,3 +2122,379 @@ export type GetCoverageResponses = {
 };
 
 export type GetCoverageResponse = GetCoverageResponses[keyof GetCoverageResponses];
+
+export type ScanSummaryData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/scans/summary';
+};
+
+export type ScanSummaryResponses = {
+    /**
+     * Successful Response
+     */
+    200: ScanSummary;
+};
+
+export type ScanSummaryResponse = ScanSummaryResponses[keyof ScanSummaryResponses];
+
+export type ListScansData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Pagesize
+         */
+        pageSize?: number;
+        /**
+         * Trigger
+         */
+        trigger?: 'schedule' | 'api' | null;
+        /**
+         * Status
+         */
+        status?: 'queued' | 'running' | 'succeeded' | 'partial' | 'failed' | 'cancelled' | null;
+    };
+    url: '/api/v1/scans';
+};
+
+export type ListScansErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListScansError = ListScansErrors[keyof ListScansErrors];
+
+export type ListScansResponses = {
+    /**
+     * Successful Response
+     */
+    200: PageScanRequestOut;
+};
+
+export type ListScansResponse = ListScansResponses[keyof ListScansResponses];
+
+export type CreateScanData = {
+    body: ScanSpec;
+    headers?: {
+        /**
+         * X-Caller-Id
+         */
+        'x-caller-id'?: string | null;
+        /**
+         * Idempotency-Key
+         */
+        'idempotency-key'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/scans';
+};
+
+export type CreateScanErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateScanError = CreateScanErrors[keyof CreateScanErrors];
+
+export type CreateScanResponses = {
+    /**
+     * Successful Response
+     */
+    201: ScanRequestOut;
+};
+
+export type CreateScanResponse = CreateScanResponses[keyof CreateScanResponses];
+
+export type GetScanData = {
+    body?: never;
+    path: {
+        /**
+         * Scan Id
+         */
+        scan_id: number;
+    };
+    query?: never;
+    url: '/api/v1/scans/{scan_id}';
+};
+
+export type GetScanErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetScanError = GetScanErrors[keyof GetScanErrors];
+
+export type GetScanResponses = {
+    /**
+     * Successful Response
+     */
+    200: ScanDetail;
+};
+
+export type GetScanResponse = GetScanResponses[keyof GetScanResponses];
+
+export type ListScanTasksData = {
+    body?: never;
+    path: {
+        /**
+         * Scan Id
+         */
+        scan_id: number;
+    };
+    query?: {
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Pagesize
+         */
+        pageSize?: number;
+        /**
+         * Status
+         */
+        status?: string | null;
+        /**
+         * Errorcode
+         */
+        errorCode?: string | null;
+        /**
+         * Accountid
+         */
+        accountId?: string | null;
+        /**
+         * Kind
+         */
+        kind?: string | null;
+    };
+    url: '/api/v1/scans/{scan_id}/tasks';
+};
+
+export type ListScanTasksErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListScanTasksError = ListScanTasksErrors[keyof ListScanTasksErrors];
+
+export type ListScanTasksResponses = {
+    /**
+     * Successful Response
+     */
+    200: PageTaskOut;
+};
+
+export type ListScanTasksResponse = ListScanTasksResponses[keyof ListScanTasksResponses];
+
+export type RetryFailedData = {
+    body?: never;
+    path: {
+        /**
+         * Scan Id
+         */
+        scan_id: number;
+    };
+    query?: never;
+    url: '/api/v1/scans/{scan_id}/retry-failed';
+};
+
+export type RetryFailedErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RetryFailedError = RetryFailedErrors[keyof RetryFailedErrors];
+
+export type RetryFailedResponses = {
+    /**
+     * Successful Response
+     */
+    200: Requeued;
+};
+
+export type RetryFailedResponse = RetryFailedResponses[keyof RetryFailedResponses];
+
+export type CancelScanData = {
+    body?: never;
+    path: {
+        /**
+         * Scan Id
+         */
+        scan_id: number;
+    };
+    query?: never;
+    url: '/api/v1/scans/{scan_id}/cancel';
+};
+
+export type CancelScanErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CancelScanError = CancelScanErrors[keyof CancelScanErrors];
+
+export type CancelScanResponses = {
+    /**
+     * Successful Response
+     */
+    200: ScanRequestOut;
+};
+
+export type CancelScanResponse = CancelScanResponses[keyof CancelScanResponses];
+
+export type GetTaskData = {
+    body?: never;
+    path: {
+        /**
+         * Task Id
+         */
+        task_id: number;
+    };
+    query?: never;
+    url: '/api/v1/tasks/{task_id}';
+};
+
+export type GetTaskErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetTaskError = GetTaskErrors[keyof GetTaskErrors];
+
+export type GetTaskResponses = {
+    /**
+     * Successful Response
+     */
+    200: TaskOut;
+};
+
+export type GetTaskResponse = GetTaskResponses[keyof GetTaskResponses];
+
+export type GetTaskLogsData = {
+    body?: never;
+    path: {
+        /**
+         * Task Id
+         */
+        task_id: number;
+    };
+    query?: {
+        /**
+         * Limit
+         */
+        limit?: number;
+        /**
+         * Nexttoken
+         */
+        nextToken?: string | null;
+    };
+    url: '/api/v1/tasks/{task_id}/logs';
+};
+
+export type GetTaskLogsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetTaskLogsError = GetTaskLogsErrors[keyof GetTaskLogsErrors];
+
+export type GetTaskLogsResponses = {
+    /**
+     * Successful Response
+     */
+    200: TaskLogs;
+};
+
+export type GetTaskLogsResponse = GetTaskLogsResponses[keyof GetTaskLogsResponses];
+
+export type ListScanScopesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Pagesize
+         */
+        pageSize?: number;
+        /**
+         * Guardstate
+         */
+        guardState?: 'normal' | 'abnormal' | 'confirmed';
+    };
+    url: '/api/v1/scan-scopes';
+};
+
+export type ListScanScopesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListScanScopesError = ListScanScopesErrors[keyof ListScanScopesErrors];
+
+export type ListScanScopesResponses = {
+    /**
+     * Successful Response
+     */
+    200: PageScanScopeOut;
+};
+
+export type ListScanScopesResponse = ListScanScopesResponses[keyof ListScanScopesResponses];
+
+export type ConfirmScopeChangeData = {
+    body: ConfirmChangeBody;
+    headers?: {
+        /**
+         * X-Caller-Id
+         */
+        'x-caller-id'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/scan-scopes/confirm-change';
+};
+
+export type ConfirmScopeChangeErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ConfirmScopeChangeError = ConfirmScopeChangeErrors[keyof ConfirmScopeChangeErrors];
+
+export type ConfirmScopeChangeResponses = {
+    /**
+     * Successful Response
+     */
+    200: ScanCreated;
+};
+
+export type ConfirmScopeChangeResponse = ConfirmScopeChangeResponses[keyof ConfirmScopeChangeResponses];

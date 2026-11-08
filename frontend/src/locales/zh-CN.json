@@ -1,18 +1,15 @@
 {
   "app.name": "AWS 资源清单",
   "app.title": "AWS 资源清单",
-
   "nav.overview": "概览",
   "nav.resources": "资源",
   "nav.accounts": "账号",
   "nav.admin": "管理",
   "nav.scans": "扫描",
   "nav.main": "主导航",
-
   "search.placeholder": "搜索资源，或输入 ARN",
   "search.label": "搜索资源",
   "search.submit": "搜索",
-
   "lang.label": "语言",
   "lang.zh-CN": "中文",
   "lang.en": "English",
@@ -20,7 +17,6 @@
   "theme.system": "跟随系统",
   "theme.light": "亮色",
   "theme.dark": "暗色",
-
   "action.refresh": "刷新",
   "action.scan": "扫描",
   "action.export": "导出",
@@ -42,14 +38,12 @@
   "action.exportJsonl": "JSON Lines",
   "action.collapseAll": "全部折叠",
   "action.expandAll": "全部展开",
-
   "common.all": "全部",
   "common.yes": "是",
   "common.no": "否",
   "common.none": "无",
   "common.loading": "加载中",
   "common.separator": "，",
-
   "unit.resources": "{count} 个资源",
   "unit.accounts": "{count} 个账号",
   "unit.regions": "{count} 个区域",
@@ -57,7 +51,6 @@
   "unit.tasks": "{count} 个任务",
   "unit.scans": "{count} 次扫描",
   "unit.items": "{count} 项",
-
   "time.justNow": "刚刚",
   "time.minutesAgo": "{count} 分钟前",
   "time.hoursAgo": "{count} 小时前",
@@ -66,7 +59,6 @@
   "time.seconds": "{count} 秒",
   "time.updatedAt": "更新于 {time}",
   "time.observedAt": "观察于 {time}",
-
   "status.missing": "可能已删除",
   "status.deleted": "已删除",
   "status.stale": "数据过期",
@@ -83,7 +75,6 @@
   "source.config": "来自 AWS Config",
   "source.cloudcontrol": "实时查询",
   "source.native": "实时查询",
-
   "table.total.resources": "共 {count} 个资源",
   "table.total.accounts": "共 {count} 个账号",
   "table.total.scans": "共 {count} 次扫描",
@@ -109,7 +100,6 @@
   "table.page": "第 {page} / {pages} 页",
   "table.activeFilters": "已选条件",
   "table.chip": "{label}：{value}",
-
   "filter.contains": "包含…",
   "filter.min": "最小值",
   "filter.max": "最大值",
@@ -123,7 +113,6 @@
   "filter.lte": "不晚于 {value}",
   "filter.gteNumber": "至少 {value}",
   "filter.lteNumber": "至多 {value}",
-
   "error.invalid_filter": "筛选条件不正确",
   "error.invalid_sort": "不能按这一列排序",
   "error.resource_not_found": "找不到这个资源",
@@ -138,9 +127,7 @@
   "error.dependency_unavailable": "数据库暂时无法访问",
   "error.network": "无法连接到服务",
   "error.unknown": "出了点问题",
-
   "notFound.title": "找不到这个页面",
-
   "overview.title": "概览",
   "overview.resources": "资源总数",
   "overview.accounts": "账号总数",
@@ -148,7 +135,6 @@
   "overview.byType": "按资源类型",
   "overview.byEnv": "按环境",
   "overview.empty": "还没有数据",
-
   "resources.title": "资源",
   "resources.filters": "筛选",
   "resources.searchPlaceholder": "在资源中搜索",
@@ -165,7 +151,6 @@
   "resources.tags.has": "有",
   "resources.tags.missing": "缺少",
   "resources.tags.equals": "等于",
-
   "detail.basic": "基本信息",
   "detail.arn": "ARN",
   "detail.account": "账号",
@@ -188,7 +173,6 @@
   "detail.refreshing": "刷新中",
   "detail.refreshFailed": "刷新失败：{reason}",
   "detail.pickAccount": "这个 ARN 对应多个账号，选择一个",
-
   "accounts.title": "账号",
   "accounts.basic": "基本信息",
   "accounts.status": "状态",
@@ -206,7 +190,6 @@
   "accounts.column.resources": "资源数",
   "accounts.column.status": "状态",
   "accounts.column.lastScan": "上次扫描",
-
   "scans.title": "扫描",
   "scans.progress": "全量扫描进度",
   "scans.progressLine": "已完成 {done} / {total} 个账号，预计 {time} 完成",
@@ -243,7 +226,6 @@
   "scans.detail.scope": "范围",
   "scans.detail.failuresByReason": "失败原因",
   "scans.detail.tasks": "任务",
-
   "tasks.detail.title": "任务详情",
   "tasks.detail.info": "任务信息",
   "tasks.detail.error": "错误说明",
@@ -254,7 +236,6 @@
   "tasks.status.succeeded": "成功",
   "tasks.status.failed": "失败",
   "tasks.status.cancelled": "已取消",
-
   "scanError.access_denied.title": "没有读取权限",
   "scanError.access_denied.hint": "检查这个账号的 ADFS-readonly 角色是否还附加着 ReadOnlyAccess",
   "scanError.credential_error.title": "无法获取凭证",
@@ -273,9 +254,6 @@
   "scanError.worker_lost.hint": "查看任务日志",
   "scanError.internal.title": "内部错误",
   "scanError.internal.hint": "查看任务日志",
-
-  "common.comingSoon": "暂未开放",
-  "page.notAvailable": "这个页面暂未开放",
   "action.add": "添加",
   "resources.tags.key": "标签键",
   "resources.tags.value": "标签值",
@@ -294,5 +272,45 @@
   "detail.rel.out": "指向",
   "detail.rel.in": "被指向",
   "detail.liveSearch": "在实时数据中搜索",
-  "detail.noMatch": "没有匹配的内容"
+  "detail.noMatch": "没有匹配的内容",
+  "scans.behindNoDuration": "比计划慢了",
+  "scans.progressNoEta": "已完成 {done} / {total} 个账号",
+  "scans.failureTasks": "{count} 个任务",
+  "scans.anomalyRow": "原有 {active} 个资源，{candidates} 个未发现",
+  "scans.status.queued": "排队中",
+  "scans.status.running": "运行中",
+  "scans.status.succeeded": "成功",
+  "scans.status.partial": "部分失败",
+  "scans.status.failed": "失败",
+  "scans.status.cancelled": "已取消",
+  "scans.scope.allAccounts": "全部账号",
+  "scans.scope.allRegions": "全部区域",
+  "scans.scope.allTypes": "全部资源类型",
+  "scans.scope.resource": "单个资源 {id}",
+  "scans.result.none": "没有变化",
+  "scans.form.allRegions": "全部区域",
+  "scans.form.allTypes": "全部资源类型",
+  "scans.form.noAccounts": "没有找到账号",
+  "scans.detail.noTasks": "没有任务",
+  "scans.detail.counts": "资源变化",
+  "scans.detail.requeued": "已重新排队 {count} 个任务",
+  "tasks.column.kind": "种类",
+  "tasks.column.account": "账号",
+  "tasks.column.region": "区域",
+  "tasks.column.resource": "资源",
+  "tasks.column.status": "状态",
+  "tasks.column.attempt": "尝试次数",
+  "tasks.column.reason": "原因",
+  "tasks.column.finished": "结束时间",
+  "tasks.kind.sweep_account": "账号扫描",
+  "tasks.kind.config_group": "Config 查询",
+  "tasks.kind.shard": "范围扫描",
+  "tasks.kind.resource": "资源刷新",
+  "tasks.kind.confirm_missing": "删除确认",
+  "tasks.attempt": "{n} / {max}",
+  "tasks.logsUnavailable": "日志暂时无法查看",
+  "tasks.scan": "所属扫描",
+  "tasks.createdAt": "创建时间",
+  "tasks.startedAt": "开始时间",
+  "tasks.duration": "耗时"
 }

@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ExportResourcesData, ExportResourcesErrors, ExportResourcesResponses, GetAccountData, GetAccountErrors, GetAccountResponses, GetCoverageData, GetCoverageErrors, GetCoverageResponses, GetRelationshipsData, GetRelationshipsErrors, GetRelationshipsResponses, GetResourceData, GetResourceErrors, GetResourceResponses, HealthData, HealthResponses, ListAccountsData, ListAccountsErrors, ListAccountsResponses, ListColumnsData, ListColumnsErrors, ListColumnsResponses, ListResourcesData, ListResourcesErrors, ListResourcesResponses, ListResourceTypesData, ListResourceTypesErrors, ListResourceTypesResponses, LookupResourceData, LookupResourceErrors, LookupResourceResponses, OverviewData, OverviewErrors, OverviewResponses, ResourceFacetsData, ResourceFacetsErrors, ResourceFacetsResponses } from './types.gen';
+import type { CancelScanData, CancelScanErrors, CancelScanResponses, ConfirmScopeChangeData, ConfirmScopeChangeErrors, ConfirmScopeChangeResponses, CreateScanData, CreateScanErrors, CreateScanResponses, ExportResourcesData, ExportResourcesErrors, ExportResourcesResponses, GetAccountData, GetAccountErrors, GetAccountResponses, GetCoverageData, GetCoverageErrors, GetCoverageResponses, GetRelationshipsData, GetRelationshipsErrors, GetRelationshipsResponses, GetResourceData, GetResourceErrors, GetResourceResponses, GetScanData, GetScanErrors, GetScanResponses, GetTaskData, GetTaskErrors, GetTaskLogsData, GetTaskLogsErrors, GetTaskLogsResponses, GetTaskResponses, HealthData, HealthResponses, ListAccountsData, ListAccountsErrors, ListAccountsResponses, ListColumnsData, ListColumnsErrors, ListColumnsResponses, ListResourcesData, ListResourcesErrors, ListResourcesResponses, ListResourceTypesData, ListResourceTypesErrors, ListResourceTypesResponses, ListScanScopesData, ListScanScopesErrors, ListScanScopesResponses, ListScansData, ListScansErrors, ListScansResponses, ListScanTasksData, ListScanTasksErrors, ListScanTasksResponses, LookupResourceData, LookupResourceErrors, LookupResourceResponses, OverviewData, OverviewErrors, OverviewResponses, RefreshResourceData, RefreshResourceErrors, RefreshResourceResponses, ResourceFacetsData, ResourceFacetsErrors, ResourceFacetsResponses, RetryFailedData, RetryFailedErrors, RetryFailedResponses, ScanSummaryData, ScanSummaryResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -46,6 +46,18 @@ export const exportResources = <ThrowOnError extends boolean = false>(options?: 
 export const lookupResource = <ThrowOnError extends boolean = false>(options: Options<LookupResourceData, ThrowOnError>): RequestResult<LookupResourceResponses, LookupResourceErrors, ThrowOnError> => (options.client ?? client).get<LookupResourceResponses, LookupResourceErrors, ThrowOnError>({ url: '/api/v1/resources/lookup', ...options });
 
 /**
+ * Refresh Resource
+ */
+export const refreshResource = <ThrowOnError extends boolean = false>(options: Options<RefreshResourceData, ThrowOnError>): RequestResult<RefreshResourceResponses, RefreshResourceErrors, ThrowOnError> => (options.client ?? client).post<RefreshResourceResponses, RefreshResourceErrors, ThrowOnError>({
+    url: '/api/v1/resources/refresh',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Get Resource
  */
 export const getResource = <ThrowOnError extends boolean = false>(options: Options<GetResourceData, ThrowOnError>): RequestResult<GetResourceResponses, GetResourceErrors, ThrowOnError> => (options.client ?? client).get<GetResourceResponses, GetResourceErrors, ThrowOnError>({ url: '/api/v1/resources/{resource_id}', ...options });
@@ -84,3 +96,72 @@ export const getAccount = <ThrowOnError extends boolean = false>(options: Option
  * Get Coverage
  */
 export const getCoverage = <ThrowOnError extends boolean = false>(options: Options<GetCoverageData, ThrowOnError>): RequestResult<GetCoverageResponses, GetCoverageErrors, ThrowOnError> => (options.client ?? client).get<GetCoverageResponses, GetCoverageErrors, ThrowOnError>({ url: '/api/v1/accounts/{account_id}/coverage', ...options });
+
+/**
+ * Scan Summary
+ */
+export const scanSummary = <ThrowOnError extends boolean = false>(options?: Options<ScanSummaryData, ThrowOnError>): RequestResult<ScanSummaryResponses, unknown, ThrowOnError> => (options?.client ?? client).get<ScanSummaryResponses, unknown, ThrowOnError>({ url: '/api/v1/scans/summary', ...options });
+
+/**
+ * List Scans
+ */
+export const listScans = <ThrowOnError extends boolean = false>(options?: Options<ListScansData, ThrowOnError>): RequestResult<ListScansResponses, ListScansErrors, ThrowOnError> => (options?.client ?? client).get<ListScansResponses, ListScansErrors, ThrowOnError>({ url: '/api/v1/scans', ...options });
+
+/**
+ * Create Scan
+ */
+export const createScan = <ThrowOnError extends boolean = false>(options: Options<CreateScanData, ThrowOnError>): RequestResult<CreateScanResponses, CreateScanErrors, ThrowOnError> => (options.client ?? client).post<CreateScanResponses, CreateScanErrors, ThrowOnError>({
+    url: '/api/v1/scans',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get Scan
+ */
+export const getScan = <ThrowOnError extends boolean = false>(options: Options<GetScanData, ThrowOnError>): RequestResult<GetScanResponses, GetScanErrors, ThrowOnError> => (options.client ?? client).get<GetScanResponses, GetScanErrors, ThrowOnError>({ url: '/api/v1/scans/{scan_id}', ...options });
+
+/**
+ * List Scan Tasks
+ */
+export const listScanTasks = <ThrowOnError extends boolean = false>(options: Options<ListScanTasksData, ThrowOnError>): RequestResult<ListScanTasksResponses, ListScanTasksErrors, ThrowOnError> => (options.client ?? client).get<ListScanTasksResponses, ListScanTasksErrors, ThrowOnError>({ url: '/api/v1/scans/{scan_id}/tasks', ...options });
+
+/**
+ * Retry Failed
+ */
+export const retryFailed = <ThrowOnError extends boolean = false>(options: Options<RetryFailedData, ThrowOnError>): RequestResult<RetryFailedResponses, RetryFailedErrors, ThrowOnError> => (options.client ?? client).post<RetryFailedResponses, RetryFailedErrors, ThrowOnError>({ url: '/api/v1/scans/{scan_id}/retry-failed', ...options });
+
+/**
+ * Cancel Scan
+ */
+export const cancelScan = <ThrowOnError extends boolean = false>(options: Options<CancelScanData, ThrowOnError>): RequestResult<CancelScanResponses, CancelScanErrors, ThrowOnError> => (options.client ?? client).post<CancelScanResponses, CancelScanErrors, ThrowOnError>({ url: '/api/v1/scans/{scan_id}/cancel', ...options });
+
+/**
+ * Get Task
+ */
+export const getTask = <ThrowOnError extends boolean = false>(options: Options<GetTaskData, ThrowOnError>): RequestResult<GetTaskResponses, GetTaskErrors, ThrowOnError> => (options.client ?? client).get<GetTaskResponses, GetTaskErrors, ThrowOnError>({ url: '/api/v1/tasks/{task_id}', ...options });
+
+/**
+ * Get Task Logs
+ */
+export const getTaskLogs = <ThrowOnError extends boolean = false>(options: Options<GetTaskLogsData, ThrowOnError>): RequestResult<GetTaskLogsResponses, GetTaskLogsErrors, ThrowOnError> => (options.client ?? client).get<GetTaskLogsResponses, GetTaskLogsErrors, ThrowOnError>({ url: '/api/v1/tasks/{task_id}/logs', ...options });
+
+/**
+ * List Scan Scopes
+ */
+export const listScanScopes = <ThrowOnError extends boolean = false>(options?: Options<ListScanScopesData, ThrowOnError>): RequestResult<ListScanScopesResponses, ListScanScopesErrors, ThrowOnError> => (options?.client ?? client).get<ListScanScopesResponses, ListScanScopesErrors, ThrowOnError>({ url: '/api/v1/scan-scopes', ...options });
+
+/**
+ * Confirm Scope Change
+ */
+export const confirmScopeChange = <ThrowOnError extends boolean = false>(options: Options<ConfirmScopeChangeData, ThrowOnError>): RequestResult<ConfirmScopeChangeResponses, ConfirmScopeChangeErrors, ThrowOnError> => (options.client ?? client).post<ConfirmScopeChangeResponses, ConfirmScopeChangeErrors, ThrowOnError>({
+    url: '/api/v1/scan-scopes/confirm-change',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});

@@ -1,15 +1,17 @@
-import { createFileRoute, Link } from "@tanstack/react-router"
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { type ReactNode, useMemo } from "react"
 
 import { useAccount, useCoverage, useResourceTypes } from "@/api/hooks"
+import { useCreateScan } from "@/api/scans"
 import type { AccountDetail } from "@/client"
-import { QueryRegion } from "@/components/inline-state"
+import { InlineError, QueryRegion } from "@/components/inline-state"
 import { Page, PageHeader, Section } from "@/components/layout/page"
 import { Time } from "@/components/time"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CoverageGrid } from "@/features/coverage-grid"
 import { type MessageKey, useI18n } from "@/i18n"
+import { errorText } from "@/lib/errors"
 import { formatCount } from "@/lib/format"
 
 export const Route = createFileRoute("/accounts/$accountId")({
@@ -39,6 +41,8 @@ function AccountPage() {
 
 function Detail({ account: a }: { account: AccountDetail }) {
   const { t } = useI18n()
+  const create = useCreateScan()
+  const navigate = useNavigate()
   const coverage = useCoverage(a.accountId)
   const types = useResourceTypes()
   const typeLabels = useMemo(
@@ -67,12 +71,27 @@ function Detail({ account: a }: { account: AccountDetail }) {
         <PageHeader
           title={a.accountName}
           actions={
-            // Scanning needs the write endpoint (next milestone).
-            <Button variant="outline" disabled title={t("common.comingSoon")}>
+            <Button
+              variant="outline"
+              disabled={create.isPending}
+              onClick={() =>
+                create.mutate(
+                  { spec: { accountIds: [a.accountId] } },
+                  {
+                    onSuccess: (scan) =>
+                      navigate({
+                        to: "/scans/$id",
+                        params: { id: String(scan.id) },
+                      }),
+                  },
+                )
+              }
+            >
               {t("action.scan")}
             </Button>
           }
         />
+        {create.error && <InlineError message={errorText(t, create.error)} />}
         {(a.accessStatus !== "ok" || purgeDays !== null) && (
           <div className="flex flex-wrap gap-2">
             {a.accessStatus !== "ok" && (

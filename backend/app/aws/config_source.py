@@ -98,8 +98,8 @@ def capture_time(value: Any) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
 
 
-def select(client: Any, type_names: Sequence[str]) -> Iterator[dict[str, Any]]:
-    """Config items of the given types in the client's region, page by page (100 each).
+def select_pages(client: Any, type_names: Sequence[str]) -> Iterator[list[dict[str, Any]]]:
+    """Config items of the given types in the client's region, one list per page (100 each).
 
     A failed page raises; an iterator that ran to the end has returned everything.
     """
@@ -107,8 +107,7 @@ def select(client: Any, type_names: Sequence[str]) -> Iterator[dict[str, Any]]:
     expression = f"SELECT {', '.join(SELECT_FIELDS)} WHERE resourceType IN ({quoted})"
     paginator = client.get_paginator("select_resource_config")
     for page in paginator.paginate(Expression=expression, Limit=PAGE_SIZE):
-        for result in page["Results"]:
-            yield json.loads(result)
+        yield [json.loads(result) for result in page["Results"]]
 
 
 @dataclass(frozen=True)

@@ -19,6 +19,7 @@ Decisions recorded here (checked against the CloudFormation resource type schema
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -40,8 +41,11 @@ GONE = Gone()
 
 
 class ListLive(Protocol):
-    def __call__(self, session: Session, *, account_id: str, region: str) -> list[Properties]:
-        """List every resource. Raise on any failed page or parent so a list is never partial."""
+    def __call__(
+        self, session: Session, *, account_id: str, region: str
+    ) -> Iterator[list[Properties]]:
+        """List every resource, one list per page, as a generator the caller consumes inside
+        the scope lease. Raise on any failed page or parent so a list is never partial."""
         ...
 
 
@@ -54,7 +58,9 @@ class GetLive(Protocol):
 
 
 class Filter(Protocol):
-    def __call__(self, items: list[Properties]) -> list[Properties]: ...
+    def __call__(self, items: list[Properties]) -> list[Properties]:
+        """Sees the whole list (a filter may compare items): the pages are buffered for it."""
+        ...
 
 
 class Enrich(Protocol):
@@ -90,15 +96,17 @@ def _with_ownership(image: Properties, account_id: str) -> Properties:
     return {**image, "Ownership": "self" if image["OwnerId"] == account_id else "shared"}
 
 
-def list_amis(session: Session, *, account_id: str, region: str) -> list[Properties]:
-    """AMIs the account owns plus those shared with it (or its organization / OU)."""
+def list_amis(session: Session, *, account_id: str, region: str) -> Iterator[list[Properties]]:
+    """AMIs the account owns plus those shared with it (or its organization / OU), one list per
+    `DescribeImages` page; an AMI in both audiences is yielded once (as the owned one)."""
     ec2 = make_client(session, "ec2", region)
-    merged: dict[str, Properties] = {}
+    seen: set[str] = set()
     for audience in ({"Owners": ["self"]}, {"ExecutableUsers": ["self"]}):
         for page in ec2.get_paginator("describe_images").paginate(**IMAGE_FLAGS, **audience):
-            for image in page["Images"]:
-                merged.setdefault(image["ImageId"], image)
-    return [_with_ownership(image, account_id) for image in merged.values()]
+            fresh = [image for image in page["Images"] if image["ImageId"] not in seen]
+            seen.update(image["ImageId"] for image in fresh)
+            if fresh:
+                yield [_with_ownership(image, account_id) for image in fresh]
 
 
 def get_ami(

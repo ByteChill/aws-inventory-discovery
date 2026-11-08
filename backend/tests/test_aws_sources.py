@@ -87,7 +87,7 @@ def test_regions_report_opt_in_status_and_are_asked_in_a_default_enabled_region(
 ) -> None:
     session = aws.session(aws.account_ids[0])
     called_in: list[str] = []
-    session.events.register(  # ty: ignore[unresolved-attribute]
+    session.events.register(
         "before-sign.ec2.DescribeRegions", lambda region_name, **_: called_in.append(region_name)
     )
 

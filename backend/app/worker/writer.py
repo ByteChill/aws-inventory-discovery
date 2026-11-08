@@ -31,7 +31,7 @@ from app.types.mapping import covered_paths, overlay, split_path
 from app.types.redact import redact_configuration, redact_live_raw
 from app.types.registry import TypeRegistry
 from app.types.spec import ResourceTypeSpec
-from app.worker.discovery import Observation
+from app.worker.discovery import Observation, Source
 
 logger = logging.getLogger(__name__)
 
@@ -507,11 +507,14 @@ class ResourceWriter:
         resource_id: str,
         observed_at: datetime,
         task_id: int | None = None,
+        source: Source = "cloudcontrol",
     ) -> GoneOutcome:
         """A by-ID read explicitly said the resource does not exist (second piece of evidence).
 
         active -> missing (no first evidence); missing with first evidence -> deleted. The
-        observation must be newer than the row's `observed_at` (R4). Errors never reach here.
+        observation must be newer than the row's `observed_at` (R4), and every accepted one advances
+        `observed_at` / `observed_source` under that same guard, so an older in-flight listing
+        can no longer restore the resource. Errors never reach here.
         """
         with Session(self.engine) as db, db.begin():
             row = db.exec(
@@ -529,6 +532,8 @@ class ResourceWriter:
             if observed_at <= row.observed_at:
                 return "stale"
             row.last_task_id = task_id
+            row.observed_at = observed_at
+            row.observed_source = source
             if row.status == "active":
                 row.status = "missing"
                 row.missing_since = observed_at
@@ -536,7 +541,6 @@ class ResourceWriter:
             elif row.status == "missing" and row.absent_in_scan_at is not None:
                 row.status = "deleted"
                 row.deleted_at = observed_at
-                row.observed_at = observed_at  # an older observation can no longer revive it
                 outcome = "deleted"
             else:
                 outcome = "unchanged"

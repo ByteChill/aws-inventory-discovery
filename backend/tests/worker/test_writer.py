@@ -394,3 +394,31 @@ def test_access_status(
     assert status == expected == account.access_status
     assert (account.last_scan_ok_at is not None) == (expected == "ok")
     assert (account.access_error is None) == (expected == "ok")
+
+
+def test_an_accepted_gone_observation_blocks_an_older_in_flight_listing(
+    writer: ResourceWriter, disc: Discovery, session: Session
+) -> None:
+    """A list read at T1 is still in flight when a refresh at T2 finds the resource gone (and
+    again at T4 / T6): the late T1 write must not bring it back, in any of the three states."""
+    keep, lost = live(disc, QUEUE)
+    key = lost.item.resource_id
+    writer.write([keep, lost])
+    stale_listing = replace(lost, observed_at=T0 + minutes(1))
+
+    assert gone(writer, lost, T0 + minutes(2)) == "missing"  # active -> missing
+    row = rows(session, QUEUE)[key]
+    assert row.observed_at == T0 + minutes(2) and row.observed_source == "cloudcontrol"
+    assert writer.write([stale_listing]).stale == 1
+    assert rows(session, QUEUE)[key].status == "missing"
+
+    assert gone(writer, lost, T0 + minutes(4)) == "unchanged"  # stays missing
+    assert rows(session, QUEUE)[key].observed_at == T0 + minutes(4)
+    assert writer.write([replace(lost, observed_at=T0 + minutes(3))]).stale == 1
+
+    finish(writer, [keep], QUEUE, T0 + minutes(5))
+    assert gone(writer, lost, T0 + minutes(6), source="native") == "deleted"  # -> deleted
+    row = rows(session, QUEUE)[key]
+    assert (row.observed_at, row.observed_source) == (T0 + minutes(6), "native")
+    assert writer.write([replace(lost, observed_at=T0 + minutes(5))]).stale == 1
+    assert rows(session, QUEUE)[key].status == "deleted"

@@ -89,7 +89,7 @@ function asList(value: unknown): string[] {
 }
 
 function Resources() {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const { state, setState } = useTableUrlState(Route.useSearch())
   const type = singleType(state)
 
@@ -171,6 +171,7 @@ function Resources() {
     `/api/v1/resources/export?${toSearchParams({
       ...params,
       format,
+      lang: locale,
       ...(state.sort ? { sort: state.sort } : {}),
     })}`
 

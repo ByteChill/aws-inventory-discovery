@@ -63,8 +63,8 @@ export function TopBar() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              <DropdownMenuItem disabled title={t("common.comingSoon")}>
-                {t("nav.scans")}
+              <DropdownMenuItem asChild>
+                <Link to="/scans">{t("nav.scans")}</Link>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

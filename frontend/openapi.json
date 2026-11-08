@@ -7,9 +7,7 @@
   "paths": {
     "/api/v1/health": {
       "get": {
-        "tags": [
-          "health"
-        ],
+        "tags": ["health"],
         "summary": "Health",
         "description": "Database down is a 503; Redis down only slows things, so it stays 200.",
         "operationId": "health",
@@ -29,9 +27,7 @@
     },
     "/api/v1/resources": {
       "get": {
-        "tags": [
-          "resources"
-        ],
+        "tags": ["resources"],
         "summary": "List Resources",
         "operationId": "list_resources",
         "parameters": [
@@ -120,11 +116,7 @@
             "schema": {
               "type": "array",
               "items": {
-                "enum": [
-                  "active",
-                  "missing",
-                  "deleted"
-                ],
+                "enum": ["active", "missing", "deleted"],
                 "type": "string"
               },
               "default": [],
@@ -409,9 +401,7 @@
     },
     "/api/v1/resources/facets": {
       "get": {
-        "tags": [
-          "resources"
-        ],
+        "tags": ["resources"],
         "summary": "Resource Facets",
         "operationId": "resource_facets",
         "parameters": [
@@ -500,11 +490,7 @@
             "schema": {
               "type": "array",
               "items": {
-                "enum": [
-                  "active",
-                  "missing",
-                  "deleted"
-                ],
+                "enum": ["active", "missing", "deleted"],
                 "type": "string"
               },
               "default": [],
@@ -786,9 +772,7 @@
     },
     "/api/v1/resources/export": {
       "get": {
-        "tags": [
-          "resources"
-        ],
+        "tags": ["resources"],
         "summary": "Export Resources",
         "operationId": "export_resources",
         "parameters": [
@@ -877,11 +861,7 @@
             "schema": {
               "type": "array",
               "items": {
-                "enum": [
-                  "active",
-                  "missing",
-                  "deleted"
-                ],
+                "enum": ["active", "missing", "deleted"],
                 "type": "string"
               },
               "default": [],
@@ -1105,10 +1085,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "enum": [
-                "csv",
-                "jsonl"
-              ],
+              "enum": ["csv", "jsonl"],
               "type": "string",
               "default": "csv",
               "title": "Format"
@@ -1153,10 +1130,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "enum": [
-                    "zh-CN",
-                    "en"
-                  ],
+                  "enum": ["zh-CN", "en"],
                   "type": "string"
                 },
                 {
@@ -1207,9 +1181,7 @@
     },
     "/api/v1/resources/lookup": {
       "get": {
-        "tags": [
-          "resources"
-        ],
+        "tags": ["resources"],
         "summary": "Lookup Resource",
         "operationId": "lookup_resource",
         "parameters": [
@@ -1253,9 +1225,7 @@
     },
     "/api/v1/resources/refresh": {
       "post": {
-        "tags": [
-          "resources"
-        ],
+        "tags": ["resources"],
         "summary": "Refresh Resource",
         "operationId": "refresh_resource",
         "parameters": [
@@ -1350,9 +1320,7 @@
     },
     "/api/v1/resources/{resource_id}": {
       "get": {
-        "tags": [
-          "resources"
-        ],
+        "tags": ["resources"],
         "summary": "Get Resource",
         "operationId": "get_resource",
         "parameters": [
@@ -1392,9 +1360,7 @@
     },
     "/api/v1/resources/{resource_id}/relationships": {
       "get": {
-        "tags": [
-          "resources"
-        ],
+        "tags": ["resources"],
         "summary": "Get Relationships",
         "operationId": "get_relationships",
         "parameters": [
@@ -1412,11 +1378,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "enum": [
-                "out",
-                "in",
-                "both"
-              ],
+              "enum": ["out", "in", "both"],
               "type": "string",
               "default": "both",
               "title": "Direction"
@@ -1472,9 +1434,7 @@
     },
     "/api/v1/resource-types": {
       "get": {
-        "tags": [
-          "metadata"
-        ],
+        "tags": ["metadata"],
         "summary": "List Resource Types",
         "operationId": "list_resource_types",
         "parameters": [
@@ -1525,9 +1485,7 @@
     },
     "/api/v1/columns": {
       "get": {
-        "tags": [
-          "metadata"
-        ],
+        "tags": ["metadata"],
         "summary": "List Columns",
         "operationId": "list_columns",
         "parameters": [
@@ -1594,9 +1552,7 @@
     },
     "/api/v1/stats/overview": {
       "get": {
-        "tags": [
-          "metadata"
-        ],
+        "tags": ["metadata"],
         "summary": "Overview",
         "operationId": "overview",
         "parameters": [
@@ -1643,9 +1599,7 @@
     },
     "/api/v1/accounts": {
       "get": {
-        "tags": [
-          "accounts"
-        ],
+        "tags": ["accounts"],
         "summary": "List Accounts",
         "operationId": "list_accounts",
         "parameters": [
@@ -1787,9 +1741,7 @@
     },
     "/api/v1/accounts/{account_id}": {
       "get": {
-        "tags": [
-          "accounts"
-        ],
+        "tags": ["accounts"],
         "summary": "Get Account",
         "operationId": "get_account",
         "parameters": [
@@ -1829,9 +1781,7 @@
     },
     "/api/v1/accounts/{account_id}/coverage": {
       "get": {
-        "tags": [
-          "accounts"
-        ],
+        "tags": ["accounts"],
         "summary": "Get Coverage",
         "operationId": "get_coverage",
         "parameters": [
@@ -1875,9 +1825,7 @@
     },
     "/api/v1/scans/summary": {
       "get": {
-        "tags": [
-          "scans"
-        ],
+        "tags": ["scans"],
         "summary": "Scan Summary",
         "operationId": "scan_summary",
         "responses": {
@@ -1896,9 +1844,7 @@
     },
     "/api/v1/scans": {
       "post": {
-        "tags": [
-          "scans"
-        ],
+        "tags": ["scans"],
         "summary": "Create Scan",
         "operationId": "create_scan",
         "parameters": [
@@ -1969,9 +1915,7 @@
         }
       },
       "get": {
-        "tags": [
-          "scans"
-        ],
+        "tags": ["scans"],
         "summary": "List Scans",
         "operationId": "list_scans",
         "parameters": [
@@ -2005,10 +1949,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "enum": [
-                    "schedule",
-                    "api"
-                  ],
+                  "enum": ["schedule", "api"],
                   "type": "string"
                 },
                 {
@@ -2069,9 +2010,7 @@
     },
     "/api/v1/scans/{scan_id}": {
       "get": {
-        "tags": [
-          "scans"
-        ],
+        "tags": ["scans"],
         "summary": "Get Scan",
         "operationId": "get_scan",
         "parameters": [
@@ -2111,9 +2050,7 @@
     },
     "/api/v1/scans/{scan_id}/tasks": {
       "get": {
-        "tags": [
-          "scans"
-        ],
+        "tags": ["scans"],
         "summary": "List Scan Tasks",
         "operationId": "list_scan_tasks",
         "parameters": [
@@ -2240,9 +2177,7 @@
     },
     "/api/v1/scans/{scan_id}/retry-failed": {
       "post": {
-        "tags": [
-          "scans"
-        ],
+        "tags": ["scans"],
         "summary": "Retry Failed",
         "operationId": "retry_failed",
         "parameters": [
@@ -2282,9 +2217,7 @@
     },
     "/api/v1/scans/{scan_id}/cancel": {
       "post": {
-        "tags": [
-          "scans"
-        ],
+        "tags": ["scans"],
         "summary": "Cancel Scan",
         "operationId": "cancel_scan",
         "parameters": [
@@ -2324,9 +2257,7 @@
     },
     "/api/v1/tasks/{task_id}": {
       "get": {
-        "tags": [
-          "scans"
-        ],
+        "tags": ["scans"],
         "summary": "Get Task",
         "operationId": "get_task",
         "parameters": [
@@ -2366,9 +2297,7 @@
     },
     "/api/v1/tasks/{task_id}/logs": {
       "get": {
-        "tags": [
-          "scans"
-        ],
+        "tags": ["scans"],
         "summary": "Get Task Logs",
         "operationId": "get_task_logs",
         "parameters": [
@@ -2436,9 +2365,7 @@
     },
     "/api/v1/scan-scopes": {
       "get": {
-        "tags": [
-          "scans"
-        ],
+        "tags": ["scans"],
         "summary": "List Scan Scopes",
         "operationId": "list_scan_scopes",
         "parameters": [
@@ -2470,11 +2397,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "enum": [
-                "normal",
-                "abnormal",
-                "confirmed"
-              ],
+              "enum": ["normal", "abnormal", "confirmed"],
               "type": "string",
               "default": "abnormal",
               "title": "Guardstate"
@@ -2507,9 +2430,7 @@
     },
     "/api/v1/scan-scopes/confirm-change": {
       "post": {
-        "tags": [
-          "scans"
-        ],
+        "tags": ["scans"],
         "summary": "Confirm Scope Change",
         "operationId": "confirm_scope_change",
         "parameters": [
@@ -2579,11 +2500,7 @@
           },
           "accountType": {
             "type": "string",
-            "enum": [
-              "dev",
-              "preprod",
-              "prod"
-            ],
+            "enum": ["dev", "preprod", "prod"],
             "title": "Accounttype"
           },
           "eimId": {
@@ -2704,11 +2621,7 @@
           },
           "accountType": {
             "type": "string",
-            "enum": [
-              "dev",
-              "preprod",
-              "prod"
-            ],
+            "enum": ["dev", "preprod", "prod"],
             "title": "Accounttype"
           },
           "eimId": {
@@ -2783,12 +2696,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "region",
-          "optInStatus",
-          "reachable",
-          "configRecording"
-        ],
+        "required": ["region", "optInStatus", "reachable", "configRecording"],
         "title": "AccountRegionInfo"
       },
       "AccountSummary": {
@@ -2803,11 +2711,7 @@
           },
           "accountType": {
             "type": "string",
-            "enum": [
-              "dev",
-              "preprod",
-              "prod"
-            ],
+            "enum": ["dev", "preprod", "prod"],
             "title": "Accounttype"
           },
           "eimId": {
@@ -2924,11 +2828,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "accountType",
-          "label",
-          "count"
-        ],
+        "required": ["accountType", "label", "count"],
         "title": "AccountTypeCount"
       },
       "Backlog": {
@@ -2943,10 +2843,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "queued",
-          "oldestWaitSeconds"
-        ],
+        "required": ["queued", "oldestWaitSeconds"],
         "title": "Backlog"
       },
       "BacklogPair": {
@@ -2959,10 +2856,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "onDemand",
-          "scheduled"
-        ],
+        "required": ["onDemand", "scheduled"],
         "title": "BacklogPair"
       },
       "Column": {
@@ -2977,13 +2871,7 @@
           },
           "type": {
             "type": "string",
-            "enum": [
-              "text",
-              "enum",
-              "number",
-              "bool",
-              "datetime"
-            ],
+            "enum": ["text", "enum", "number", "bool", "datetime"],
             "title": "Type"
           },
           "mono": {
@@ -3000,10 +2888,7 @@
           },
           "scope": {
             "type": "string",
-            "enum": [
-              "common",
-              "type"
-            ],
+            "enum": ["common", "type"],
             "title": "Scope"
           }
         },
@@ -3039,11 +2924,7 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "required": [
-          "accountId",
-          "awsRegion",
-          "resourceType"
-        ],
+        "required": ["accountId", "awsRegion", "resourceType"],
         "title": "ConfirmChangeBody"
       },
       "CoverageCell": {
@@ -3058,13 +2939,7 @@
           },
           "state": {
             "type": "string",
-            "enum": [
-              "ok",
-              "failed",
-              "access_denied",
-              "stale",
-              "never"
-            ],
+            "enum": ["ok", "failed", "access_denied", "stale", "never"],
             "title": "State"
           },
           "lastSucceededAt": {
@@ -3117,11 +2992,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "value",
-          "label",
-          "count"
-        ],
+        "required": ["value", "label", "count"],
         "title": "FacetBucket"
       },
       "FailureCount": {
@@ -3136,10 +3007,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "errorCode",
-          "count"
-        ],
+        "required": ["errorCode", "count"],
         "title": "FailureCount"
       },
       "HTTPValidationError": {
@@ -3159,26 +3027,17 @@
         "properties": {
           "database": {
             "type": "string",
-            "enum": [
-              "ok",
-              "unavailable"
-            ],
+            "enum": ["ok", "unavailable"],
             "title": "Database"
           },
           "redis": {
             "type": "string",
-            "enum": [
-              "ok",
-              "unavailable"
-            ],
+            "enum": ["ok", "unavailable"],
             "title": "Redis"
           }
         },
         "type": "object",
-        "required": [
-          "database",
-          "redis"
-        ],
+        "required": ["database", "redis"],
         "title": "HealthStatus"
       },
       "LiveData": {
@@ -3195,10 +3054,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "properties",
-          "observedAt"
-        ],
+        "required": ["properties", "observedAt"],
         "title": "LiveData"
       },
       "LogEvent": {
@@ -3223,12 +3079,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "timestamp",
-          "level",
-          "message",
-          "data"
-        ],
+        "required": ["timestamp", "level", "message", "data"],
         "title": "LogEvent"
       },
       "Page_AccountSummary_": {
@@ -3254,12 +3105,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "items",
-          "page",
-          "pageSize",
-          "total"
-        ],
+        "required": ["items", "page", "pageSize", "total"],
         "title": "Page[AccountSummary]"
       },
       "Page_RelationshipEntry_": {
@@ -3285,12 +3131,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "items",
-          "page",
-          "pageSize",
-          "total"
-        ],
+        "required": ["items", "page", "pageSize", "total"],
         "title": "Page[RelationshipEntry]"
       },
       "Page_ResourceItem_": {
@@ -3316,12 +3157,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "items",
-          "page",
-          "pageSize",
-          "total"
-        ],
+        "required": ["items", "page", "pageSize", "total"],
         "title": "Page[ResourceItem]"
       },
       "Page_ScanRequestOut_": {
@@ -3347,12 +3183,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "items",
-          "page",
-          "pageSize",
-          "total"
-        ],
+        "required": ["items", "page", "pageSize", "total"],
         "title": "Page[ScanRequestOut]"
       },
       "Page_ScanScopeOut_": {
@@ -3378,12 +3209,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "items",
-          "page",
-          "pageSize",
-          "total"
-        ],
+        "required": ["items", "page", "pageSize", "total"],
         "title": "Page[ScanScopeOut]"
       },
       "Page_TaskOut_": {
@@ -3409,12 +3235,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "items",
-          "page",
-          "pageSize",
-          "total"
-        ],
+        "required": ["items", "page", "pageSize", "total"],
         "title": "Page[TaskOut]"
       },
       "RefreshAccepted": {
@@ -3425,9 +3246,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "taskId"
-        ],
+        "required": ["taskId"],
         "title": "RefreshAccepted"
       },
       "RefreshByArn": {
@@ -3440,9 +3259,7 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "required": [
-          "arn"
-        ],
+        "required": ["arn"],
         "title": "RefreshByArn"
       },
       "RefreshByKey": {
@@ -3470,12 +3287,7 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "required": [
-          "accountId",
-          "awsRegion",
-          "resourceType",
-          "resourceId"
-        ],
+        "required": ["accountId", "awsRegion", "resourceType", "resourceId"],
         "title": "RefreshByKey"
       },
       "RefreshError": {
@@ -3490,10 +3302,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "code",
-          "message"
-        ],
+        "required": ["code", "message"],
         "title": "RefreshError"
       },
       "RefreshedResource": {
@@ -3554,11 +3363,7 @@
           },
           "status": {
             "type": "string",
-            "enum": [
-              "active",
-              "missing",
-              "deleted"
-            ],
+            "enum": ["active", "missing", "deleted"],
             "title": "Status"
           },
           "stale": {
@@ -3647,11 +3452,7 @@
           },
           "observedSource": {
             "type": "string",
-            "enum": [
-              "config",
-              "cloudcontrol",
-              "native"
-            ],
+            "enum": ["config", "cloudcontrol", "native"],
             "title": "Observedsource"
           },
           "refreshError": {
@@ -3697,10 +3498,7 @@
         "properties": {
           "direction": {
             "type": "string",
-            "enum": [
-              "out",
-              "in"
-            ],
+            "enum": ["out", "in"],
             "title": "Direction"
           },
           "relationName": {
@@ -3752,11 +3550,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "resourceType",
-          "resourceId",
-          "name"
-        ],
+        "required": ["resourceType", "resourceId", "name"],
         "title": "RelationshipRef"
       },
       "Requeued": {
@@ -3767,9 +3561,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "requeued"
-        ],
+        "required": ["requeued"],
         "title": "Requeued"
       },
       "ResourceCounts": {
@@ -3856,11 +3648,7 @@
           },
           "status": {
             "type": "string",
-            "enum": [
-              "active",
-              "missing",
-              "deleted"
-            ],
+            "enum": ["active", "missing", "deleted"],
             "title": "Status"
           },
           "stale": {
@@ -3949,11 +3737,7 @@
           },
           "observedSource": {
             "type": "string",
-            "enum": [
-              "config",
-              "cloudcontrol",
-              "native"
-            ],
+            "enum": ["config", "cloudcontrol", "native"],
             "title": "Observedsource"
           }
         },
@@ -4043,11 +3827,7 @@
           },
           "status": {
             "type": "string",
-            "enum": [
-              "active",
-              "missing",
-              "deleted"
-            ],
+            "enum": ["active", "missing", "deleted"],
             "title": "Status"
           },
           "stale": {
@@ -4140,11 +3920,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "typeName",
-          "label",
-          "global"
-        ],
+        "required": ["typeName", "label", "global"],
         "title": "ResourceTypeInfo"
       },
       "ScanCounts": {
@@ -4161,10 +3937,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "tasks",
-          "resources"
-        ],
+        "required": ["tasks", "resources"],
         "title": "ScanCounts"
       },
       "ScanCreated": {
@@ -4175,9 +3948,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "scanRequestId"
-        ],
+        "required": ["scanRequestId"],
         "title": "ScanCreated"
       },
       "ScanDetail": {
@@ -4188,10 +3959,7 @@
           },
           "trigger": {
             "type": "string",
-            "enum": [
-              "schedule",
-              "api"
-            ],
+            "enum": ["schedule", "api"],
             "title": "Trigger"
           },
           "callerId": {
@@ -4305,10 +4073,7 @@
           },
           "trigger": {
             "type": "string",
-            "enum": [
-              "schedule",
-              "api"
-            ],
+            "enum": ["schedule", "api"],
             "title": "Trigger"
           },
           "callerId": {
@@ -4698,10 +4463,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "key",
-          "value"
-        ],
+        "required": ["key", "value"],
         "title": "Tag"
       },
       "TaskLogs": {
@@ -4726,10 +4488,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "events",
-          "nextToken"
-        ],
+        "required": ["events", "nextToken"],
         "title": "TaskLogs"
       },
       "TaskOut": {
@@ -4908,11 +4667,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "resourceType",
-          "label",
-          "count"
-        ],
+        "required": ["resourceType", "label", "count"],
         "title": "TypeCount"
       },
       "ValidationError": {
@@ -4948,11 +4703,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
+        "required": ["loc", "msg", "type"],
         "title": "ValidationError"
       },
       "WorkerActivity": {
@@ -4975,10 +4726,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "activeTasks",
-          "lastHeartbeatAt"
-        ],
+        "required": ["activeTasks", "lastHeartbeatAt"],
         "title": "WorkerActivity"
       }
     }

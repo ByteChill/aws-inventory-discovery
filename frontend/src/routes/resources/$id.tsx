@@ -1,12 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
+import { Loader2 } from "lucide-react"
 import { type ReactNode, useMemo } from "react"
-
 import {
   useLookup,
   useRelationships,
   useResource,
   useResourceTypes,
 } from "@/api/hooks"
+import { useRefreshResource } from "@/api/scans"
 import type { RelationshipEntry, ResourceDetail } from "@/client"
 import { CopyButton } from "@/components/copy-button"
 import { InlineError, QueryRegion } from "@/components/inline-state"
@@ -15,6 +16,7 @@ import { Page, PageHeader, Section } from "@/components/layout/page"
 import { Time, TimeSentence } from "@/components/time"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { refreshReason } from "@/features/scan-parts"
 import { type MessageKey, useI18n } from "@/i18n"
 import { errorText } from "@/lib/errors"
 import { cn } from "@/lib/utils"
@@ -86,6 +88,7 @@ function AccountChooser({ rows }: { rows: ResourceDetail[] }) {
 function Detail({ resource: r }: { resource: ResourceDetail }) {
   const { t } = useI18n()
   const types = useResourceTypes()
+  const refresh = useRefreshResource()
   const typeLabel =
     types.data?.find((x) => x.typeName === r.resourceType)?.label ??
     r.resourceType
@@ -97,12 +100,34 @@ function Detail({ resource: r }: { resource: ResourceDetail }) {
           title={r.resourceName ?? r.resourceId}
           mono={!r.resourceName}
           actions={
-            // Refresh needs the write endpoint (next milestone).
-            <Button variant="outline" disabled title={t("common.comingSoon")}>
-              {t("action.refresh")}
+            <Button
+              variant="outline"
+              disabled={refresh.phase !== "idle"}
+              onClick={() =>
+                refresh.run({
+                  accountId: r.accountId,
+                  awsRegion: r.awsRegion,
+                  resourceType: r.resourceType,
+                  resourceId: r.resourceId,
+                })
+              }
+            >
+              {refresh.phase === "waiting" && (
+                <Loader2 className="animate-spin" />
+              )}
+              {refresh.phase === "queued"
+                ? t("detail.refreshing")
+                : t("action.refresh")}
             </Button>
           }
         />
+        {refresh.error != null && (
+          <p role="alert" className="text-danger">
+            {t("detail.refreshFailed", {
+              reason: refreshReason(t, refresh.error),
+            })}
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span>{typeLabel}</span>
           {r.status !== "active" && (

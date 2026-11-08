@@ -1,0 +1,146 @@
+{
+  "schema_version": 3,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "资源状态变化与删除判断",
+    "locale": "zh-CN",
+    "output": ".archify/diagrams/resource-lifecycle.html",
+    "quality_profile": "showcase"
+  },
+  "mainPath": [
+    "discovered",
+    "active",
+    "missing_scan",
+    "deleted",
+    "purged"
+  ],
+  "states": [
+    {
+      "id": "discovered",
+      "type": "start",
+      "label": "首次发现",
+      "sublabel": "扫描或刷新读到"
+    },
+    {
+      "id": "active",
+      "type": "active",
+      "label": "正常",
+      "sublabel": "status = active"
+    },
+    {
+      "id": "missing_scan",
+      "type": "waiting",
+      "label": "可能已删除",
+      "sublabel": "已有第一条证据",
+      "tag": "missing"
+    },
+    {
+      "id": "deleted",
+      "type": "neutral",
+      "label": "已删除",
+      "sublabel": "两条证据齐全",
+      "tag": "deleted"
+    },
+    {
+      "id": "purged",
+      "type": "neutral",
+      "label": "已清理",
+      "sublabel": "从数据库删除"
+    },
+    {
+      "id": "missing_refresh",
+      "type": "waiting",
+      "label": "可能已删除",
+      "sublabel": "只有第二条证据",
+      "tag": "missing"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "discovered-active",
+      "from": "discovered",
+      "to": "active",
+      "label": "写入"
+    },
+    {
+      "id": "active-missing-scan",
+      "from": "active",
+      "to": "missing_scan",
+      "label": "完整扫描没看到"
+    },
+    {
+      "id": "missing-scan-deleted",
+      "from": "missing_scan",
+      "to": "deleted",
+      "label": "按 ID 读取：明确不存在",
+      "variant": "emphasis"
+    },
+    {
+      "id": "deleted-purged",
+      "from": "deleted",
+      "to": "purged",
+      "label": "30 天后",
+      "variant": "dashed"
+    },
+    {
+      "id": "active-missing-refresh",
+      "from": "active",
+      "to": "missing_refresh",
+      "label": "刷新：明确不存在",
+      "variant": "security"
+    },
+    {
+      "id": "missing-refresh-missing-scan",
+      "from": "missing_refresh",
+      "to": "missing_scan",
+      "label": "之后的完整扫描也没看到"
+    },
+    {
+      "id": "missing-refresh-active",
+      "from": "missing_refresh",
+      "to": "active",
+      "label": "再次读到"
+    },
+    {
+      "id": "missing-scan-active",
+      "from": "missing_scan",
+      "to": "active",
+      "label": "再次读到"
+    },
+    {
+      "id": "deleted-active",
+      "from": "deleted",
+      "to": "active",
+      "label": "又被扫描到"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "两条独立的证据",
+      "items": [
+        "第一条：一次完整成功的扫描里没有它",
+        "第二条：按 ID 实时读取，明确返回不存在",
+        "只有两条都满足，才标为已删除"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "出错不等于不存在",
+      "items": [
+        "没权限、被限流、不支持读取都只算出错",
+        "出错时保持可能已删除，下一轮再试",
+        "一直确认不了，就永远不会自动删除"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "整批保护",
+      "items": [
+        "一次扫描让某个范围超过一半、且多于 20 个资源消失时，什么都不改",
+        "这个范围标为数据异常，由管理员重新扫描或确认",
+        "确认后仍然逐个按两条证据判断"
+      ]
+    }
+  ]
+}

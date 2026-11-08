@@ -1,0 +1,330 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "aws-inventory-discovery 部署架构",
+    "locale": "zh-CN",
+    "output": ".archify/diagrams/architecture.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "users",
+      "type": "external",
+      "label": "Dashboard 用户",
+      "sublabel": "浏览器",
+      "pos": [
+        40,
+        150
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "consumers",
+      "type": "external",
+      "label": "内部服务",
+      "sublabel": "API 调用方",
+      "pos": [
+        40,
+        330
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "alb",
+      "type": "cloud",
+      "label": "Internal ALB",
+      "sublabel": "仅内网访问",
+      "pos": [
+        240,
+        150
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "数据消费服务",
+      "sublabel": "aws-inventory-discovery-api",
+      "pos": [
+        450,
+        150
+      ],
+      "size": [
+        180,
+        62
+      ]
+    },
+    {
+      "id": "logs",
+      "type": "cloud",
+      "label": "CloudWatch Logs",
+      "sublabel": "任务日志",
+      "pos": [
+        240,
+        330
+      ],
+      "size": [
+        140,
+        60
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "ElastiCache Redis",
+      "sublabel": "只做缓存",
+      "pos": [
+        450,
+        330
+      ],
+      "size": [
+        180,
+        62
+      ]
+    },
+    {
+      "id": "aurora",
+      "type": "database",
+      "label": "Aurora PostgreSQL",
+      "sublabel": "任务队列 + 资产（独立 schema）",
+      "pos": [
+        760,
+        150
+      ],
+      "size": [
+        180,
+        62
+      ]
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "数据生产服务",
+      "sublabel": "aws-inventory-discovery-worker",
+      "pos": [
+        760,
+        360
+      ],
+      "size": [
+        180,
+        62
+      ]
+    },
+    {
+      "id": "ep_local",
+      "type": "security",
+      "label": "VPC endpoints",
+      "sublabel": "ap-east-1 本地",
+      "pos": [
+        600,
+        560
+      ],
+      "size": [
+        160,
+        60
+      ]
+    },
+    {
+      "id": "registry",
+      "type": "external",
+      "label": "① 账号清单服务",
+      "sublabel": "扫描开始时拉取",
+      "pos": [
+        1020,
+        300
+      ],
+      "size": [
+        155,
+        60
+      ]
+    },
+    {
+      "id": "creds",
+      "type": "external",
+      "label": "② 凭证服务",
+      "sublabel": "自带缓存",
+      "pos": [
+        1020,
+        430
+      ],
+      "size": [
+        155,
+        60
+      ]
+    },
+    {
+      "id": "ep_remote",
+      "type": "security",
+      "label": "VPC endpoints",
+      "sublabel": "us-east-1 / eu-west-1 / eu-west-2",
+      "pos": [
+        985,
+        560
+      ],
+      "size": [
+        195,
+        60
+      ]
+    },
+    {
+      "id": "targets",
+      "type": "cloud",
+      "label": "1000+ 目标账号",
+      "sublabel": "ADFS-readonly（ReadOnlyAccess）",
+      "pos": [
+        760,
+        740
+      ],
+      "size": [
+        220,
+        62
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Hub 账号 · ap-east-1 私有 VPC",
+      "wraps": [
+        "alb",
+        "api",
+        "logs",
+        "redis",
+        "aurora",
+        "worker",
+        "ep_local"
+      ],
+      "pad": 22
+    },
+    {
+      "kind": "region",
+      "label": "远端区域 VPC（经 peering）",
+      "wraps": [
+        "ep_remote"
+      ],
+      "pad": 16
+    }
+  ],
+  "connections": [
+    {
+      "from": "users",
+      "to": "alb",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "from": "consumers",
+      "to": "alb",
+      "label": "REST API"
+    },
+    {
+      "from": "alb",
+      "to": "api",
+      "label": "HTTP",
+      "variant": "emphasis"
+    },
+    {
+      "from": "api",
+      "to": "aurora",
+      "label": "读查询、写扫描请求",
+      "variant": "emphasis"
+    },
+    {
+      "from": "api",
+      "to": "redis",
+      "label": "缓存"
+    },
+    {
+      "from": "api",
+      "to": "logs",
+      "label": "查任务日志",
+      "variant": "dashed"
+    },
+    {
+      "from": "worker",
+      "to": "aurora",
+      "label": "领取任务、写入资产",
+      "variant": "emphasis"
+    },
+    {
+      "from": "worker",
+      "to": "registry",
+      "label": "账号列表"
+    },
+    {
+      "from": "worker",
+      "to": "creds",
+      "label": "临时凭证",
+      "variant": "security"
+    },
+    {
+      "from": "worker",
+      "to": "ep_local",
+      "label": "只读 AWS API"
+    },
+    {
+      "from": "worker",
+      "to": "ep_remote",
+      "label": "VPC peering",
+      "variant": "security"
+    },
+    {
+      "from": "ep_local",
+      "to": "targets",
+      "label": "Config / Cloud Control / EC2"
+    },
+    {
+      "from": "ep_remote",
+      "to": "targets",
+      "label": "Config / Cloud Control / EC2"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "生产与消费分离",
+      "items": [
+        "worker 是唯一调用目标账号、唯一持有目标账号凭证的服务",
+        "api 只读数据、创建扫描请求，只访问 hub 账号自己的日志",
+        "两个服务共用一个镜像，各自按 CPU 和内存自动扩缩"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "三种数据源",
+      "items": [
+        "定时扫描：Config 优先，一次查询覆盖一个区域的所有记录类型",
+        "Config 覆盖不到的类型、按需扫描、单资源刷新：Cloud Control",
+        "两者都不支持的类型（AMI）：EC2 自己的 API"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "任务队列在 Postgres",
+      "items": [
+        "worker 用 FOR UPDATE SKIP LOCKED 领取任务",
+        "定时调度在 worker 内，advisory lock 选主",
+        "Redis 只做缓存，不可用时只影响速度"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "网络",
+      "items": [
+        "远端区域经 VPC peering 访问 interface endpoint",
+        "9 个 Route 53 私有托管区把服务域名解析到远端 endpoint",
+        "endpoint 策略按 aws:PrincipalOrgID 放行组织内账号的只读操作"
+      ]
+    }
+  ]
+}

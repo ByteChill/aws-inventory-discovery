@@ -1,0 +1,550 @@
+{
+  "schema_version": 1,
+  "diagram_type": "erd",
+  "meta": {
+    "title": "数据库结构（t_inv_aws_*）",
+    "locale": "zh-CN",
+    "output": ".archify/diagrams/database.html",
+    "quality_profile": "standard"
+  },
+  "layout": {
+    "mode": "grid",
+    "gapY": 38,
+    "gapX": 72
+  },
+  "entities": [
+    {
+      "id": "account",
+      "label": "t_inv_aws_account",
+      "tag": "账号",
+      "row": 0,
+      "col": 0,
+      "attributes": [
+        {
+          "name": "account_id",
+          "type": "char(12)",
+          "key": "pk"
+        },
+        {
+          "name": "account_name",
+          "type": "text"
+        },
+        {
+          "name": "account_type",
+          "type": "text"
+        },
+        {
+          "name": "eim_id",
+          "type": "char(8)"
+        },
+        {
+          "name": "eim_app",
+          "type": "text"
+        },
+        {
+          "name": "ba_id",
+          "type": "text"
+        },
+        {
+          "name": "active",
+          "type": "boolean"
+        },
+        {
+          "name": "inactive_since",
+          "type": "timestamptz"
+        },
+        {
+          "name": "registry_fetched_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "access_status",
+          "type": "text"
+        },
+        {
+          "name": "access_error",
+          "type": "text"
+        },
+        {
+          "name": "access_checked_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "last_scan_ok_at",
+          "type": "timestamptz"
+        }
+      ],
+      "width": 260
+    },
+    {
+      "id": "account_region",
+      "label": "t_inv_aws_account_region",
+      "tag": "账号",
+      "row": 1,
+      "col": 0,
+      "attributes": [
+        {
+          "name": "account_id",
+          "type": "char(12)",
+          "key": [
+            "pk",
+            "fk"
+          ],
+          "references": "account.account_id"
+        },
+        {
+          "name": "region",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "opt_in_status",
+          "type": "text"
+        },
+        {
+          "name": "reachable",
+          "type": "boolean"
+        },
+        {
+          "name": "config_recorder",
+          "type": "jsonb"
+        },
+        {
+          "name": "checked_at",
+          "type": "timestamptz"
+        }
+      ]
+    },
+    {
+      "id": "resource",
+      "label": "t_inv_aws_resource",
+      "tag": "资源",
+      "row": 0,
+      "col": 1,
+      "attributes": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "key": "pk"
+        },
+        {
+          "name": "arn",
+          "type": "text"
+        },
+        {
+          "name": "account_id",
+          "type": "char(12)",
+          "key": [
+            "uk",
+            "fk"
+          ],
+          "references": "account.account_id"
+        },
+        {
+          "name": "aws_region",
+          "type": "text",
+          "key": "uk"
+        },
+        {
+          "name": "resource_type",
+          "type": "text",
+          "key": "uk"
+        },
+        {
+          "name": "resource_id",
+          "type": "text",
+          "key": "uk"
+        },
+        {
+          "name": "resource_name",
+          "type": "text"
+        },
+        {
+          "name": "tags",
+          "type": "jsonb"
+        },
+        {
+          "name": "configuration",
+          "type": "jsonb"
+        },
+        {
+          "name": "relationships",
+          "type": "jsonb"
+        },
+        {
+          "name": "live_raw",
+          "type": "jsonb"
+        },
+        {
+          "name": "config_capture_time",
+          "type": "timestamptz"
+        },
+        {
+          "name": "live_observed_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "observed_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "observed_source",
+          "type": "text"
+        },
+        {
+          "name": "content_hash",
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "type": "text"
+        },
+        {
+          "name": "missing_since",
+          "type": "timestamptz"
+        },
+        {
+          "name": "absent_in_scan_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "missing_checks",
+          "type": "smallint"
+        },
+        {
+          "name": "deleted_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "first_seen_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "last_changed_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "last_task_id",
+          "type": "bigint"
+        }
+      ],
+      "width": 280
+    },
+    {
+      "id": "relation",
+      "label": "t_inv_aws_resource_relation",
+      "tag": "资源",
+      "row": 1,
+      "col": 1,
+      "attributes": [
+        {
+          "name": "from_resource_id",
+          "type": "bigint",
+          "key": [
+            "pk",
+            "fk"
+          ],
+          "references": "resource.id"
+        },
+        {
+          "name": "to_resource_type",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "to_resource_key",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "relation_name",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "to_resource_id",
+          "type": "bigint",
+          "key": "fk",
+          "references": "resource.id"
+        }
+      ]
+    },
+    {
+      "id": "scan_request",
+      "label": "t_inv_aws_scan_request",
+      "tag": "扫描",
+      "row": 0,
+      "col": 2,
+      "attributes": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "key": "pk"
+        },
+        {
+          "name": "trigger",
+          "type": "text"
+        },
+        {
+          "name": "caller_id",
+          "type": "text"
+        },
+        {
+          "name": "scope",
+          "type": "jsonb"
+        },
+        {
+          "name": "target",
+          "type": "jsonb"
+        },
+        {
+          "name": "priority",
+          "type": "smallint"
+        },
+        {
+          "name": "status",
+          "type": "text"
+        },
+        {
+          "name": "counts",
+          "type": "jsonb"
+        },
+        {
+          "name": "idempotency_key",
+          "type": "text",
+          "key": "uk"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "started_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "finished_at",
+          "type": "timestamptz"
+        }
+      ]
+    },
+    {
+      "id": "scan_task",
+      "label": "t_inv_aws_scan_task",
+      "tag": "扫描",
+      "row": 1,
+      "col": 2,
+      "attributes": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "key": "pk"
+        },
+        {
+          "name": "scan_request_id",
+          "type": "bigint",
+          "key": "fk",
+          "references": "scan_request.id"
+        },
+        {
+          "name": "kind",
+          "type": "text"
+        },
+        {
+          "name": "source",
+          "type": "text"
+        },
+        {
+          "name": "account_id",
+          "type": "char(12)"
+        },
+        {
+          "name": "region",
+          "type": "text"
+        },
+        {
+          "name": "resource_type",
+          "type": "text"
+        },
+        {
+          "name": "resource_id",
+          "type": "text"
+        },
+        {
+          "name": "priority",
+          "type": "smallint"
+        },
+        {
+          "name": "status",
+          "type": "text"
+        },
+        {
+          "name": "not_before",
+          "type": "timestamptz"
+        },
+        {
+          "name": "attempt",
+          "type": "smallint"
+        },
+        {
+          "name": "max_attempts",
+          "type": "smallint"
+        },
+        {
+          "name": "worker_id",
+          "type": "text"
+        },
+        {
+          "name": "heartbeat_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "observed_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "coalesced_into",
+          "type": "bigint"
+        },
+        {
+          "name": "stats",
+          "type": "jsonb"
+        },
+        {
+          "name": "error_code",
+          "type": "text"
+        },
+        {
+          "name": "error_message",
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "started_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "finished_at",
+          "type": "timestamptz"
+        }
+      ]
+    },
+    {
+      "id": "scan_shard",
+      "label": "t_inv_aws_scan_shard",
+      "tag": "扫描",
+      "row": 2,
+      "col": 2,
+      "attributes": [
+        {
+          "name": "account_id",
+          "type": "char(12)",
+          "key": "pk"
+        },
+        {
+          "name": "region",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "resource_type",
+          "type": "text",
+          "key": "pk"
+        },
+        {
+          "name": "lease_task_id",
+          "type": "bigint"
+        },
+        {
+          "name": "lease_expires_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "pending_task_id",
+          "type": "bigint"
+        },
+        {
+          "name": "last_started_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "last_succeeded_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "last_task_id",
+          "type": "bigint"
+        },
+        {
+          "name": "last_error_code",
+          "type": "text"
+        },
+        {
+          "name": "consecutive_failures",
+          "type": "int"
+        },
+        {
+          "name": "guard_state",
+          "type": "text"
+        },
+        {
+          "name": "guard_detected_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "guard_confirmed_by",
+          "type": "text"
+        }
+      ],
+      "width": 250
+    }
+  ],
+  "relationships": [
+    {
+      "id": "region_account",
+      "from": "account_region",
+      "to": "account",
+      "label": "开启的区域",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "resource_account",
+      "from": "resource",
+      "to": "account",
+      "label": "属于",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "relation_from",
+      "from": "relation",
+      "to": "resource",
+      "label": "来源资源",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "relation_to",
+      "from": "relation",
+      "to": "resource",
+      "label": "目标资源（可能未收录）",
+      "fromCardinality": "many",
+      "fromOptional": true,
+      "toCardinality": "one",
+      "toOptional": true,
+      "identifying": false
+    },
+    {
+      "id": "task_request",
+      "from": "scan_task",
+      "to": "scan_request",
+      "label": "属于",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    }
+  ]
+}

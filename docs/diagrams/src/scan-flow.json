@@ -1,0 +1,228 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "扫描流程",
+    "locale": "zh-CN",
+    "output": ".archify/diagrams/scan-flow.html",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "trigger",
+      "label": "触发"
+    },
+    {
+      "id": "worker",
+      "label": "worker 编排"
+    },
+    {
+      "id": "source",
+      "label": "数据源（只读 AWS）"
+    },
+    {
+      "id": "writer",
+      "label": "ResourceWriter"
+    },
+    {
+      "id": "guard",
+      "label": "保护",
+      "variant": "exception"
+    }
+  ],
+  "mainPath": [
+    "tick",
+    "sweep",
+    "lease",
+    "discovery",
+    "write",
+    "detect",
+    "confirm"
+  ],
+  "nodes": [
+    {
+      "id": "tick",
+      "lane": "trigger",
+      "col": 0,
+      "type": "external",
+      "label": "定时调度",
+      "sublabel": "每 6 小时，按账号错开"
+    },
+    {
+      "id": "demand",
+      "lane": "trigger",
+      "col": 1,
+      "type": "frontend",
+      "label": "按需扫描、刷新",
+      "sublabel": "dashboard / API"
+    },
+    {
+      "id": "sweep",
+      "lane": "worker",
+      "col": 1,
+      "type": "backend",
+      "label": "sweep_account",
+      "sublabel": "凭证、区域、选数据源"
+    },
+    {
+      "id": "lease",
+      "lane": "worker",
+      "col": 2,
+      "type": "security",
+      "label": "取得范围租约",
+      "sublabel": "同一范围只跑一个"
+    },
+    {
+      "id": "discovery",
+      "lane": "worker",
+      "col": 3,
+      "type": "backend",
+      "label": "Discovery",
+      "sublabel": "读取，标记是否完整"
+    },
+    {
+      "id": "config",
+      "lane": "source",
+      "col": 2,
+      "type": "cloud",
+      "label": "AWS Config",
+      "sublabel": "定时扫描优先"
+    },
+    {
+      "id": "live",
+      "lane": "source",
+      "col": 4,
+      "type": "cloud",
+      "label": "Cloud Control / EC2",
+      "sublabel": "实时读取、按 ID 读取"
+    },
+    {
+      "id": "write",
+      "lane": "writer",
+      "col": 3,
+      "type": "database",
+      "label": "写入",
+      "sublabel": "加锁、叠加、脱敏、条件写入"
+    },
+    {
+      "id": "detect",
+      "lane": "writer",
+      "col": 4,
+      "type": "database",
+      "label": "删除判断",
+      "sublabel": "只在读取完整时"
+    },
+    {
+      "id": "confirm",
+      "lane": "writer",
+      "col": 5,
+      "type": "database",
+      "label": "删除确认",
+      "sublabel": "两条证据齐全才删除"
+    },
+    {
+      "id": "abnormal",
+      "lane": "guard",
+      "col": 4,
+      "type": "security",
+      "label": "数据异常",
+      "sublabel": "整批不处理"
+    }
+  ],
+  "edges": [
+    {
+      "id": "tick-sweep",
+      "from": "tick",
+      "to": "sweep",
+      "label": "一轮扫描"
+    },
+    {
+      "id": "sweep-lease",
+      "from": "sweep",
+      "to": "lease",
+      "label": "拆出子任务"
+    },
+    {
+      "id": "demand-lease",
+      "from": "demand",
+      "to": "lease",
+      "label": "只用实时数据源",
+      "role": "branch"
+    },
+    {
+      "id": "lease-discovery",
+      "from": "lease",
+      "to": "discovery"
+    },
+    {
+      "id": "discovery-config",
+      "from": "discovery",
+      "to": "config",
+      "label": "Config 覆盖的类型",
+      "role": "branch",
+      "variant": "dashed"
+    },
+    {
+      "id": "discovery-live",
+      "from": "discovery",
+      "to": "live",
+      "label": "其余类型、按需",
+      "role": "branch",
+      "variant": "dashed"
+    },
+    {
+      "id": "discovery-write",
+      "from": "discovery",
+      "to": "write",
+      "label": "Observation",
+      "variant": "emphasis"
+    },
+    {
+      "id": "write-detect",
+      "from": "write",
+      "to": "detect"
+    },
+    {
+      "id": "detect-confirm",
+      "from": "detect",
+      "to": "confirm",
+      "label": "可能已删除"
+    },
+    {
+      "id": "detect-abnormal",
+      "from": "detect",
+      "to": "abnormal",
+      "label": "超过一半消失",
+      "role": "error",
+      "variant": "security"
+    },
+    {
+      "id": "confirm-live",
+      "from": "confirm",
+      "to": "live",
+      "label": "按 ID 读取",
+      "role": "return",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "分层",
+      "items": [
+        "类型的 Hooks 只负责特殊的读取和补充数据",
+        "Discovery 选数据源，不碰数据库",
+        "所有类型共用一个 Writer，钩子无法绕过并发、删除和脱敏规则"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "并发规则",
+      "items": [
+        "同一范围同时只跑一个任务，按需请求最多排一个后续任务",
+        "旧观察永远覆盖不了新观察",
+        "生成器在租约内消费完，期间持续续约"
+      ]
+    }
+  ]
+}

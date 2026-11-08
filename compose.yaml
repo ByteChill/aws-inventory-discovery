@@ -1,18 +1,28 @@
 # Local environment for `podman compose` (DESIGN 11.1).
-#   podman compose up -d                 postgres, redis, moto, migrate, api, worker
+#   podman compose up -d                 postgres, redis, moto, fake-aws, migrate, api, worker
+#   podman compose run --rm seed         load the demo dataset (20 accounts x 4 regions)
 #   podman compose up -d postgres redis  just what the tests need
 
+# Podman injects the host's HTTP(S)_PROXY into containers; keep service-to-service calls direct.
+x-no-proxy: &no-proxy
+  NO_PROXY: moto,fake-aws,postgres,redis,localhost,127.0.0.1
+  no_proxy: moto,fake-aws,postgres,redis,localhost,127.0.0.1
+
 x-app-env: &app-env
+  <<: *no-proxy
   DATABASE_URL: postgresql+psycopg://inventory:inventory@postgres:5432/inventory
   DATABASE_SCHEMA: inventory
   REDIS_URL: redis://redis:6379/0
-  # boto3 reads this natively: every AWS call goes to moto. Never set in production.
+  # boto3 reads these natively: EC2, STS and Logs go to moto, Cloud Control and Config to
+  # fake-aws. Never set in production.
   AWS_ENDPOINT_URL: http://moto:5000
   AWS_DEFAULT_REGION: ap-east-1
   AWS_ACCESS_KEY_ID: testing
   AWS_SECRET_ACCESS_KEY: testing
-  # Future `fake-aws` service (M2): Cloud Control, account registry (1), credentials (2).
-  ACCOUNT_REGISTRY_URL: http://fake-aws:4567/registry
+  # Cloud Control and AWS Config are served by fake-aws (moto cannot preset their results).
+  AWS_ENDPOINT_URL_CLOUDCONTROL: http://fake-aws:4567
+  AWS_ENDPOINT_URL_CONFIG_SERVICE: http://fake-aws:4567
+  ACCOUNT_REGISTRY_URL: http://fake-aws:4567/registry/accounts
   CREDENTIAL_SERVICE_URL: http://fake-aws:4567/credentials
 
 x-app-build: &app-build
@@ -20,6 +30,12 @@ x-app-build: &app-build
     context: .
     dockerfile: backend/Dockerfile
   image: aws-inventory-discovery:dev
+
+x-devtools-build: &devtools-build
+  build:
+    context: .
+    dockerfile: devtools/Dockerfile
+  image: aws-inventory-discovery-devtools:dev
 
 services:
   postgres:
@@ -54,22 +70,34 @@ services:
     image: docker.io/motoserver/moto:latest
     container_name: aws-inventory-discovery-moto
     ports:
-      - "5000:5000"
+      - "5001:5000"  # host 5000 is taken by macOS AirPlay Receiver
 
-  # --- M2 will add the services below -------------------------------------
-  # fake-aws:
-  #   build: { context: ., dockerfile: devtools/fake_aws/Dockerfile }
-  #   container_name: aws-inventory-discovery-fake-aws
-  #   ports: ["4567:4567"]
-  #
-  # seed:   # one-shot: `podman compose run --rm seed`
-  #   <<: *app-build
-  #   container_name: aws-inventory-discovery-seed
-  #   command: ["python", "devtools/seed.py"]
-  #   environment: *app-env
-  #   depends_on: [migrate, moto, fake-aws]
-  #   profiles: ["seed"]
-  # -------------------------------------------------------------------------
+  # Cloud Control, AWS Config, account registry (1) and credential service (2); moto serves
+  # EC2, STS and CloudWatch Logs. Wire formats and admin API: devtools/README.md.
+  fake-aws:
+    <<: *devtools-build
+    container_name: aws-inventory-discovery-fake-aws
+    environment:
+      <<: *no-proxy
+      MOTO_ENDPOINT_URL: http://moto:5000
+    ports:
+      - "4567:4567"
+    depends_on:
+      - moto
+
+  # One-shot demo seed: `podman compose run --rm seed`
+  seed:
+    <<: *devtools-build
+    container_name: aws-inventory-discovery-seed
+    command: ["python", "seed.py", "--reset"]
+    environment:
+      <<: *no-proxy
+      FAKE_AWS_URL: http://fake-aws:4567
+      MOTO_ENDPOINT_URL: http://moto:5000
+    depends_on:
+      - moto
+      - fake-aws
+    restart: "no"
 
   migrate:
     <<: *app-build
@@ -104,4 +132,6 @@ services:
       redis:
         condition: service_healthy
       moto:
+        condition: service_started
+      fake-aws:
         condition: service_started

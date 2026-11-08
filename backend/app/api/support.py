@@ -16,6 +16,8 @@ from app.core.errors import ApiError
 from app.models import Account, ScanTask
 from app.models.scan import utcnow
 from app.schemas.scans import RefreshByArn, RefreshByKey
+from app.types.hooks import TYPE_HOOKS
+from app.types.mapping import MappingError
 from app.types.registry import TypeRegistry
 from app.worker.requests import ResourceKey
 from app.worker.scheduler import sync_accounts
@@ -28,6 +30,17 @@ NOT_FINISHED = ("queued", "running")
 def check_resource_type(registry: TypeRegistry, type_name: str) -> None:
     if type_name not in registry:
         raise ApiError(422, "validation_error", "未知的资源类型", {"resourceType": type_name})
+
+
+def check_resource_id(type_name: str, resource_id: str) -> None:
+    """Reject at the door a resource id that can never be read (e.g. a short-format ECS
+    service ARN), instead of failing a queued task."""
+    hooks = TYPE_HOOKS.get(type_name)
+    if hooks is not None and hooks.cloudcontrol_identifier is not None:
+        try:
+            hooks.cloudcontrol_identifier(resource_id)
+        except MappingError as exc:
+            raise ApiError(422, "validation_error", str(exc), {"resourceId": resource_id}) from exc
 
 
 def ensure_accounts(session: Session, settings: Settings, account_ids: Sequence[str]) -> None:

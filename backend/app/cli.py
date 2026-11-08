@@ -26,14 +26,23 @@ def run_doctor() -> int:
     return 1 if failed else 0
 
 
-COMMANDS = {"worker": run_worker, "doctor": run_doctor}
+def run_healthcheck() -> int:
+    """Exit 0 only if this container's worker heartbeat file is fresh (no database access)."""
+    from app.core.config import get_settings
+    from app.worker.health import is_fresh
+
+    return 0 if is_fresh(get_settings().WORKER_HEARTBEAT_FILE) else 1
+
+
+COMMANDS = {"worker": run_worker, "doctor": run_doctor, "healthcheck": run_healthcheck}
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     parser.add_argument("command", choices=sorted(COMMANDS))
     args = parser.parse_args(argv)
-    setup_logging()
+    if args.command != "healthcheck":
+        setup_logging()
     return COMMANDS[args.command]()
 
 

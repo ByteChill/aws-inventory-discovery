@@ -8,7 +8,8 @@ from sqlmodel import Session, select
 from app.core.config import Settings
 from app.models import Account, ScanRequest, ScanTask
 from app.worker import queue, requests
-from app.worker.scheduler import SCHEDULER_LOCK_KEY, Scheduler, advisory_lock_key
+from app.worker.locks import FULL_SWEEP_LOCK_NAME, SCHEDULER_LOCK_NAME, advisory_lock_key
+from app.worker.scheduler import Scheduler
 from tests.worker.conftest import (
     IMAGES,
     NOW,
@@ -19,6 +20,8 @@ from tests.worker.conftest import (
 )
 
 NEW_ACCOUNT = "999900001111"
+PINNED_SCHEDULER_KEY = -7187737924124084656
+PINNED_FULL_SWEEP_KEY = -4756006676216944716
 
 
 def sweeps(session: Session) -> list[ScanRequest]:
@@ -67,9 +70,14 @@ def test_sweep_syncs_accounts_and_staggers_one_task_per_account(
 def test_only_one_scheduler_leads_at_a_time(
     engine: Engine, session: Session, settings: Settings, registry: RegistryServer
 ) -> None:
-    # The key is derived from the name, so every instance computes the same one.
-    assert SCHEDULER_LOCK_KEY == advisory_lock_key("aws-inventory-discovery:scheduler")
-    assert SCHEDULER_LOCK_KEY == -1400507965301730696
+    # The key is derived from the name and the schema, so every instance of one deployment
+    # computes the same one while deployments sharing a cluster do not collide.
+    assert advisory_lock_key(SCHEDULER_LOCK_NAME, "inventory") == PINNED_SCHEDULER_KEY
+    assert advisory_lock_key(FULL_SWEEP_LOCK_NAME, "inventory") == PINNED_FULL_SWEEP_KEY
+    assert advisory_lock_key(SCHEDULER_LOCK_NAME, "other") != PINNED_SCHEDULER_KEY
+    assert Scheduler(engine, settings, None).lock.key == advisory_lock_key(
+        SCHEDULER_LOCK_NAME, settings.DATABASE_SCHEMA
+    )
     leader = Scheduler(engine, settings, registry.client())
     standby = Scheduler(engine, settings, registry.client())
 

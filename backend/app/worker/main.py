@@ -23,7 +23,7 @@ from app.core.config import Settings, get_settings
 from app.core.db import make_engine
 from app.core.logging import log_context
 from app.models import ScanTask
-from app.worker import leases, queue
+from app.worker import health, leases, queue
 from app.worker.errors import TaskCancelled, TaskError, TaskLost, TaskStopped
 from app.worker.handlers import Handler, Scanner, TaskContext
 from app.worker.scheduler import Scheduler
@@ -164,8 +164,17 @@ class Worker:
                 continue
             self._run_task(task)
 
+    def _touch_health_file(self) -> None:
+        try:
+            health.touch(self.settings.WORKER_HEARTBEAT_FILE)
+        except OSError:
+            logger.exception("could not touch the heartbeat file")
+
     def _heartbeat_loop(self) -> None:
-        while not self._heartbeat_done.wait(self.heartbeat_interval):
+        while True:
+            self._touch_health_file()
+            if self._heartbeat_done.wait(self.heartbeat_interval):
+                return
             with self._running_lock:
                 claims = {i: t.claim_token or "" for i, t in self._running.items()}
             if not claims:
@@ -236,10 +245,6 @@ class Worker:
             logger.warning("task failed: %s", exc.message, extra={"error_code": exc.error_code})
             self._release(task, success=False, error_code=exc.error_code)
             self._fail(task, exc.error_code, exc.message, retryable=exc.retryable)
-        except NotImplementedError as exc:
-            logger.error("task kind not implemented: %s", exc)
-            self._release(task, success=None)
-            self._fail(task, "internal", str(exc), retryable=False)
         except Exception as exc:
             logger.exception("task crashed")
             self._release(task, success=False, error_code="internal")

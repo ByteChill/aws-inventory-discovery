@@ -97,6 +97,7 @@ def refresh_resource(
     settings = get_settings()
     key = support.resolve_refresh_target(session, body)
     support.check_resource_type(registry, key.resource_type)
+    support.check_resource_id(key.resource_type, key.resource_id)
     support.ensure_accounts(session, settings, [key.account_id])
     task = requests.request_resource_refresh(session, key, caller_id=x_caller_id).task
     assert task.id is not None

@@ -345,6 +345,27 @@ def test_refresh_returns_fresh_data_and_a_gone_resource_is_only_marked_missing(
     assert failed["refreshError"]["code"] == "access_denied" and failed["status"] == "active"
 
 
+def test_refreshing_an_ecs_service_that_is_not_in_the_inventory_derives_the_cluster(
+    stack: Stack,
+) -> None:
+    account, ecs_service = stack.accounts[0], "AWS::ECS::Service"
+    (service,) = stack.cc_resources(account, REGION, ecs_service)
+    service_arn = service["identifier"].split("|")[0]
+    key = {"accountId": account, "awsRegion": REGION, "resourceType": ecs_service}
+    assert stack.resources(accountId=account, resourceType=ecs_service) == []
+
+    refreshed = stack.post(
+        "/resources/refresh?wait=10", {**key, "resourceId": service_arn}, expect=200
+    )
+    assert refreshed["resourceId"] == service_arn and refreshed["status"] == "active"
+    assert refreshed["refreshError"] is None
+
+    # the old short ARN format has no cluster in it: rejected before any task is queued
+    short = service_arn.replace(service_arn.split(":service/")[1], "just-a-name")
+    rejected = stack.post("/resources/refresh", {**key, "resourceId": short}, expect=422)
+    assert rejected["code"] == "validation_error" and "short format" in rejected["message"]
+
+
 def test_cancel_stops_a_queued_scan(stack: Stack, engine: Engine) -> None:
     # no sweep can start before the cancel: the worker's claim loop is not that fast, so the
     # scan is cancelled while its first tasks are queued or running

@@ -282,4 +282,5 @@ def test_ami_fetch_distinguishes_found_gone_and_error(aws: AwsEnv) -> None:
 
 def test_hook_table_satisfies_the_registry() -> None:
     validate_hooks(REGISTRY, TYPE_HOOKS)
-    assert set(TYPE_HOOKS) == {"AWS::EC2::Image"}  # ECS needs none, see types/hooks.py
+    # ECS service only derives its composite Cloud Control identifier, see types/hooks.py
+    assert set(TYPE_HOOKS) == {"AWS::EC2::Image", "AWS::ECS::Service"}

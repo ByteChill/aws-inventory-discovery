@@ -1,11 +1,15 @@
+import os
 import time
 from collections.abc import Callable
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
+import pytest
 from sqlalchemy import Engine
 from sqlmodel import Session, select
 
+from app import cli
 from app.aws.account_registry import RegistryAccount
 from app.core.config import Settings
 from app.models import ScanTask
@@ -15,6 +19,7 @@ from app.worker.errors import TaskError
 from app.worker.handlers import TaskContext
 from app.worker.main import Worker
 from app.worker.scheduler import Scheduler
+from tests.conftest import clear_caches
 from tests.worker.conftest import NOW, refresh, scheduled_shard, shard_state, task_state
 
 
@@ -143,3 +148,31 @@ def test_a_worker_that_lost_its_task_stops_and_writes_nothing_more(
         stale_lease.lease_token,
         stale_lease.lease_expires_at,
     )
+
+
+def test_healthcheck_passes_only_while_the_worker_heartbeat_file_is_fresh(
+    engine: Engine,
+    make_settings: Callable[..., Settings],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    heartbeat = tmp_path / "worker.heartbeat"
+    settings = make_settings(WORKER_HEARTBEAT_FILE=heartbeat)
+    monkeypatch.setenv("DATABASE_URL", settings.DATABASE_URL)
+    monkeypatch.setenv("DATABASE_SCHEMA", settings.DATABASE_SCHEMA)
+    monkeypatch.setenv("WORKER_HEARTBEAT_FILE", str(heartbeat))
+    clear_caches()
+    assert cli.main(["healthcheck"]) == 1  # no worker has run yet
+
+    worker = Worker(engine, settings, handlers={}, poll_interval=0.05, heartbeat_interval=0.2)
+    worker.start()
+    try:
+        wait_for(heartbeat.exists)
+        assert cli.main(["healthcheck"]) == 0
+    finally:
+        worker.stop()
+        worker.join(timeout=10)
+    stale = time.time() - 3600  # the worker stopped beating an hour ago
+    os.utime(heartbeat, (stale, stale))
+    assert cli.main(["healthcheck"]) == 1
+    clear_caches()

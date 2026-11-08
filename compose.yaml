@@ -130,6 +130,13 @@ services:
     container_name: aws-inventory-discovery-worker
     command: ["python", "-m", "app.cli", "worker"]
     environment: *app-env
+    # Overrides the image's HTTP health check: the worker serves no HTTP, so check its heartbeat.
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.cli", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     depends_on:
       migrate:
         condition: service_completed_successfully

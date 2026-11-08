@@ -1,0 +1,68 @@
+{
+  "arn": "arn:aws:lambda:us-east-1:111122223333:function:MyTestRotationLambda",
+  "resourceId": "MyTestRotationLambda",
+  "resourceName": "MyTestRotationLambda",
+  "resourceType": "AWS::Lambda::Function",
+  "awsRegion": "us-east-1",
+  "accountId": "111122223333",
+  "configuration": {
+    "functionName": "MyTestRotationLambda",
+    "functionArn": "arn:aws:lambda:us-east-1:111122223333:function:MyTestRotationLambda",
+    "runtime": "python3.12",
+    "role": "arn:aws:iam::111122223333:role/MyTestRotationLambdaRole",
+    "handler": "lambda_function.lambda_handler",
+    "codeSize": 1024,
+    "description": "Rotation function for MyTestDatabaseSecret",
+    "timeout": 30,
+    "memorySize": 128,
+    "lastModified": "2026-10-20T08:12:44.000+0000",
+    "codeSha256": "taLJYlBhI2bqJy/6xtl0Sq9LRarNlqp8/Lkx7jtVglk=",
+    "version": "$LATEST",
+    "vpcConfig": {
+      "subnetIds": [
+        "subnet-0bb1c79de301436ee"
+      ],
+      "securityGroupIds": [
+        "sg-e4076980"
+      ]
+    },
+    "tracingConfig": {
+      "mode": "PassThrough"
+    },
+    "revisionId": "b8d2a5e6-3c1f-4f6a-9d7e-EXAMPLE00001",
+    "state": {
+      "value": "Active"
+    },
+    "lastUpdateStatus": "Successful",
+    "packageType": "Zip",
+    "architectures": [
+      "x86_64"
+    ],
+    "ephemeralStorage": {
+      "size": 512
+    }
+  },
+  "supplementaryConfiguration": {
+    "Concurrency": {
+      "reservedConcurrentExecutions": 10.0
+    }
+  },
+  "tags": [
+    {
+      "key": "Owner",
+      "value": "TeamA"
+    }
+  ],
+  "relationships": [
+    {
+      "resourceType": "AWS::EC2::SecurityGroup",
+      "resourceId": "sg-e4076980"
+    },
+    {
+      "resourceType": "AWS::EC2::Subnet",
+      "resourceId": "subnet-0bb1c79de301436ee"
+    }
+  ],
+  "configurationItemCaptureTime": "2026-11-06T09:15:22.401Z",
+  "configurationItemStatus": "OK"
+}

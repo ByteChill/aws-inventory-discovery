@@ -1,0 +1,7 @@
+{
+  "ResourceDescription": {
+    "Identifier": "arn:aws:elasticloadbalancing:us-east-1:111122223333:loadbalancer/app/my-load-balancer/50dc6c495c0c9188",
+    "Properties": "{\"LoadBalancerArn\":\"arn:aws:elasticloadbalancing:us-east-1:111122223333:loadbalancer/app/my-load-balancer/50dc6c495c0c9188\",\"LoadBalancerName\":\"my-load-balancer\",\"Name\":\"my-load-balancer\",\"LoadBalancerFullName\":\"app/my-load-balancer/50dc6c495c0c9188\",\"Scheme\":\"internet-facing\",\"Type\":\"application\",\"IpAddressType\":\"ipv4\",\"Subnets\":[\"subnet-0bb1c79de301436ee\",\"subnet-02bf4c428bf44ebce\"],\"SecurityGroups\":[\"sg-5943793c\"],\"DNSName\":\"my-load-balancer-424835706.us-east-1.elb.amazonaws.com\",\"CanonicalHostedZoneID\":\"Z2P70J7EXAMPLE\",\"Tags\":[{\"Key\":\"Owner\",\"Value\":\"TeamA\"}]}"
+  },
+  "TypeName": "AWS::ElasticLoadBalancingV2::LoadBalancer"
+}

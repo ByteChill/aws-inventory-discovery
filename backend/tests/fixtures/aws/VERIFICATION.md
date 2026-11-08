@@ -1,0 +1,45 @@
+# Verification of docs/specs/resource-types.md section 5 against official AWS sources
+
+Sources:
+- CFN = CloudFormation resource type schemas, https://schema.cloudformation.us-east-1.amazonaws.com/CloudformationSchema.zip (`primaryIdentifier`, `handlers`, `writeOnlyProperties`).
+- CFG-SCHEMA = https://github.com/awslabs/aws-config-resource-schema (`config/properties/resource-types/<Type>.properties.json`). This is the schema of what `SelectResourceConfig` (advanced queries) can return.
+- CFG-TYPES = https://docs.aws.amazon.com/config/latest/developerguide/resource-config-reference.html (Supported Resource Types for AWS Config).
+- CC-LIST = https://docs.aws.amazon.com/cloudcontrolapi/latest/userguide/resource-operations-list.html (table "Resources requiring additional information", and the note that ListResources may return only some properties).
+
+Legend: ✅ matches the spec, ❌ differs (correct value given).
+
+## Table
+
+| Type | Config support | CC primaryIdentifier | handlers.read / list | List needs parent property | ARN property in CFN | writeOnly relevant to redaction | Verdict |
+|---|---|---|---|---|---|---|---|
+| `AWS::EC2::VPC` | Yes (CFG-TYPES, CFG-SCHEMA) | `VpcId` | yes / yes | No | none (template needed) | none relevant (`Ipv4IpamPoolId`, `VpcEncryptionControl.*`) | ✅ |
+| `AWS::EC2::Subnet` | Yes | `SubnetId` | yes / yes | No | none (Config has `subnetArn`; CFN none) | none relevant | ✅ |
+| `AWS::ElasticLoadBalancingV2::LoadBalancer` | Yes (CFG-TYPES, CFG-SCHEMA; ALB and NLB share the type) | `LoadBalancerArn` | yes / yes | No | `LoadBalancerArn` (= identifier) | none relevant | ✅ (see note 3) |
+| `AWS::ECS::Cluster` | Yes | `ClusterName` | yes / yes | No | `Arn` | `ServiceConnectDefaults` only | ✅ (see note 1) |
+| `AWS::ECS::Service` | Yes | `ServiceArn` + `Cluster` (compound, `\|`-joined) | yes / yes | ❌ Not documented as required: `AWS::ECS::Service` is **not** in the CC-LIST table; the CFN list handler permissions include `ecs:ListClusters` and `ecs:ListServices`, so the handler enumerates clusters itself | `ServiceArn` | `ServiceConnectConfiguration`, `VolumeConfigurations`, `ForceNewDeployment`, `Monitoring`, `GatewayConnectors` (none sensitive) | ❌ list/parent assumption, see note 2 |
+| `AWS::ECS::TaskDefinition` | Yes | `TaskDefinitionArn` | yes / yes | No | `TaskDefinitionArn` (= identifier) | none. `ContainerDefinitions[].Environment` is NOT writeOnly, so redaction is needed on both sources | ❌ no `Revision`/`Status` in CFN or Config schema, see note 4 |
+| `AWS::EC2::Instance` | Yes | `InstanceId` | yes / yes | No | none (template needed) | **`UserData` is NOT writeOnly**, Cloud Control can return it; writeOnly keys are `AdditionalInfo`, `LaunchTemplate`, `Ipv6Address*`, `LicenseSpecification`, `PropagateTagsToVolumeOnCreation`, `BlockDeviceMappings/*/NoDevice\|VirtualName`. Config schema has no `userData` | ✅ (spec says drop `userData`; correct, applies to `live_raw`) |
+| `AWS::EC2::Image` (AMI) | ✅ Not supported: absent from CFG-TYPES and no CFG-SCHEMA file (404) | ✅ none: no `aws-ec2-image.json` in the CFN zip | n/a | n/a | n/a | n/a | ✅ (ARN template `...::image/{id}` not verifiable in the allowed sources) |
+| `AWS::Lambda::Function` | Yes | `FunctionName` | yes / yes | No | `Arn` | `Code.*`, `SnapStart`, `PublishToLatestPublished`. `Environment` is NOT writeOnly. Config schema has no `environment` path | ❌ see note 5 |
+| `AWS::SecretsManager::Secret` | Yes | `Id` (readOnly, the ARN) | yes / yes | No | `Id` (= identifier) | `SecretString`, `GenerateSecretString` | ❌ see note 6 |
+| `AWS::SNS::Topic` | Yes | `TopicArn` | yes / yes | No | `TopicArn` (= identifier) | none (`Subscription` readable: endpoints are plain data, redact) | ❌ see note 7 |
+| `AWS::SQS::Queue` | Yes | `QueueUrl` | yes / yes | No | `Arn` | none | ❌ see note 8 |
+| `AWS::EC2::SecurityGroup` | Yes | `Id` (also readOnly `GroupId`) | yes / yes | No | none (template needed) | `SecurityGroupIngress/*/SourceSecurityGroupName` | ✅ |
+| `AWS::ElasticLoadBalancingV2::TargetGroup` | ❌ spec says "待核对": listed as supported in CFG-TYPES, but there is **no** CFG-SCHEMA file, so `SelectResourceConfig` advanced queries cannot return it (like the AMI case, plan Cloud Control for it) | `TargetGroupArn` | yes / yes | No | `TargetGroupArn` (= identifier) | none | ❌ Config via SelectResourceConfig not available |
+| `AWS::Route53::HostedZone` | Yes in CFG-TYPES and CFG-SCHEMA; the "global, recorded in us-east-1" part is not stated in the pages checked | `Id` | yes / yes | No | none (`Id`); template needed | none | ✅ (see note 9) |
+
+## Notes (differences and traps)
+
+1. **Config key casing is not uniform.** The default rule "lowerCamelCase" (spec 2.2) matches the Config schema only for VPC, Subnet, ELBv2 LB, Instance, Lambda, SecurityGroup. Config uses **PascalCase CloudFormation-style keys** for ECS Cluster/Service/TaskDefinition (`ClusterName`, `ServiceName`, `TaskDefinitionArn`, `Family`), Secret, SNS, SQS, Route53 HostedZone. So spec identity paths such as `clusterName`, `serviceName`, `family`, `topicArn` are wrong for Config: the real paths are `ClusterName`, `ServiceName`, `Family`, `TopicArn`. The CC to Config mapping for these types should keep keys as-is (or use `rename`). Also `Arn` of ECS Cluster is `configuration.Arn`.
+2. **ECS Service**: official docs do not say `ListResources` needs `ResourceModel={"Cluster":...}`. The `list_live` hook may still be wanted (e.g. performance or reliability) but its stated reason is unconfirmed. The compound Identifier is `<ServiceArn>|<Cluster>`; whether `Cluster` is a name or ARN is not documented (fixtures use the ARN).
+3. **ELBv2**: Config uses `dNSName` (not `dnsName`; the default rule would give `dnsName`) and `securityGroups.value` in the schema (unclear whether an array of strings or of `{value}` objects; fixture uses objects). `loadBalancerName` and `type`/`scheme` match the spec columns.
+4. **TaskDefinition**: neither the CFN schema nor the Config schema has `Revision`; CFN also has no `Status`, only Config has `Status`. The "每个 family 只保留最新的 ACTIVE 版本" filter cannot read `Status` from Cloud Control data, and the revision must be parsed from the ARN (`family:N`).
+5. **Lambda**: spec example uses `vpcConfig.vpcId`; neither the Config schema (`vpcConfig.subnetIds`, `securityGroupIds` only) nor CFN `VpcConfig` has a VPC ID. The Config schema also has no `environment`, so the spec redact path `environment.variables` has nothing to act on for Config data, but Cloud Control returns `Environment.Variables` (not writeOnly). Config `state` is `{value}`, `lastUpdateStatus` a string.
+6. **Secret**: Config keys are `ARN`, `Name`, `KMSKeyId`, `RotationLambdaARN`, `RotationEnabled`, `RotationRules.*`; CFN has `Id`, `Name`, `KmsKeyId` and **no rotation properties**. The spec column "最近轮换时间、最近访问时间" has no source: no `LastRotatedDate`/`LastAccessedDate` in the Config schema or CFN. "是否开启轮换" is only available from Config.
+7. **SNS**: Config has no subscription data and no topic-name key (`TopicName` only in CFN; otherwise take the ARN suffix, which matches the spec). `FifoTopic` is a boolean in CFN and the string `"false"` in Config (`toBool` needed).
+8. **SQS**: Config uses `QueueArn`, CFN uses `Arn` (spec says ARN from `Arn`: needs `rename`). Config has no `RedrivePolicy`, so the dead-letter column only works with Cloud Control data. `SqsManagedSseEnabled` is a boolean in CFN, string in Config. Config `resourceId` form (URL vs ARN) is not documented.
+9. **Route53 HostedZone** (second batch): the Config schema keys are `Id`, `Name`, `NameServers`, `VPCs.*`, `QueryLoggingConfig.*`; there is no private-zone flag and no record count in Config or CFN, so spec 5.1 columns "是否私有、记录数" have no source (CFN `HostedZoneConfig`, `VPCs` may imply private; record count is absent).
+10. **Spec 5.1 columns with no source** (neither Config schema nor CFN): VPC "是否默认 VPC、状态" (Config only: `isDefault`, `state.value`); Subnet "状态" (Config only); ECS Cluster "状态、运行中的任务数、服务数" (absent from both); ECS Service "运行中的任务数" (absent from both).
+11. **Cloud Control ListResources** may return only some properties per type (CC-LIST shows a Kinesis example returning only `Name`); no official source lists which types do, so `listReturnsFullProperties` cannot be verified from the allowed sources.
+12. **GetResource response**: the JSON shape is `{"TypeName", "ResourceDescription": {"Identifier", "Properties": "<json string>"}}`; the XML sample on the API page names the element `ResourceModel`, but the Response Syntax says `Properties`.
+13. **AMI**: docs for `DescribeImages` confirm `ExecutableBy` (boto3: `ExecutableUsers`) accepts `self`, and that shared-with-organization AMIs are returned for `self`; `IncludeDeprecated`/`IncludeDisabled` exist; recently deregistered images show up briefly, later empty results, and eventually an error "AMI ID cannot be found". The page does not print the code `InvalidAMIID.NotFound`.

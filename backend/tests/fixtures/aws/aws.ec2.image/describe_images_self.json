@@ -1,0 +1,36 @@
+{
+  "Images": [
+    {
+      "VirtualizationType": "hvm",
+      "Description": "Provided by Red Hat, Inc.",
+      "PlatformDetails": "Red Hat Enterprise Linux",
+      "EnaSupport": true,
+      "Hypervisor": "xen",
+      "State": "available",
+      "SriovNetSupport": "simple",
+      "ImageId": "ami-1234567890EXAMPLE",
+      "UsageOperation": "RunInstances:0010",
+      "BlockDeviceMappings": [
+        {
+          "DeviceName": "/dev/sda1",
+          "Ebs": {
+            "SnapshotId": "snap-1234567890abcdef0",
+            "VolumeSize": 15,
+            "DeleteOnTermination": false,
+            "VolumeType": "standard"
+          }
+        }
+      ],
+      "Architecture": "x86_64",
+      "ImageLocation": "111122223333/RHEL-8.0.0_HVM-20190618-x86_64-1-Hourly2-GP2",
+      "RootDeviceType": "ebs",
+      "OwnerId": "111122223333",
+      "RootDeviceName": "/dev/sda1",
+      "CreationDate": "2019-05-10T13:17:12.000Z",
+      "Public": true,
+      "ImageType": "machine",
+      "Name": "RHEL-8.0.0_HVM-20190618-x86_64-1-Hourly2-GP2",
+      "Tags": []
+    }
+  ]
+}

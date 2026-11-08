@@ -1,0 +1,31 @@
+{
+  "arn": "arn:aws:ecs:us-east-1:111122223333:service/telemetry/test-service",
+  "resourceId": "arn:aws:ecs:us-east-1:111122223333:service/telemetry/test-service",
+  "resourceName": "test-service",
+  "resourceType": "AWS::ECS::Service",
+  "awsRegion": "us-east-1",
+  "accountId": "111122223333",
+  "configuration": {
+    "ServiceArn": "arn:aws:ecs:us-east-1:111122223333:service/telemetry/test-service",
+    "ServiceName": "test-service",
+    "Name": "test-service",
+    "Cluster": "arn:aws:ecs:us-east-1:111122223333:cluster/telemetry",
+    "TaskDefinition": "arn:aws:ecs:us-east-1:111122223333:task-definition/hello_world:10",
+    "DesiredCount": 4,
+    "DeploymentConfiguration": {
+      "MaximumPercent": 200,
+      "MinimumHealthyPercent": 100
+    },
+    "LoadBalancers": []
+  },
+  "supplementaryConfiguration": {},
+  "tags": [
+    {
+      "key": "Owner",
+      "value": "TeamA"
+    }
+  ],
+  "relationships": [],
+  "configurationItemCaptureTime": "2026-11-06T09:15:22.401Z",
+  "configurationItemStatus": "OK"
+}

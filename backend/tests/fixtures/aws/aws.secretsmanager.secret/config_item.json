@@ -1,0 +1,40 @@
+{
+  "arn": "arn:aws:secretsmanager:us-east-1:111122223333:secret:MyTestDatabaseSecret-a1b2c3",
+  "resourceId": "arn:aws:secretsmanager:us-east-1:111122223333:secret:MyTestDatabaseSecret-a1b2c3",
+  "resourceName": "MyTestDatabaseSecret",
+  "resourceType": "AWS::SecretsManager::Secret",
+  "awsRegion": "us-east-1",
+  "accountId": "111122223333",
+  "configuration": {
+    "ARN": "arn:aws:secretsmanager:us-east-1:111122223333:secret:MyTestDatabaseSecret-a1b2c3",
+    "Name": "MyTestDatabaseSecret",
+    "Description": "My test database secret created with the CLI",
+    "Deleted": false,
+    "RotationEnabled": true,
+    "RotationLambdaARN": "arn:aws:lambda:us-east-1:111122223333:function:MyTestRotationLambda",
+    "RotationRules": {
+      "AutomaticallyAfterDays": 14,
+      "RotationDuration": "2h",
+      "RotationScheduleExpression": "cron(0 16 1,15 * ? *)"
+    }
+  },
+  "supplementaryConfiguration": {},
+  "tags": [
+    {
+      "key": "SecondTag",
+      "value": "AnotherValue"
+    },
+    {
+      "key": "FirstTag",
+      "value": "SomeValue"
+    }
+  ],
+  "relationships": [
+    {
+      "resourceType": "AWS::Lambda::Function",
+      "resourceId": "MyTestRotationLambda"
+    }
+  ],
+  "configurationItemCaptureTime": "2026-11-06T09:15:22.401Z",
+  "configurationItemStatus": "OK"
+}

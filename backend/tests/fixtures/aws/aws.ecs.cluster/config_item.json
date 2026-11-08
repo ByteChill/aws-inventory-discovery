@@ -1,0 +1,32 @@
+{
+  "arn": "arn:aws:ecs:us-east-1:111122223333:cluster/telemetry",
+  "resourceId": "arn:aws:ecs:us-east-1:111122223333:cluster/telemetry",
+  "resourceName": "telemetry",
+  "resourceType": "AWS::ECS::Cluster",
+  "awsRegion": "us-east-1",
+  "accountId": "111122223333",
+  "configuration": {
+    "Arn": "arn:aws:ecs:us-east-1:111122223333:cluster/telemetry",
+    "ClusterName": "telemetry",
+    "CapacityProviders": [
+      "FARGATE",
+      "FARGATE_SPOT"
+    ],
+    "ClusterSettings": [
+      {
+        "Name": "containerInsights",
+        "Value": "enabled"
+      }
+    ]
+  },
+  "supplementaryConfiguration": {},
+  "tags": [
+    {
+      "key": "Owner",
+      "value": "TeamA"
+    }
+  ],
+  "relationships": [],
+  "configurationItemCaptureTime": "2026-11-06T09:15:22.401Z",
+  "configurationItemStatus": "OK"
+}

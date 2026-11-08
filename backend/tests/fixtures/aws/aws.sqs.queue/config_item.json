@@ -1,0 +1,31 @@
+{
+  "arn": "arn:aws:sqs:us-east-1:111122223333:MyQueue",
+  "resourceId": "https://sqs.us-east-1.amazonaws.com/111122223333/MyQueue",
+  "resourceName": "MyQueue",
+  "resourceType": "AWS::SQS::Queue",
+  "awsRegion": "us-east-1",
+  "accountId": "111122223333",
+  "configuration": {
+    "QueueUrl": "https://sqs.us-east-1.amazonaws.com/111122223333/MyQueue",
+    "QueueArn": "arn:aws:sqs:us-east-1:111122223333:MyQueue",
+    "QueueName": "MyQueue",
+    "CreatedTimestamp": "2023-02-17T20:22:17.000Z",
+    "LastModifiedTimestamp": "2023-02-22T09:06:15.000Z",
+    "VisibilityTimeout": 40,
+    "MaximumMessageSize": 262144,
+    "MessageRetentionPeriod": 345600,
+    "DelaySeconds": 0,
+    "ReceiveMessageWaitTimeSeconds": 0,
+    "SqsManagedSseEnabled": "true"
+  },
+  "supplementaryConfiguration": {},
+  "tags": [
+    {
+      "key": "Owner",
+      "value": "TeamA"
+    }
+  ],
+  "relationships": [],
+  "configurationItemCaptureTime": "2026-11-06T09:15:22.401Z",
+  "configurationItemStatus": "OK"
+}

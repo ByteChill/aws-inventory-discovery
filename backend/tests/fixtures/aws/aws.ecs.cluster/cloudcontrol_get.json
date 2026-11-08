@@ -1,0 +1,7 @@
+{
+  "ResourceDescription": {
+    "Identifier": "telemetry",
+    "Properties": "{\"ClusterName\":\"telemetry\",\"Arn\":\"arn:aws:ecs:us-east-1:111122223333:cluster/telemetry\",\"CapacityProviders\":[\"FARGATE\",\"FARGATE_SPOT\"],\"ClusterSettings\":[{\"Name\":\"containerInsights\",\"Value\":\"enabled\"}],\"Tags\":[{\"Key\":\"Owner\",\"Value\":\"TeamA\"}]}"
+  },
+  "TypeName": "AWS::ECS::Cluster"
+}

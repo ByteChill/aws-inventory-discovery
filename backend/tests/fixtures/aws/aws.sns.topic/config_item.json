@@ -1,0 +1,22 @@
+{
+  "arn": "arn:aws:sns:us-east-1:111122223333:My-Topic",
+  "resourceId": "arn:aws:sns:us-east-1:111122223333:My-Topic",
+  "resourceType": "AWS::SNS::Topic",
+  "awsRegion": "us-east-1",
+  "accountId": "111122223333",
+  "configuration": {
+    "TopicArn": "arn:aws:sns:us-east-1:111122223333:My-Topic",
+    "Owner": "111122223333",
+    "FifoTopic": "false"
+  },
+  "supplementaryConfiguration": {},
+  "tags": [
+    {
+      "key": "Owner",
+      "value": "TeamA"
+    }
+  ],
+  "relationships": [],
+  "configurationItemCaptureTime": "2026-11-06T09:15:22.401Z",
+  "configurationItemStatus": "OK"
+}

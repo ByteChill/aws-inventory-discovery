@@ -1,0 +1,9 @@
+{
+  "ResourceDescriptions": [
+    {
+      "Identifier": "arn:aws:sns:us-east-1:111122223333:My-Topic",
+      "Properties": "{\"TopicArn\":\"arn:aws:sns:us-east-1:111122223333:My-Topic\",\"TopicName\":\"My-Topic\",\"FifoTopic\":false,\"Subscription\":[{\"Endpoint\":\"user@example.com\",\"Protocol\":\"email\"},{\"Endpoint\":\"arn:aws:sqs:us-east-1:111122223333:MyQueue\",\"Protocol\":\"sqs\"}],\"Tags\":[{\"Key\":\"Owner\",\"Value\":\"TeamA\"}]}"
+    }
+  ],
+  "TypeName": "AWS::SNS::Topic"
+}

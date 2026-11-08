@@ -1,19 +1,11 @@
-// Shapes from docs/specs/api.md section 1 and 2. Replace with the generated
-// types in src/client once the API publishes them.
+import type { Column, FacetBucket } from "@/client"
 
-export type ColumnType = "text" | "enum" | "number" | "bool" | "datetime"
+// Column, FacetBucket and the paged list shapes come from the generated client.
+export type { Column, FacetBucket }
+export type ColumnType = Column["type"]
 
-export type Column = {
-  key: string
-  label: string
-  type: ColumnType
-  mono: boolean
-  sortable: boolean
-  filterable: boolean
-  scope: "common" | "type"
-}
-
-export type FacetBucket = { value: string; label: string; count: number }
+/** An option in a filter list. The count is left out when the API has none. */
+export type Option = Omit<FacetBucket, "count"> & { count?: number }
 
 export type Page<T> = {
   items: T[]

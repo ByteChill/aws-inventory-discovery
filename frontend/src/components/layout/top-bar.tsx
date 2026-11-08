@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "@tanstack/react-router"
+import { Link } from "@tanstack/react-router"
 import { ChevronDown } from "lucide-react"
 
 import {
@@ -23,7 +23,6 @@ const navActive =
 
 export function TopBar() {
   const { t } = useI18n()
-  const navigate = useNavigate()
   return (
     <header className="sticky top-0 z-40 border-b bg-background">
       <div className="flex min-h-12 flex-wrap items-center gap-x-6 gap-y-2 px-6 py-2">
@@ -64,7 +63,7 @@ export function TopBar() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              <DropdownMenuItem onSelect={() => navigate({ to: "/scans" })}>
+              <DropdownMenuItem disabled title={t("common.comingSoon")}>
                 {t("nav.scans")}
               </DropdownMenuItem>
             </DropdownMenuContent>

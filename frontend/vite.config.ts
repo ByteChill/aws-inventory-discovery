@@ -13,7 +13,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/api": "http://localhost:8000",
+      "/api": process.env.API_URL ?? "http://localhost:8000",
     },
   },
   plugins: [

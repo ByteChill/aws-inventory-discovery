@@ -25,7 +25,7 @@ from app.core.logging import log_context
 from app.models import ScanTask
 from app.worker import leases, queue
 from app.worker.errors import TaskCancelled, TaskError, TaskLost, TaskStopped
-from app.worker.handlers import HANDLERS, Handler, TaskContext
+from app.worker.handlers import Handler, Scanner, TaskContext
 from app.worker.scheduler import Scheduler
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,9 @@ class Worker:
     ) -> None:
         self.engine = engine
         self.settings = settings
-        self.handlers = HANDLERS if handlers is None else handlers
+        self.handlers = (
+            Scanner.from_settings(engine, settings).handlers() if handlers is None else handlers
+        )
         self.scheduler = scheduler
         self.worker_id = worker_id or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:6]}"
         self.poll_interval = poll_interval
@@ -195,10 +197,11 @@ class Worker:
                 region=task.region,
                 resource_type=task.resource_type,
             ):
-                self._execute(task)
-        except Exception:
-            # The task stays `running` until the reaper finds its heartbeat gone.
-            logger.exception("could not settle task")
+                try:
+                    self._execute(task)
+                except Exception:
+                    # The task stays `running` until the reaper finds its heartbeat gone.
+                    logger.exception("could not settle task")
         finally:
             with self._running_lock:
                 self._running.pop(task.id, None)
@@ -242,6 +245,7 @@ class Worker:
             self._release(task, success=False, error_code="internal")
             self._fail(task, "internal", f"{type(exc).__name__}: {exc}", retryable=True)
         else:
+            logger.info("task succeeded", extra={"stats": stats})
             self._release(task, success=True)
             self._settle(lambda s: queue.complete_task(s, task_id, task.claim_token or "", stats))
 

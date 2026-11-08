@@ -55,6 +55,14 @@ def test_csv_header_labels_follow_accept_language(
     assert len(zh) == len(en) == len(common)
 
 
+def test_lang_parameter_overrides_accept_language_for_csv_headers(client: TestClient) -> None:
+    rows = parse_csv(
+        client.get("/api/v1/resources/export?lang=en", headers={"Accept-Language": "zh-CN"}).content
+    )
+
+    assert rows[0][0] == "Name"
+
+
 def test_csv_with_a_type_has_its_columns_and_honours_the_columns_parameter(
     client: TestClient, seeded: Seeded, registry: TypeRegistry
 ) -> None:

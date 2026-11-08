@@ -72,7 +72,8 @@ def try_acquire(
     key = {"a": scope.account_id, "r": scope.region, "t": scope.resource_type}
     if not _owns_claim(session, task):
         return LeaseState.LOST
-    if not is_on_demand(task):
+    # A confirm_missing task follows the scan that just succeeded: R3 doesn't apply to it.
+    if not is_on_demand(task) and task.kind != "confirm_missing":
         last_ok = (
             session.connection()
             .execute(

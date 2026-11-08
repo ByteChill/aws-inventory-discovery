@@ -593,7 +593,8 @@ def _save_counts(session: Session, scan_request_id: int) -> None:
     session.connection().execute(
         text("""
         UPDATE t_inv_aws_scan_request
-           SET counts = coalesce(counts, '{}'::jsonb) || CAST(:patch AS jsonb)
+           SET counts = (CASE WHEN jsonb_typeof(counts) = 'object' THEN counts
+                              ELSE '{}'::jsonb END) || CAST(:patch AS jsonb)
          WHERE id = :id
         """),
         {"id": scan_request_id, "patch": _json(patch)},

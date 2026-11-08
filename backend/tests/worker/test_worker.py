@@ -11,7 +11,8 @@ from app.core.config import Settings
 from app.models import ScanTask
 from app.models.scan import utcnow
 from app.worker import leases, queue
-from app.worker.handlers import HANDLERS, TaskContext
+from app.worker.errors import TaskError
+from app.worker.handlers import TaskContext
 from app.worker.main import Worker
 from app.worker.scheduler import Scheduler
 from tests.worker.conftest import NOW, refresh, scheduled_shard, shard_state, task_state
@@ -62,7 +63,7 @@ def test_stopping_the_worker_requeues_the_running_task_without_an_attempt_bump(
     assert stopped.finished_at is None
 
 
-def test_unimplemented_task_kinds_fail_without_retries_and_scheduled_work_waits_for_other_threads(
+def test_non_retryable_errors_fail_without_retries_and_scheduled_work_waits_for_other_threads(
     engine: Engine,
     session: Session,
     make_settings: Callable[..., Settings],
@@ -71,8 +72,14 @@ def test_unimplemented_task_kinds_fail_without_retries_and_scheduled_work_waits_
 ) -> None:
     sweep = scheduler.start_sweep(session, NOW - timedelta(days=1))
     task = refresh(session, "queue-1", now=NOW - timedelta(days=1))
+
     # One thread, and it is an on-demand-only thread: it must leave the sweep alone.
-    worker = make_worker(engine, make_settings, HANDLERS, threads=1, on_demand=1)
+    def denied(task: ScanTask, ctx: TaskContext) -> None:
+        raise TaskError("access_denied", "no read access")
+
+    worker = make_worker(
+        engine, make_settings, {"resource": denied, "sweep_account": denied}, threads=1, on_demand=1
+    )
     worker.start()
 
     wait_for(lambda: task_state(session, task).status == "failed")
@@ -80,8 +87,7 @@ def test_unimplemented_task_kinds_fail_without_retries_and_scheduled_work_waits_
     assert worker.join(timeout=5)
 
     failed = task_state(session, task)
-    assert (failed.error_code, failed.attempt) == ("internal", 1)
-    assert "M4" in (failed.error_message or "")
+    assert (failed.error_code, failed.attempt) == ("access_denied", 1)
     session.expire_all()
     assert {
         t.status for t in session.exec(select(ScanTask).where(ScanTask.scan_request_id == sweep.id))

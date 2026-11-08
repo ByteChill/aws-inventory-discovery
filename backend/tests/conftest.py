@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 from moto.server import ThreadedMotoServer
 from psycopg import sql
 
+from app.api.deps import get_logs_client
 from app.aws.credentials import CredentialService
 from app.aws.session import make_session
 from app.core.config import get_settings
@@ -39,6 +40,7 @@ def clear_caches() -> None:
     get_settings.cache_clear()
     get_engine.cache_clear()
     get_read_engine.cache_clear()
+    get_logs_client.cache_clear()
 
 
 def libpq_url(url: str) -> str:

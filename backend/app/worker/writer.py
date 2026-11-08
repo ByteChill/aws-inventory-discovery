@@ -177,6 +177,7 @@ class ResourceWriter:
         new_rows: list[dict[str, Any]] = []
         new_values: dict[Key, dict[str, Any]] = {}
         new_obs: dict[Key, Observation] = {}
+        inserted_keys: list[tuple[int, str, str, str, str]] = []
         for key in keys:
             obs, row = batch[key], existing.get(key)
             spec = self.registry.get(obs.resource_type)
@@ -256,13 +257,45 @@ class ResourceWriter:
             for row_id, account, region, rtype, rid in inserted:
                 key = (account, region, rtype, rid)
                 done.add(key)
+                inserted_keys.append((row_id, account, region, rtype, rid))
                 relation_jobs.append((row_id, new_obs[key], new_values[key]["relationships"]))
             counts.new += len(done)
             lost_race = {k: o for k, o in new_obs.items() if k not in done}
             if lost_race:  # another writer inserted it first: take the update path
                 counts.add(self._apply(db, lost_race, task_id))
         self._replace_relations(db, relation_jobs)
+        self._resolve_dangling_relations(db, inserted_keys)
         return counts
+
+    @staticmethod
+    def _resolve_dangling_relations(
+        db: Session, inserted: list[tuple[int, str, str, str, str]]
+    ) -> None:
+        """Late resolution: relations written before their target existed (`to_resource_id`
+        NULL) point at the new resource now. Same account; same region, unless the target is
+        global."""
+        if not inserted:
+            return
+        db.connection().execute(
+            text("""
+            UPDATE t_inv_aws_resource_relation rel SET to_resource_id = n.id
+              FROM unnest(CAST(:ids AS bigint[]), CAST(:accounts AS text[]),
+                          CAST(:regions AS text[]), CAST(:types AS text[]),
+                          CAST(:keys AS text[])) AS n(id, account_id, region, type, key),
+                   t_inv_aws_resource f
+             WHERE rel.to_resource_id IS NULL
+               AND rel.to_resource_type = n.type AND rel.to_resource_key = n.key
+               AND f.id = rel.from_resource_id AND f.account_id = n.account_id
+               AND (f.aws_region = n.region OR n.region = 'global')
+            """),
+            {
+                "ids": [i[0] for i in inserted],
+                "accounts": [i[1] for i in inserted],
+                "regions": [i[2] for i in inserted],
+                "types": [i[3] for i in inserted],
+                "keys": [i[4] for i in inserted],
+            },
+        )
 
     @staticmethod
     def _stamp_source_time(row: Resource, obs: Observation) -> None:
@@ -424,6 +457,7 @@ class ResourceWriter:
             ):
                 shard.guard_state = "abnormal"
                 shard.guard_detected_at = datetime.now(UTC)
+                shard.candidate_count = len(candidates)
                 db.add(shard)
                 return ScopeOutcome(True, 0, "abnormal", 0)
 
@@ -449,8 +483,9 @@ class ResourceWriter:
                 )
                 .values(absent_in_scan_at=cutoff)
             )
-            if shard.guard_state == "confirmed":
+            if shard.guard_state in ("confirmed", "abnormal"):
                 shard.guard_state = "normal"
+                shard.candidate_count = None
                 db.add(shard)
             pending = db.exec(
                 select(func.count())

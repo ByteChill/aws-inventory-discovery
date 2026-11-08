@@ -46,7 +46,8 @@ class JsonFormatter(logging.Formatter):
         for name, var in _context.items():
             value = var.get()
             if value is not None:
-                payload[name] = value
+                # camelCase on the wire: CloudWatch filters on `{ $.taskId = 42 }`
+                payload[camel(name)] = value
         for key, value in vars(record).items():
             if key in _STANDARD_ATTRS or key in payload:
                 continue
@@ -54,6 +55,11 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
         return json.dumps(payload, default=str, ensure_ascii=False)
+
+
+def camel(name: str) -> str:
+    head, *rest = name.split("_")
+    return head + "".join(part.capitalize() for part in rest)
 
 
 def _is_sensitive(key: str) -> bool:

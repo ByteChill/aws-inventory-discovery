@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any, NamedTuple, Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import Field, model_validator
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, select
@@ -18,6 +18,7 @@ from sqlmodel import Session, col, select
 from app.core.config import Settings
 from app.models import Account, ScanRequest, ScanTask
 from app.models.scan import utcnow
+from app.schemas.base import ApiModel
 from app.worker.locks import lock_full_sweeps
 
 SWEEP_SAFETY_MARGIN = timedelta(minutes=30)
@@ -47,13 +48,13 @@ class InvalidRequestState(Exception):
     """The operation does not apply to the request in its current status."""
 
 
-class ScanSpec(BaseModel):
-    """The body of `POST /scans`: either a list of accounts or `all_accounts`."""
+class ScanSpec(ApiModel):
+    """The body of `POST /scans`: either a list of accounts or `all` (`all_accounts`)."""
 
     account_ids: list[str] = Field(default_factory=list)
     aws_regions: list[str] = Field(default_factory=list)
     resource_types: list[str] = Field(default_factory=list)
-    all_accounts: bool = False
+    all_accounts: bool = Field(default=False, alias="all")
 
     @model_validator(mode="after")
     def check_shape(self) -> Self:
@@ -332,6 +333,48 @@ def request_resource_refresh(
     session.commit()
     session.refresh(task)
     return CreatedRefresh(task, True)
+
+
+def create_scope_scan(
+    session: Session,
+    account_id: str,
+    region: str,
+    resource_type: str,
+    *,
+    source: str,
+    caller_id: str | None = None,
+    now: datetime | None = None,
+) -> ScanRequest:
+    """An on-demand request with one `shard` task for one scope (confirming an abnormal scope)."""
+    now = now or utcnow()
+    request = ScanRequest(
+        trigger="api",
+        caller_id=caller_id,
+        target={"accountId": account_id, "awsRegion": region, "resourceType": resource_type},
+        priority=0,
+        status="queued",
+        created_at=now,
+    )
+    session.add(request)
+    session.flush()
+    assert request.id is not None
+    session.add(
+        ScanTask(
+            scan_request_id=request.id,
+            kind="shard",
+            source=source,
+            account_id=account_id,
+            region=region,
+            resource_type=resource_type,
+            priority=0,
+            status="queued",
+            not_before=now,
+            created_at=now,
+        )
+    )
+    session.commit()
+    session.refresh(request)
+    return request
 
 
 def _inflight_refresh(session: Session, key: ResourceKey) -> ScanTask | None:

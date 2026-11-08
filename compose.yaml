@@ -69,6 +69,10 @@ services:
   moto:
     image: docker.io/motoserver/moto:latest
     container_name: aws-inventory-discovery-moto
+    environment:
+      # moto ignores ExecutableUsers=self and would list its ~1000 built-in public AMIs in
+      # every account and region.
+      MOTO_EC2_LOAD_DEFAULT_AMIS: "false"
     ports:
       - "5001:5000"  # host 5000 is taken by macOS AirPlay Receiver
 

@@ -1,10 +1,13 @@
 from collections.abc import Iterator
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Any
 
+import boto3
+from botocore.config import Config
 from fastapi import Depends, Header, Query
 from sqlmodel import Session
 
+from app.aws.regions import HOME_REGION
 from app.core.cache import Cache
 from app.core.config import get_settings
 from app.core.db import get_read_session, get_session
@@ -27,6 +30,19 @@ def get_registry() -> TypeRegistry:
     return TypeRegistry.from_directory()
 
 
+@lru_cache
+def get_logs_client() -> Any:
+    """CloudWatch Logs in the hub account: the API's only AWS call. Endpoint overrides come
+    from boto3's own environment variables."""
+    return boto3.client(
+        "logs",
+        region_name=boto3.Session().region_name or HOME_REGION,
+        config=Config(
+            connect_timeout=3, read_timeout=10, retries={"mode": "standard", "max_attempts": 2}
+        ),
+    )
+
+
 def get_cache() -> Iterator[Cache]:
     cache = Cache.from_url(get_settings().REDIS_URL)
     try:
@@ -41,6 +57,7 @@ def get_language(accept_language: Annotated[str | None, Header()] = None) -> Lan
 
 RegistryDep = Annotated[TypeRegistry, Depends(get_registry)]
 CacheDep = Annotated[Cache, Depends(get_cache)]
+LogsClientDep = Annotated[Any, Depends(get_logs_client)]
 LanguageDep = Annotated[Language, Depends(get_language)]
 
 # Filters shared by list, facets and export (DESIGN 8.2), each with its own extras.

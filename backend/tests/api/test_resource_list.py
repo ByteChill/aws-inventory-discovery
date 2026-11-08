@@ -165,7 +165,7 @@ def test_stale_means_the_scope_was_not_scanned_for_twelve_hours(
 def test_list_item_shape(get_json: Callable[..., Any], seeded: Seeded) -> None:
     row = seeded.one(account_id="111122223333", resource_type="AWS::EC2::Instance")
 
-    item = next(i for i in listing(get_json, "").get("items") if i["id"] == row["id"])
+    item = next(i for i in listing(get_json, "")["items"] if i["id"] == row["id"])
 
     assert item["arn"] == row["arn"]
     assert item["resourceType"] == "AWS::EC2::Instance"

@@ -70,7 +70,7 @@ def test_relationships_out_in_and_both(get_json: Callable[..., Any], seeded: See
     assert both["total"] == len(out_edges) + len(in_edges)
     assert instance["id"] in {e["resource"]["id"] for e in into_subnet["items"]}
     assert {e["direction"] for e in into_subnet["items"]} == {"in"}
-    assert paged["total"] == out["total"] and len(paged["items"]) == len(out_edges) - 2
+    assert paged["total"] == out["total"] and len(paged["items"]) == 2 < len(out_edges)
 
 
 def test_errors_use_the_unified_body(client: TestClient) -> None:

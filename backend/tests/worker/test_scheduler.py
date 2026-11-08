@@ -1,3 +1,4 @@
+import threading
 from collections.abc import Callable
 from datetime import timedelta
 
@@ -55,7 +56,7 @@ def test_sweep_syncs_accounts_and_staggers_one_task_per_account(
     assert len(sweeps(session)) == 1
     for _ in range(2):
         task = claim_one(session, NOW + timedelta(hours=5, minutes=31))
-        queue.complete_task(session, task.id or 0, task.worker_id or "", now=NOW)
+        queue.complete_task(session, task.id or 0, task.claim_token or "", now=NOW)
     assert scheduler.tick(NOW + timedelta(hours=6))
 
     _, second = sweeps(session)
@@ -149,3 +150,23 @@ def test_registry_failure_sweeps_the_existing_snapshot_and_marks_nobody_inactive
     }
     session.expire_all()
     assert all(a.active for a in session.exec(select(Account)))
+
+
+def test_concurrent_scheduler_instances_start_only_one_sweep(
+    engine: Engine, settings: Settings, registry: RegistryServer, session: Session
+) -> None:
+    schedulers = [Scheduler(engine, settings, registry.client()) for _ in range(4)]
+    barrier = threading.Barrier(len(schedulers))
+
+    def start(scheduler: Scheduler) -> None:
+        with Session(engine) as own:
+            barrier.wait()
+            scheduler.start_sweep_if_due(own, NOW)
+
+    threads = [threading.Thread(target=start, args=(s,)) for s in schedulers]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(sweeps(session)) == 1

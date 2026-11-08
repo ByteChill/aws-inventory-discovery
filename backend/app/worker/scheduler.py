@@ -4,7 +4,6 @@ Leader election uses a Postgres session-level advisory lock held on a dedicated 
 If that connection dies, the lock dies with it and another worker takes over on its next tick.
 """
 
-import hashlib
 import logging
 import threading
 from collections.abc import Callable
@@ -19,19 +18,13 @@ from app.core.config import Settings
 from app.models import Account, ScanRequest
 from app.models.scan import utcnow
 from app.worker import cleanup, queue, requests
+from app.worker.locks import advisory_lock_key, lock_full_sweeps
 
 logger = logging.getLogger(__name__)
 
 SCHEDULER_LOCK_NAME = "aws-inventory-discovery:scheduler"
 TICK_INTERVAL_SECONDS = 60
 CLEANUP_HOUR_UTC = 3
-
-
-def advisory_lock_key(name: str) -> int:
-    """Derive the bigint advisory-lock key from a name: the first 8 bytes of its SHA-256,
-    read as a big-endian *signed* 64-bit integer (Postgres advisory keys are signed bigints).
-    Deterministic, so every worker computes the same key without any shared configuration."""
-    return int.from_bytes(hashlib.sha256(name.encode()).digest()[:8], "big", signed=True)
 
 
 SCHEDULER_LOCK_KEY = advisory_lock_key(SCHEDULER_LOCK_NAME)
@@ -168,14 +161,17 @@ class Scheduler:
         finally:
             self.lock.release()
 
-    def start_sweep_if_due(self, session: Session, now: datetime) -> ScanRequest | None:
+    def _sweep_due(self, session: Session, now: datetime) -> bool:
         last = session.exec(
             select(func.max(ScanRequest.created_at)).where(ScanRequest.trigger == "schedule")
         ).one()
         interval = timedelta(hours=self.settings.SWEEP_INTERVAL_HOURS)
-        if last is not None and now - last < interval:
+        return last is None or now - last >= interval
+
+    def start_sweep_if_due(self, session: Session, now: datetime) -> ScanRequest | None:
+        if not self._sweep_due(session, now):
             return None
-        return self.start_sweep(session, now)
+        return self._start_sweep(session, now, only_if_due=True)
 
     def start_sweep(self, session: Session, now: datetime) -> ScanRequest:
         """Refresh the account snapshot from the registry and create one sweep (§5.1).
@@ -183,6 +179,13 @@ class Scheduler:
         When the registry can't be read, the sweep runs on the existing snapshot, nobody is
         marked inactive, and the failure is recorded in the request's counts.
         """
+        request = self._start_sweep(session, now, only_if_due=False)
+        assert request is not None
+        return request
+
+    def _start_sweep(
+        self, session: Session, now: datetime, *, only_if_due: bool
+    ) -> ScanRequest | None:
         counts: dict[str, str] = {}
         try:
             if self.registry is None:
@@ -196,6 +199,12 @@ class Scheduler:
             counts["registryError"] = str(exc)
         else:
             sync_accounts(session, fetched, now)
+        # Full sweeps are created one at a time (shared with POST /scans all=true); look again
+        # inside the lock, since another instance may have started one while we fetched.
+        lock_full_sweeps(session)
+        if only_if_due and not self._sweep_due(session, now):
+            session.rollback()
+            return None
         account_ids = list(session.exec(select(Account.account_id).where(col(Account.active))))
         request = requests.create_sweep_request(
             session,

@@ -1,6 +1,8 @@
+import threading
 from collections.abc import Callable
 
 import pytest
+from sqlalchemy import Engine
 from sqlmodel import Session, select
 
 from app.aws.account_registry import RegistryAccount
@@ -158,7 +160,7 @@ def test_refreshing_a_resource_shares_the_in_flight_task(session: Session) -> No
     # Once the refresh has finished, a new call starts a new one.
     for _ in range(2):
         running = claim_one(session)
-        queue.complete_task(session, running.id or 0, running.worker_id or "", now=NOW)
+        queue.complete_task(session, running.id or 0, running.claim_token or "", now=NOW)
     again = requests.request_resource_refresh(
         session, requests.ResourceKey(PAYMENTS_DEV, REGION, TYPE, "queue-1"), now=NOW
     )
@@ -177,7 +179,7 @@ def test_retry_failed_requeues_only_failed_tasks_of_an_unfinished_request(
     )
     bad, good = claim_one(session), claim_one(session)
     queue.fail_task(session, bad, "access_denied", "no access", retryable=False, now=NOW)
-    queue.complete_task(session, good.id or 0, good.worker_id or "", now=NOW)
+    queue.complete_task(session, good.id or 0, good.claim_token or "", now=NOW)
     session.refresh(created.request)
     assert created.request.status == "partial"
 
@@ -194,3 +196,31 @@ def test_retry_failed_requeues_only_failed_tasks_of_an_unfinished_request(
     queue.cancel_request(session, created.request.id or 0, NOW)
     with pytest.raises(requests.InvalidRequestState):
         requests.retry_failed(session, created.request.id or 0, NOW)
+
+
+def test_concurrent_all_account_scans_share_one_full_sweep(
+    engine: Engine, settings: Settings, accounts: list[RegistryAccount]
+) -> None:
+    callers = 8
+    barrier = threading.Barrier(callers)
+    results: list[requests.CreatedScan] = []
+
+    def call() -> None:
+        with Session(engine, expire_on_commit=False) as own:
+            barrier.wait()
+            results.append(
+                requests.create_scan(own, requests.ScanSpec(all_accounts=True), settings)
+            )
+
+    threads = [threading.Thread(target=call) for _ in range(callers)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(results) == callers
+    assert sum(created.created for created in results) == 1
+    assert len({created.request.id for created in results}) == 1
+    with Session(engine) as check:
+        sweeps = check.exec(select(ScanRequest).where(ScanRequest.trigger == "api")).all()
+        assert len(sweeps) == 1

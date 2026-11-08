@@ -4,7 +4,7 @@ A handler takes the scope lease, drives `Discovery` into `ResourceWriter` inside
 returns its stats (or None). It signals the outcome by returning or raising:
 
 - `TaskError(code, message)`: the task failed; the code decides whether it is retried
-- `TaskStopped` / `TaskCancelled`: raised by `TaskContext.checkpoint`
+- `TaskStopped` / `TaskCancelled` / `TaskLost`: raised by `TaskContext.checkpoint`
 - any other exception: failed with `internal`
 
 A handler that settles the task itself (`leases.acquire_or_settle` skipped or parked it)
@@ -33,12 +33,16 @@ class TaskContext:
 
     def checkpoint(self, task: ScanTask) -> None:
         """Call after every page of work. Raises when the worker is shutting down
-        (`TaskStopped`) or when the scan request was cancelled (`TaskCancelled`); the handler
-        must then stop without any deletion judgement and let the exception propagate."""
+        (`TaskStopped`), when this worker no longer owns the task (`TaskLost`: it was reaped
+        and claimed again) or when every scan request that needs the task was cancelled
+        (`TaskCancelled`; a task shared with a live request keeps going). The handler must
+        then stop without any deletion judgement and without writing anything else, and let
+        the exception propagate."""
         if self.stop.is_set():
             raise TaskStopped
         with self.new_session() as session:
-            if queue.is_cancelled(session, task.scan_request_id):
+            queue.assert_owned(session, task)
+            if not queue.is_needed(session, task):
                 raise TaskCancelled
 
 

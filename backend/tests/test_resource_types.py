@@ -16,6 +16,7 @@ from app.types.columns import column_paths, column_values
 from app.types.hooks import TYPE_HOOKS, Hooks
 from app.types.mapping import (
     MISSING,
+    MappingError,
     ami_gone,
     ami_to_config_item,
     camel_key,
@@ -115,6 +116,28 @@ def test_invalid_spec_file_fails_loudly(tmp_path: Path) -> None:
         TypeRegistry.from_directory(tmp_path / "specs")
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("properties", ["Foo[].Bar"]),
+        ("rename", {"Foo[].Bar": "baz"}),
+        ("rename", {"Foo": "baz[].qux"}),
+    ],
+)
+def test_covered_paths_inside_an_array_are_rejected_when_the_registry_loads(
+    tmp_path: Path, field: str, value: Any
+) -> None:
+    # Arrays are replaced whole; a path into one could never be overlaid.
+    specs_dir = Path(__file__).parents[1] / "app" / "types" / "specs"
+    shutil.copytree(specs_dir, tmp_path / "specs")
+    broken = tmp_path / "specs" / "aws.ec2.vpc.json"
+    data = load(broken)
+    data["mapping"][field] = value
+    broken.write_text(json.dumps(data))
+    with pytest.raises(RegistryError, match=r"(?s)aws\.ec2\.vpc\.json.*inside an array"):
+        TypeRegistry.from_directory(tmp_path / "specs")
+
+
 def test_native_type_needs_both_hooks() -> None:
     validate_hooks(REGISTRY, TYPE_HOOKS)  # the real table registers the AMI hooks
     with pytest.raises(RegistryError, match="AWS::EC2::Image"):
@@ -203,6 +226,39 @@ def test_overlay_clears_a_covered_field_removed_from_new_data(case: Case) -> Non
     result = overlay(existing, new, covered_paths(spec))
 
     assert get_path(result, config_path_of(spec, (removed,))) is MISSING
+
+
+def array_paths(case: Case) -> list[KeyPath]:
+    covered, existing = covered_paths(case.spec), case.config_item["configuration"]
+    return sorted(p for p in covered if isinstance(get_path(existing, p), list))
+
+
+ARRAY_CASES: list[Any] = [
+    pytest.param(c.values[0], id=c.id) for c in CASES if array_paths(c.values[0])
+]
+
+
+@pytest.mark.parametrize("case", ARRAY_CASES)
+def test_overlay_replaces_a_covered_array_as_one_value(case: Case) -> None:
+    existing = case.config_item["configuration"]
+    for path in array_paths(case):
+        old = get_path(existing, path)
+        shorter = copy.deepcopy(map_case(case).configuration)
+        parent = get_path(shorter, path[:-1]) if len(path) > 1 else shorter
+        parent[path[-1]] = old[:-1]
+
+        result = overlay(existing, shorter, covered_paths(case.spec))
+
+        assert get_path(result, path) == old[:-1]
+
+
+def test_overlay_refuses_a_covered_path_that_runs_through_an_array() -> None:
+    case: Case = ARRAY_CASES[0].values[0]
+    path = array_paths(case)[0]
+    existing = case.config_item["configuration"]
+
+    with pytest.raises(MappingError, match="inside an array"):
+        overlay(existing, map_case(case).configuration, [(*path, "anything")])
 
 
 # --------------------------------------------------------------------------- redaction
@@ -325,6 +381,27 @@ def test_ami_maps_with_ownership(image_file: str, ownership: str) -> None:
     assert item.resource_name == image["Name"]
     assert item.configuration["ownership"] == ownership
     assert item.configuration["ownerId"] == image["OwnerId"]
+
+
+@pytest.mark.parametrize("image_file", ["describe_images_self.json", "describe_images_shared.json"])
+def test_every_ami_field_is_accounted_for(image_file: str) -> None:
+    image = load(FIXTURES / "aws.ec2.image" / image_file)["Images"][0]
+    mapping = REGISTRY.get("AWS::EC2::Image").mapping
+    assert set(image) <= {*mapping.properties, *mapping.rename, *mapping.exclude, "Tags"}
+
+
+def test_ami_overlay_clears_a_field_that_disappeared_from_describe_images() -> None:
+    spec = REGISTRY.get("AWS::EC2::Image")
+    image = load(FIXTURES / "aws.ec2.image" / "describe_images_self.json")["Images"][0]
+    existing = ami_item("describe_images_self.json", main_account()).configuration
+    assert existing["description"]
+    without = {k: v for k, v in image.items() if k != "Description"}
+    new = ami_to_config_item(spec, without, account_id=main_account(), region="us-east-1")
+
+    result = overlay(existing, new.configuration, covered_paths(spec))
+
+    assert "description" not in result
+    assert result["ownership"] == existing["ownership"]
 
 
 @pytest.mark.parametrize(

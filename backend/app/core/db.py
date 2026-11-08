@@ -1,5 +1,6 @@
 from collections.abc import Iterator
 from functools import lru_cache
+from typing import Any
 
 from sqlalchemy import Engine
 from sqlmodel import Session, create_engine
@@ -15,7 +16,7 @@ def normalise_url(url: str) -> str:
     return url
 
 
-def make_engine(url: str, schema: str) -> Engine:
+def make_engine(url: str, schema: str, **engine_kwargs: Any) -> Engine:
     # Every connection starts with the service's schema on its search_path, so
     # table names carry no schema qualifier anywhere in the code. `public` stays
     # behind it only so that extension operator classes (pg_trgm) resolve.
@@ -26,6 +27,7 @@ def make_engine(url: str, schema: str) -> Engine:
             "options": f"-csearch_path={schema},public",
             "connect_timeout": 5,
         },
+        **engine_kwargs,
     )
 
 

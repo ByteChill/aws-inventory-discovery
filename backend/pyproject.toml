@@ -38,3 +38,5 @@ select = ["E", "W", "F", "I", "B", "C4", "UP", "ARG001", "T201"]
 
 [tool.ruff.lint.per-file-ignores]
 "app/cli.py" = ["T201"]
+# pytest fixtures are often requested only for their side effects
+"tests/**" = ["ARG001"]

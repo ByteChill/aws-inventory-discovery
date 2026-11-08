@@ -10,8 +10,9 @@ NOT_IMPLEMENTED = 2
 
 
 def run_worker() -> int:
-    logger.error("worker is not implemented yet")
-    return NOT_IMPLEMENTED
+    from app.worker.main import Worker
+
+    return Worker.from_settings().run()
 
 
 def run_doctor() -> int:

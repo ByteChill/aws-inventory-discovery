@@ -24,6 +24,9 @@ x-app-env: &app-env
   AWS_ENDPOINT_URL_CONFIG_SERVICE: http://fake-aws:4567
   ACCOUNT_REGISTRY_URL: http://fake-aws:4567/registry/accounts
   CREDENTIAL_SERVICE_URL: http://fake-aws:4567/credentials
+  # Locally, scans are started on demand (they run immediately). The scheduled sweep
+  # staggers accounts over ~5.5 hours, which is right for production but not for a demo.
+  SWEEP_ENABLED: "false"
 
 x-app-build: &app-build
   build:

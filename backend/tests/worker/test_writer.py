@@ -394,3 +394,67 @@ def test_access_status(
     assert status == expected == account.access_status
     assert (account.last_scan_ok_at is not None) == (expected == "ok")
     assert (account.access_error is None) == (expected == "ok")
+
+
+def test_an_accepted_gone_observation_blocks_an_older_in_flight_listing(
+    writer: ResourceWriter, disc: Discovery, session: Session
+) -> None:
+    """A list read at T1 is still in flight when a refresh at T2 finds the resource gone (and
+    again at T4 / T6): the late T1 write must not bring it back, in any of the three states."""
+    keep, lost = live(disc, QUEUE)
+    key = lost.item.resource_id
+    writer.write([keep, lost])
+    stale_listing = replace(lost, observed_at=T0 + minutes(1))
+
+    assert gone(writer, lost, T0 + minutes(2)) == "missing"  # active -> missing
+    row = rows(session, QUEUE)[key]
+    assert row.observed_at == T0 + minutes(2) and row.observed_source == "cloudcontrol"
+    assert writer.write([stale_listing]).stale == 1
+    assert rows(session, QUEUE)[key].status == "missing"
+
+    assert gone(writer, lost, T0 + minutes(4)) == "unchanged"  # stays missing
+    assert rows(session, QUEUE)[key].observed_at == T0 + minutes(4)
+    assert writer.write([replace(lost, observed_at=T0 + minutes(3))]).stale == 1
+
+    finish(writer, [keep], QUEUE, T0 + minutes(5))
+    assert gone(writer, lost, T0 + minutes(6), source="native") == "deleted"  # -> deleted
+    row = rows(session, QUEUE)[key]
+    assert (row.observed_at, row.observed_source) == (T0 + minutes(6), "native")
+    assert writer.write([replace(lost, observed_at=T0 + minutes(5))]).stale == 1
+    assert rows(session, QUEUE)[key].status == "deleted"
+
+
+def test_a_relationship_only_change_updates_the_relations_but_is_not_a_resource_change(
+    writer: ResourceWriter, disc: Discovery, session: Session
+) -> None:
+    sweep = disc.sweep_config(["AWS::EC2::VPC", "AWS::EC2::Subnet"])
+    writer.write([o for group in sweep.by_type.values() for o in group])
+    (vpc,) = rows(session, "AWS::EC2::VPC").values()
+    (subnet_obs,) = sweep.by_type["AWS::EC2::Subnet"]
+    full = subnet_obs.relationships or []
+    without_vpc = [r for r in full if r["resourceType"] != "AWS::EC2::VPC"]
+    assert 0 < len(without_vpc) < len(full)
+
+    def targets() -> dict[str, int | None]:
+        session.expire_all()
+        (subnet,) = rows(session, "AWS::EC2::Subnet").values()
+        found = session.exec(
+            select(ResourceRelation).where(ResourceRelation.from_resource_id == subnet.id)
+        ).all()
+        return {r.to_resource_key: r.to_resource_id for r in found}
+
+    dropped = replace(subnet_obs, relationships=without_vpc, observed_at=T0 + minutes(1))
+    counts = writer.write([dropped])
+
+    assert (counts.updated, counts.unchanged) == (0, 1)
+    (subnet,) = rows(session, "AWS::EC2::Subnet").values()
+    assert subnet.relationships == without_vpc
+    assert subnet.last_changed_at == subnet_obs.observed_at  # not a resource change
+    assert subnet.observed_at == T0 + minutes(1)
+    assert vpc.resource_id not in targets()
+
+    regained = replace(subnet_obs, relationships=full, observed_at=T0 + minutes(2))
+    assert writer.write([regained]).updated == 0
+    assert targets()[vpc.resource_id] == vpc.id  # resolved again
+    (subnet,) = rows(session, "AWS::EC2::Subnet").values()
+    assert subnet.relationships == full and subnet.last_changed_at == subnet_obs.observed_at

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Self
@@ -32,7 +32,7 @@ from app.aws import config_source
 from app.aws.config_source import RecorderState
 from app.aws.credentials import CredentialError, CredentialService
 from app.aws.errors import ScanError, classify
-from app.aws.regions import ENABLED, describe_regions
+from app.aws.regions import ENABLED, NoDescribeRegionsRegion, describe_regions
 from app.aws.session import make_client, make_session
 from app.core.config import Settings
 from app.models import AccountRegion, Resource, ScanRequest, ScanTask
@@ -41,15 +41,15 @@ from app.types.hooks import TYPE_HOOKS, Gone, Hooks
 from app.types.mapping import MappingError
 from app.types.registry import TypeRegistry, validate_hooks
 from app.worker import leases, queue, requests
-from app.worker.discovery import AWS_ERRORS, Discovery, Observation, plan_sources
+from app.worker.discovery import AWS_ERRORS, Discovery, Observation, Source, plan_sources
 from app.worker.errors import TaskCancelled, TaskError, TaskLost, TaskStopped
-from app.worker.writer import BATCH_SIZE, ResourceWriter, WriteCounts
+from app.worker.writer import ACCESS_TASK_KINDS, ResourceWriter
 
 logger = logging.getLogger(__name__)
 
 GLOBAL_REGION = "global"  # the scope region of global types (Route 53 hosted zones)
 GLOBAL_HOME = "us-east-1"  # where global types are read
-CONFIRM_CHECK_STEP = 20  # checkpoint every so many by-ID reads
+STAT_KEYS = ("new", "updated", "unchanged", "restored", "missing", "deleted")
 
 
 @dataclass(frozen=True)
@@ -120,11 +120,11 @@ class Scanner:
 
     def handlers(self) -> dict[str, Handler]:
         return {
-            "sweep_account": self._tracked(self.sweep_account),
-            "config_group": self._tracked(self.config_group),
-            "shard": self._tracked(self.shard),
+            "sweep_account": self.sweep_account,
+            "config_group": self.config_group,
+            "shard": self.shard,
             "resource": self.resource,
-            "confirm_missing": self._tracked(self.confirm_missing),
+            "confirm_missing": self.confirm_missing,
         }
 
     # -- plumbing ----------------------------------------------------------------------------
@@ -145,66 +145,20 @@ class Scanner:
             item_region=region,
         )
 
-    def _tracked(self, handler: Handler) -> Handler:
-        """Update the account's `access_status` (scanner.md §10) after every task that talks
-        to the account: from this request's finished tasks plus this task's own outcome."""
-
-        def run(task: ScanTask, ctx: TaskContext) -> dict[str, Any] | None:
-            try:
-                stats = handler(task, ctx)
-            except TaskError as exc:
-                self._update_access(task, ctx, exc.error_code, exc.message)
-                raise
-            # A sweep that planned children says nothing about access: they report it.
-            if task.kind != "sweep_account" or not (stats or {}).get("tasks"):
-                self._update_access(task, ctx, None, None)
-            return stats
-
-        return run
-
-    def _update_access(
-        self, task: ScanTask, ctx: TaskContext, code: str | None, message: str | None
-    ) -> None:
-        with ctx.new_session() as session:
-            rows = session.exec(
-                select(ScanTask.kind, ScanTask.status, ScanTask.error_code, ScanTask.error_message)
-                .where(
-                    ScanTask.scan_request_id == task.scan_request_id,
-                    ScanTask.account_id == task.account_id,
-                    ScanTask.id != task.id,
-                    col(ScanTask.status).in_(("succeeded", "failed")),
-                )
-                .order_by(col(ScanTask.id))
-            ).all()
-        # a sweep_account that succeeded only planned work: it made no call worth counting
-        rows = [row for row in rows if row[0] != "sweep_account" or row[1] == "failed"]
-        codes = [error_code if status == "failed" else None for _, status, error_code, _ in rows]
-        codes.append(code)
-        failed = [message for _, status, _, message in rows if status == "failed"]
-        message = message or (failed[-1] if failed else None)
+    def settled(self, task: ScanTask) -> None:
+        """Call after the worker has settled `task` (succeeded, failed or requeued): update the
+        account's `access_status` (scanner.md §10) from all the request's settled tasks of the
+        account. Serialized per account by the writer, so concurrent tasks all count."""
+        if task.kind not in ACCESS_TASK_KINDS:
+            return
         try:
-            self.writer.update_access_status(
-                task.account_id,
-                credential_failed="credential_error" in codes,
-                error_codes=codes,
-                message=message,
-            )
+            self.writer.refresh_access_status(task.account_id, task.scan_request_id)
         except LookupError:
             logger.warning("access status of an unknown account not updated")
 
     def _scope_of(self, task: ScanTask) -> ScanRequest:
         with Session(self.writer.engine) as session:
             return session.get_one(ScanRequest, task.scan_request_id)
-
-    @staticmethod
-    def _checkpointed(
-        observations: Iterable[Observation], task: ScanTask, ctx: TaskContext
-    ) -> Iterator[Observation]:
-        """Check in between write batches, so a stop or cancel is noticed mid-write."""
-        for index, obs in enumerate(observations):
-            if index and index % BATCH_SIZE == 0:
-                ctx.checkpoint(task)
-            yield obs
 
     def _request_confirmation(
         self, ctx: TaskContext, task: ScanTask, region: str, resource_type: str
@@ -241,15 +195,12 @@ class Scanner:
             )
 
     @staticmethod
-    def _stats(counts: WriteCounts, missing: int = 0, deleted: int = 0) -> dict[str, Any]:
-        return {
-            "new": counts.new,
-            "updated": counts.updated,
-            "unchanged": counts.unchanged,
-            "restored": counts.restored,
-            "missing": missing,
-            "deleted": deleted,
-        }
+    def _result(ctx: TaskContext, task: ScanTask, **extra: Any) -> dict[str, Any]:
+        """The task's stats: what its committed writes added (kept in `scan_task.stats` by the
+        writer, so a failed or retried run is counted too) plus handler-specific keys."""
+        with ctx.new_session() as session:
+            stats = session.exec(select(ScanTask.stats).where(ScanTask.id == task.id)).one()
+        return {**dict.fromkeys(STAT_KEYS, 0), **(stats or {}), **extra}
 
     # -- sweep_account (§6.1) ----------------------------------------------------------------
 
@@ -261,9 +212,11 @@ class Scanner:
         wanted_regions = set(scope.get("awsRegions") or [])
         wanted_types = set(scope.get("resourceTypes") or []) or None
         try:
-            described = describe_regions(aws)
+            described = describe_regions(aws, self.settings.REACHABLE_REGIONS)
         except AWS_ERRORS as exc:
             raise task_error(exc) from exc
+        except NoDescribeRegionsRegion as exc:
+            raise TaskError("internal", str(exc), retryable=False) from exc
         now = utcnow()
         self._save_regions(task.account_id, described, now)
         scannable = sorted(
@@ -384,11 +337,11 @@ class Scanner:
         )
         if not types:
             return {"types": 0}
-        sweep = disc.sweep_config(types)
         ctx.checkpoint(task)
-        total = WriteCounts()
-        missing = skipped = 0
-        error = None if sweep.complete else (sweep.error or ScanError("internal", "incomplete"))
+        # The leases of all the types are held while the query is paged through (the worker's
+        # heartbeat renews them); each page is written as it arrives.
+        held: dict[str, leases.Scope] = {}
+        skipped = 0
         for type_name in types:
             region = GLOBAL_REGION if self.registry.get(type_name).global_ else task.region
             scope = leases.Scope(task.account_id, region, type_name)
@@ -396,30 +349,41 @@ class Scanner:
                 state = leases.try_acquire(session, task, scope)
             if state is leases.LeaseState.LOST:
                 raise TaskLost
-            if state is not leases.LeaseState.ACQUIRED:
+            if state is leases.LeaseState.ACQUIRED:
+                held[type_name] = scope
+            else:
                 skipped += 1  # busy or scanned moments ago: whoever has it covers it
-                continue
-            observations = sweep.by_type.get(type_name, [])
-            total.add(
-                self.writer.write(self._checkpointed(observations, task, ctx), task_id=task.id)
-            )
+        if not held:
+            return self._result(ctx, task, types=len(types), skipped=skipped)
+        seen: dict[str, set[str]] = {type_name: set() for type_name in held}
+        pages = disc.config_pages(list(held))
+        for page in pages:
+            mine = [obs for obs in page if obs.resource_type in held]
+            self.writer.write(mine, task_id=task.id)
+            for obs in mine:
+                seen[obs.resource_type].add(obs.item.resource_id)
+            ctx.checkpoint(task)  # after the page, before the next read
+        error = None if pages.complete else (pages.error or ScanError("internal", "incomplete"))
+        if error is None:
+            ctx.checkpoint(task)  # cancelled or lost during the last page: no deletion judgement
+        for type_name, scope in held.items():
             outcome = self.writer.finish_scope(
                 account_id=task.account_id,
-                region=region,
+                region=scope.region,
                 resource_type=type_name,
-                seen_ids=[o.item.resource_id for o in observations],
-                observed_at=sweep.query_started_at,
-                complete=sweep.complete,
-                cutoff=self.writer.config_cutoff(sweep.query_started_at),
+                seen_ids=seen[type_name],
+                observed_at=pages.query_started_at,
+                complete=pages.complete,
+                cutoff=self.writer.config_cutoff(pages.query_started_at),
+                task_id=task.id,
             )
             self._release(ctx, task, scope, error)
-            missing += outcome.missing
             if outcome.confirm_pending:
-                self._request_confirmation(ctx, task, region, type_name)
+                self._request_confirmation(ctx, task, scope.region, type_name)
             ctx.checkpoint(task)
         if error is not None:
             raise TaskError(error.code, error.message)
-        return {**self._stats(total, missing), "types": len(types), "skipped": skipped}
+        return self._result(ctx, task, types=len(types), skipped=skipped)
 
     # -- shard (§6.3) ------------------------------------------------------------------------
 
@@ -432,26 +396,30 @@ class Scanner:
         aws = self._aws(task)
         disc = self._discovery(aws, task, task.region)
         ctx.checkpoint(task)
-        scan = disc.scan_live(task.resource_type)
-        ctx.checkpoint(task)
-        counts = self.writer.write(
-            self._checkpointed(scan.observations, task, ctx), task_id=task.id
-        )
+        pages = disc.live_pages(task.resource_type)
+        seen: set[str] = set()
+        for page in pages:  # read, write and check in page by page, inside the lease
+            self.writer.write(page, task_id=task.id)
+            seen.update(obs.item.resource_id for obs in page)
+            ctx.checkpoint(task)
+        if pages.complete:
+            ctx.checkpoint(task)  # cancelled or lost during the last page: no deletion judgement
         outcome = self.writer.finish_scope(
             account_id=task.account_id,
             region=task.region,
             resource_type=task.resource_type,
-            seen_ids=[o.item.resource_id for o in scan.observations],
-            observed_at=scan.observed_at,
-            complete=scan.complete,
+            seen_ids=seen,
+            observed_at=pages.observed_at,
+            complete=pages.complete,
+            task_id=task.id,
         )
-        error = None if scan.complete else scan.errors[0]
+        error = None if pages.complete else pages.errors[0]
         self._release(ctx, task, scope, error)
         if outcome.confirm_pending:
             self._request_confirmation(ctx, task, task.region, task.resource_type)
         if error is not None:
             raise TaskError(error.code, error.message)
-        return self._stats(counts, outcome.missing)
+        return self._result(ctx, task)
 
     def _acquire(self, task: ScanTask) -> leases.LeaseState:
         with Session(self.writer.engine, expire_on_commit=False) as session:
@@ -491,14 +459,14 @@ class Scanner:
                 resource_id=task.resource_id,
                 observed_at=started,
                 task_id=task.id,
+                source=self._live_source(task.resource_type),
             )
-            return {
-                "result": outcome,
-                "missing": int(outcome == "missing"),
-                "deleted": int(outcome == "deleted"),
-            }
-        counts = self.writer.write([found], task_id=task.id)
-        return {"result": "found", **self._stats(counts)}
+            return self._result(ctx, task, result=outcome)
+        self.writer.write([found], task_id=task.id)
+        return self._result(ctx, task, result="found")
+
+    def _live_source(self, resource_type: str) -> Source:
+        return "native" if self.registry.get(resource_type).sources.native else "cloudcontrol"
 
     # -- confirm_missing (§6.5) --------------------------------------------------------------
 
@@ -525,8 +493,6 @@ class Scanner:
             ).all()
         hooks = self.hooks.get(task.resource_type, Hooks())
         by_config = not spec.sources.cloud_control.read and hooks.get_live is None
-        deleted = 0
-        restored = 0
         errors: list[ScanError] = []
         deleted_ids: set[str] = set()
         if by_config:  # no by-ID read: Config's ResourceDeleted status is the evidence
@@ -538,9 +504,8 @@ class Scanner:
                 errors.append(classify(exc))
                 statuses = {}
             deleted_ids = {key[1] for key, status in statuses.items() if status.deleted}
-        for index, (resource_id, configuration) in enumerate(pending):
-            if index % CONFIRM_CHECK_STEP == 0:
-                ctx.checkpoint(task)
+        for resource_id, configuration in pending:
+            ctx.checkpoint(task)  # every by-ID read may end in a deletion
             started = datetime.now(UTC)
             try:
                 if by_config:
@@ -556,22 +521,22 @@ class Scanner:
             if found is None:
                 continue  # Config does not say deleted: no evidence, stays missing
             if isinstance(found, Gone):
-                outcome = self.writer.record_gone(
+                self.writer.record_gone(
                     account_id=task.account_id,
                     region=task.region,
                     resource_type=task.resource_type,
                     resource_id=resource_id,
                     observed_at=started,
                     task_id=task.id,
+                    source="config" if by_config else self._live_source(task.resource_type),
                 )
-                deleted += outcome == "deleted"
             else:
-                restored += self.writer.write([found], task_id=task.id).restored
+                self.writer.write([found], task_id=task.id)
         error = errors[0] if errors else None
         self._release(ctx, task, scope, error)
         if error is not None:
             raise TaskError(error.code, error.message)
-        return {"checked": len(pending), "deleted": deleted, "restored": restored}
+        return self._result(ctx, task, checked=len(pending))
 
     def _check_failed(self, task: ScanTask, resource_id: str) -> None:
         assert task.region is not None and task.resource_type is not None

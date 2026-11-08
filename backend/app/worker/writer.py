@@ -25,18 +25,19 @@ from app.core.config import Settings, get_settings
 from app.core.db import get_engine
 from app.models.account import Account
 from app.models.resource import Resource, ResourceRelation
-from app.models.scan import ScanShard
+from app.models.scan import ScanShard, ScanTask
 from app.types.mapping import Path as KeyPath
 from app.types.mapping import covered_paths, overlay, split_path
 from app.types.redact import redact_configuration, redact_live_raw
 from app.types.registry import TypeRegistry
 from app.types.spec import ResourceTypeSpec
-from app.worker.discovery import Observation
+from app.worker.discovery import Observation, Source
 
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 500
 Key = tuple[str, str, str, str]  # account_id, aws_region, resource_type, resource_id
+ACCESS_TASK_KINDS = ("sweep_account", "config_group", "shard", "confirm_missing")
 GoneOutcome = Literal["missing", "deleted", "unchanged", "stale", "not_found"]
 
 
@@ -61,6 +62,24 @@ class ScopeOutcome:
     missing: int  # resources newly marked missing (first piece of evidence)
     guard: Literal["normal", "abnormal"]
     confirm_pending: int  # missing resources with first evidence: a confirm_missing task is due
+
+
+def add_task_stats(db: Session, task_id: int | None, **deltas: int) -> None:
+    """Add counts to `scan_task.stats` inside the caller's transaction, so what a task reports
+    is exactly what its committed writes did, however the task ends (a failure, a retry)."""
+    deltas = {name: int(n) for name, n in deltas.items() if n}
+    if task_id is None or not deltas:
+        return
+    db.connection().execute(
+        text(
+            "UPDATE t_inv_aws_scan_task SET stats = (CASE WHEN jsonb_typeof(stats) = 'object'"
+            " THEN stats ELSE '{}'::jsonb END) || ("
+            " SELECT jsonb_object_agg(d.key,"
+            " coalesce((stats ->> d.key)::bigint, 0) + d.value::bigint)"
+            " FROM jsonb_each_text(CAST(:deltas AS jsonb)) AS d) WHERE id = :id"
+        ),
+        {"deltas": json.dumps(deltas), "id": task_id},
+    )
 
 
 def key_of(obs: Observation) -> Key:
@@ -139,6 +158,14 @@ class ResourceWriter:
                     latest[key_of(obs)] = obs
             with Session(self.engine) as db, db.begin():
                 counts = self._apply(db, latest, task_id)
+                add_task_stats(
+                    db,
+                    task_id,
+                    new=counts.new,
+                    updated=counts.updated,
+                    unchanged=counts.unchanged,
+                    restored=counts.restored,
+                )
                 if scan_request_id is not None and (counts.new or counts.updated):
                     db.connection().execute(
                         text(
@@ -221,6 +248,12 @@ class ResourceWriter:
                 row.live_raw = values["live_raw"]
             if values["content_hash"] == row.content_hash:
                 counts.unchanged += 1
+                # relationships are outside the hash and are not a resource change (DESIGN 5.4):
+                # keep them current without counting an update or moving last_changed_at
+                if _canonical(values["relationships"]) != _canonical(row.relationships):
+                    row.relationships = values["relationships"]
+                    assert row.id is not None
+                    relation_jobs.append((row.id, obs, values["relationships"]))
             else:
                 for name in (
                     "arn",
@@ -398,6 +431,7 @@ class ResourceWriter:
         observed_at: datetime,
         complete: bool,
         cutoff: datetime | None = None,
+        task_id: int | None = None,
     ) -> ScopeOutcome:
         """First piece of deletion evidence after a scan. Does nothing unless `complete`.
 
@@ -496,6 +530,7 @@ class ResourceWriter:
                     col(Resource.absent_in_scan_at).is_not(None),
                 )
             ).one()
+            add_task_stats(db, task_id, missing=len(candidates))
             return ScopeOutcome(True, len(candidates), "normal", pending)
 
     def record_gone(
@@ -507,11 +542,14 @@ class ResourceWriter:
         resource_id: str,
         observed_at: datetime,
         task_id: int | None = None,
+        source: Source = "cloudcontrol",
     ) -> GoneOutcome:
         """A by-ID read explicitly said the resource does not exist (second piece of evidence).
 
         active -> missing (no first evidence); missing with first evidence -> deleted. The
-        observation must be newer than the row's `observed_at` (R4). Errors never reach here.
+        observation must be newer than the row's `observed_at` (R4), and every accepted one advances
+        `observed_at` / `observed_source` under that same guard, so an older in-flight listing
+        can no longer restore the resource. Errors never reach here.
         """
         with Session(self.engine) as db, db.begin():
             row = db.exec(
@@ -529,6 +567,8 @@ class ResourceWriter:
             if observed_at <= row.observed_at:
                 return "stale"
             row.last_task_id = task_id
+            row.observed_at = observed_at
+            row.observed_source = source
             if row.status == "active":
                 row.status = "missing"
                 row.missing_since = observed_at
@@ -536,11 +576,12 @@ class ResourceWriter:
             elif row.status == "missing" and row.absent_in_scan_at is not None:
                 row.status = "deleted"
                 row.deleted_at = observed_at
-                row.observed_at = observed_at  # an older observation can no longer revive it
                 outcome = "deleted"
             else:
                 outcome = "unchanged"
             db.add(row)
+            db.flush()
+            add_task_stats(db, task_id, missing=outcome == "missing", deleted=outcome == "deleted")
             return outcome
 
     def record_check_failed(
@@ -584,19 +625,81 @@ class ResourceWriter:
         error_codes: Sequence[str | None],
         message: str | None = None,
     ) -> str:
-        status = compute_access_status(credential_failed, error_codes)
-        now = datetime.now(UTC)
         with Session(self.engine) as db, db.begin():
-            account = db.get(Account, account_id)
+            return self._store_access(db, account_id, credential_failed, error_codes, message)
+
+    def refresh_access_status(self, account_id: str, scan_request_id: int) -> str:
+        """Recompute the account's `access_status` from every settled task of the account in
+        the scan request. Call it after a task is settled: the account row is locked for the
+        read and the write, so two tasks finishing together each see the other and the last
+        one stores the combined result."""
+        with Session(self.engine) as db, db.begin():
+            account = db.exec(
+                select(Account).where(col(Account.account_id) == account_id).with_for_update()
+            ).one_or_none()
             if account is None:
                 raise LookupError(f"unknown account {account_id}")
-            account.access_status = status
-            account.access_error = None if status == "ok" else message
-            account.access_checked_at = now
-            if status == "ok":
-                account.last_scan_ok_at = now
-            db.add(account)
+            tasks = db.exec(
+                select(ScanTask)
+                .where(
+                    ScanTask.scan_request_id == scan_request_id,
+                    ScanTask.account_id == account_id,
+                    col(ScanTask.kind).in_(ACCESS_TASK_KINDS),
+                    col(ScanTask.status).in_(("succeeded", "failed")),
+                )
+                .order_by(col(ScanTask.id))
+            ).all()
+            # A sweep_account that planned children made no call worth counting: they report.
+            tasks = [
+                t
+                for t in tasks
+                if not (
+                    t.kind == "sweep_account"
+                    and t.status == "succeeded"
+                    and (t.stats or {}).get("tasks")
+                )
+            ]
+            if not tasks:  # nothing has reported yet: no evidence either way
+                return account.access_status
+            codes = [t.error_code if t.status == "failed" else None for t in tasks]
+            failed = [t.error_message for t in tasks if t.status == "failed"]
+            return self._store_access(
+                db,
+                account_id,
+                "credential_error" in codes,
+                codes,
+                failed[-1] if failed else None,
+            )
+
+    @staticmethod
+    def _store_access(
+        db: Session,
+        account_id: str,
+        credential_failed: bool,
+        error_codes: Sequence[str | None],
+        message: str | None,
+    ) -> str:
+        status = compute_access_status(credential_failed, error_codes)
+        now = datetime.now(UTC)
+        account = db.exec(
+            select(Account).where(col(Account.account_id) == account_id).with_for_update()
+        ).one_or_none()
+        if account is None:
+            raise LookupError(f"unknown account {account_id}")
+        account.access_status = status
+        account.access_error = None if status == "ok" else message
+        account.access_checked_at = now
+        if status == "ok":
+            account.last_scan_ok_at = now
+        db.add(account)
         return status
+
+
+def _canonical(relationships: list[dict[str, Any]] | None) -> str:
+    """Relationships compared as a set: Config does not promise an order."""
+    return json.dumps(
+        sorted(json.dumps(r, sort_keys=True) for r in relationships or []), separators=(",", ":")
+    )
 
 
 def _group_scopes(

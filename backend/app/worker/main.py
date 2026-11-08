@@ -42,6 +42,7 @@ class Worker:
         settings: Settings,
         *,
         handlers: dict[str, Handler] | None = None,
+        after_settle: Callable[[ScanTask], None] | None = None,
         scheduler: Scheduler | None = None,
         worker_id: str | None = None,
         poll_interval: float = POLL_INTERVAL_SECONDS,
@@ -49,9 +50,11 @@ class Worker:
     ) -> None:
         self.engine = engine
         self.settings = settings
-        self.handlers = (
-            Scanner.from_settings(engine, settings).handlers() if handlers is None else handlers
-        )
+        if handlers is None:
+            scanner = Scanner.from_settings(engine, settings)
+            handlers, after_settle = scanner.handlers(), scanner.settled
+        self.handlers = handlers
+        self.after_settle = after_settle  # runs once the task's final state is committed
         self.scheduler = scheduler
         self.worker_id = worker_id or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:6]}"
         self.poll_interval = poll_interval
@@ -245,14 +248,25 @@ class Worker:
             logger.warning("task failed: %s", exc.message, extra={"error_code": exc.error_code})
             self._release(task, success=False, error_code=exc.error_code)
             self._fail(task, exc.error_code, exc.message, retryable=exc.retryable)
+            self._after_settle(task)
         except Exception as exc:
             logger.exception("task crashed")
             self._release(task, success=False, error_code="internal")
             self._fail(task, "internal", f"{type(exc).__name__}: {exc}", retryable=True)
+            self._after_settle(task)
         else:
             logger.info("task succeeded", extra={"stats": stats})
             self._release(task, success=True)
             self._settle(lambda s: queue.complete_task(s, task_id, task.claim_token or "", stats))
+            self._after_settle(task)
+
+    def _after_settle(self, task: ScanTask) -> None:
+        if self.after_settle is None:
+            return
+        try:
+            self.after_settle(task)
+        except Exception:  # bookkeeping must never undo a settled task
+            logger.exception("after-settle bookkeeping failed")
 
     def _release(
         self, task: ScanTask, *, success: bool | None, error_code: str | None = None

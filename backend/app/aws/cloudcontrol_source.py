@@ -10,11 +10,13 @@ from botocore.exceptions import ClientError
 
 from app.types.hooks import GONE, Gone, Properties
 
+PAGE_SIZE = 100
 
-def list_resources(
+
+def list_resource_pages(
     client: Any, type_name: str, model: dict[str, Any] | None = None
-) -> Iterator[tuple[str, Properties]]:
-    """`(identifier, properties)` for every resource of the type, page by page.
+) -> Iterator[list[tuple[str, Properties]]]:
+    """`(identifier, properties)` of every resource of the type, one list per page.
 
     `model` is the optional `ResourceModel` for types whose list needs a parent property.
     A failed page raises, so a caller that finished iterating has seen everything.
@@ -23,9 +25,11 @@ def list_resources(
     if model is not None:
         arguments["ResourceModel"] = json.dumps(model)
     paginator = client.get_paginator("list_resources")
-    for page in paginator.paginate(PaginationConfig={"PageSize": 100}, **arguments):
-        for description in page["ResourceDescriptions"]:
-            yield description["Identifier"], json.loads(description["Properties"])
+    for page in paginator.paginate(PaginationConfig={"PageSize": PAGE_SIZE}, **arguments):
+        yield [
+            (description["Identifier"], json.loads(description["Properties"]))
+            for description in page["ResourceDescriptions"]
+        ]
 
 
 def get_resource(client: Any, type_name: str, identifier: str) -> Properties | Gone:

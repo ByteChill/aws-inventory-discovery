@@ -12,7 +12,7 @@ from botocore.exceptions import ClientError
 from app.aws import config_source
 from app.aws.credentials import CredentialError, CredentialService
 from app.aws.errors import classify
-from app.aws.regions import describe_regions
+from app.aws.regions import NoDescribeRegionsRegion, describe_regions
 from app.aws.session import make_client
 from app.types.hooks import GONE, TYPE_HOOKS, Gone
 from app.types.registry import TypeRegistry, validate_hooks
@@ -67,7 +67,7 @@ def test_expiring_credentials_are_refreshed_through_the_service(
     from app.aws.session import make_session
 
     session = make_session(service.credentials_for(aws.account_ids[0]))
-    assert describe_regions(session)["us-east-1"] == "opt-in-not-required"
+    assert describe_regions(session, [REGION])["us-east-1"] == "opt-in-not-required"
     assert calls == [aws.account_ids[0]] * 2  # initial fetch, then one refresh
 
 
@@ -82,10 +82,23 @@ def test_credential_service_failures_become_credential_errors(aws: AwsEnv) -> No
     assert classify(excinfo.value).retryable
 
 
-def test_regions_report_opt_in_status(aws: AwsEnv) -> None:
-    regions = describe_regions(aws.session(aws.account_ids[0]))
+def test_regions_report_opt_in_status_and_are_asked_in_a_default_enabled_region(
+    aws: AwsEnv,
+) -> None:
+    session = aws.session(aws.account_ids[0])
+    called_in: list[str] = []
+    session.events.register(  # ty: ignore[unresolved-attribute]
+        "before-sign.ec2.DescribeRegions", lambda region_name, **_: called_in.append(region_name)
+    )
+
+    # ap-east-1 is first but is an opt-in region this account has not enabled: not usable
+    regions = describe_regions(session, ["ap-east-1", "eu-west-2", "us-east-1"])
+
     assert regions["ap-east-1"] == "not-opted-in"
     assert regions["eu-west-2"] == "opt-in-not-required"
+    assert called_in == ["eu-west-2"]
+    with pytest.raises(NoDescribeRegionsRegion, match="default-enabled"):
+        describe_regions(session, ["ap-east-1", "me-south-1"])
 
 
 # --- recorder detection and source planning ----------------------------------------------
@@ -282,5 +295,5 @@ def test_ami_fetch_distinguishes_found_gone_and_error(aws: AwsEnv) -> None:
 
 def test_hook_table_satisfies_the_registry() -> None:
     validate_hooks(REGISTRY, TYPE_HOOKS)
-    # ECS service only derives its composite Cloud Control identifier, see types/hooks.py
-    assert set(TYPE_HOOKS) == {"AWS::EC2::Image", "AWS::ECS::Service"}
+    # ECS cluster and service only derive their Cloud Control identifier, see types/hooks.py
+    assert set(TYPE_HOOKS) == {"AWS::EC2::Image", "AWS::ECS::Cluster", "AWS::ECS::Service"}

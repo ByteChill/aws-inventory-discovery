@@ -32,7 +32,7 @@ from app.aws import config_source
 from app.aws.config_source import RecorderState
 from app.aws.credentials import CredentialError, CredentialService
 from app.aws.errors import ScanError, classify
-from app.aws.regions import ENABLED, describe_regions
+from app.aws.regions import ENABLED, NoDescribeRegionsRegion, describe_regions
 from app.aws.session import make_client, make_session
 from app.core.config import Settings
 from app.models import AccountRegion, Resource, ScanRequest, ScanTask
@@ -261,9 +261,11 @@ class Scanner:
         wanted_regions = set(scope.get("awsRegions") or [])
         wanted_types = set(scope.get("resourceTypes") or []) or None
         try:
-            described = describe_regions(aws)
+            described = describe_regions(aws, self.settings.REACHABLE_REGIONS)
         except AWS_ERRORS as exc:
             raise task_error(exc) from exc
+        except NoDescribeRegionsRegion as exc:
+            raise TaskError("internal", str(exc), retryable=False) from exc
         now = utcnow()
         self._save_regions(task.account_id, described, now)
         scannable = sorted(

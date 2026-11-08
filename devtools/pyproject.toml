@@ -1,0 +1,40 @@
+[project]
+name = "aws-inventory-discovery-devtools"
+version = "0.1.0"
+description = "Local AWS simulation (fake Cloud Control, AWS Config, account registry, credential service) and demo seed."
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "boto3",
+    "httpx",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+    "moto[server]",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--show-capture=no"
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "ARG001", "T201"]
+
+[tool.ruff.lint.per-file-ignores]
+"seed.py" = ["T201"]
+"fake_aws/app.py" = ["B008"]  # FastAPI Body()/Query() defaults
+
+[tool.ruff.lint.isort]
+known-first-party = ["fake_aws", "seed"]

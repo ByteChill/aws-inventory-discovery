@@ -27,6 +27,8 @@ entrypoint = "app.main:app"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# devtools is `package = false`, so it cannot be installed; tests import fake_aws and seed from it.
+pythonpath = ["../devtools"]
 
 [tool.ruff]
 target-version = "py314"

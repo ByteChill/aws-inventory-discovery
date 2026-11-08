@@ -116,8 +116,9 @@ def test_invalid_spec_file_fails_loudly(tmp_path: Path) -> None:
 
 
 def test_native_type_needs_both_hooks() -> None:
+    validate_hooks(REGISTRY, TYPE_HOOKS)  # the real table registers the AMI hooks
     with pytest.raises(RegistryError, match="AWS::EC2::Image"):
-        validate_hooks(REGISTRY, TYPE_HOOKS)
+        validate_hooks(REGISTRY, {})
 
     def stub(*args: Any, **kwargs: Any) -> Any:
         raise NotImplementedError

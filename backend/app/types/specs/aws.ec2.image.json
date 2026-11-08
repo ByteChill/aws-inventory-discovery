@@ -18,6 +18,42 @@
     },
     "native": true
   },
+  "mapping": {
+    "properties": [
+      "Architecture",
+      "BlockDeviceMappings",
+      "BootMode",
+      "CreationDate",
+      "DeprecationTime",
+      "Description",
+      "EnaSupport",
+      "Hypervisor",
+      "ImageId",
+      "ImageLocation",
+      "ImageOwnerAlias",
+      "ImageType",
+      "ImdsSupport",
+      "KernelId",
+      "LastLaunchedTime",
+      "Name",
+      "OwnerId",
+      "Ownership",
+      "Platform",
+      "PlatformDetails",
+      "ProductCodes",
+      "Public",
+      "RamdiskId",
+      "RootDeviceName",
+      "RootDeviceType",
+      "SourceInstanceId",
+      "SriovNetSupport",
+      "State",
+      "StateReason",
+      "TpmSupport",
+      "UsageOperation",
+      "VirtualizationType"
+    ]
+  },
   "columns": [
     {
       "key": "name",

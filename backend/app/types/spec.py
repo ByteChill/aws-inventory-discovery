@@ -75,6 +75,18 @@ class Mapping(SpecModel):
     transform: dict[str, Literal["toString", "toInt", "toFloat", "toBool", "toIsoDatetime"]] = {}
     preserve_keys_under: list[str] = []
 
+    @model_validator(mode="after")
+    def _arrays_are_replaced_whole(self) -> Self:
+        """A covered path may end in `[]` (the whole array) but never continue inside one:
+        overlay replaces arrays atomically and cannot address their elements."""
+        covered = [*self.properties, *self.rename, *self.rename.values()]
+        for path in covered:
+            if any(segment.endswith("[]") for segment in path.split(".")[:-1]):
+                raise ValueError(
+                    f"mapping path {path!r} points inside an array; arrays are replaced whole"
+                )
+        return self
+
 
 class RedactRule(SpecModel):
     path: str

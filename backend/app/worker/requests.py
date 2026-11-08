@@ -18,6 +18,7 @@ from sqlmodel import Session, col, select
 from app.core.config import Settings
 from app.models import Account, ScanRequest, ScanTask
 from app.models.scan import utcnow
+from app.worker.locks import lock_full_sweeps
 
 SWEEP_SAFETY_MARGIN = timedelta(minutes=30)
 ACCOUNT_ID_PATTERN = r"^\d{12}$"
@@ -212,6 +213,9 @@ def create_scan(
         if existing is not None:
             return CreatedScan(_same_body_or_conflict(existing, scope, idempotency_key), False)
     if spec.all_accounts:
+        # Check-then-insert must not interleave with another full sweep being created (the
+        # lock is released by the commit below or by the rollback of an early return).
+        lock_full_sweeps(session)
         running = (
             session.connection()
             .execute(
@@ -224,7 +228,10 @@ def create_scan(
             .scalar()
         )
         if running is not None:
-            return CreatedScan(session.get_one(ScanRequest, running), False)
+            existing_sweep = session.get_one(ScanRequest, running)
+            session.commit()
+            session.refresh(existing_sweep)
+            return CreatedScan(existing_sweep, False)
         account_ids = list(session.exec(select(Account.account_id).where(col(Account.active))))
         sweep: dict[str, Any] = {"skip_in_flight": True}
     else:

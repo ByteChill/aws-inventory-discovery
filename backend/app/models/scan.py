@@ -57,6 +57,12 @@ class ScanTask(SQLModel, table=True):
             postgresql_where=text("status = 'queued'"),
         ),
         Index("ix_t_inv_aws_scan_task_scan_request_id", "scan_request_id"),
+        # The per-account running count in the claim query.
+        Index(
+            "ix_t_inv_aws_scan_task_running_account",
+            "account_id",
+            postgresql_where=text("status = 'running'"),
+        ),
         # De-duplicates single-resource refreshes.
         Index(
             "uq_t_inv_aws_scan_task_resource_inflight",
@@ -92,6 +98,9 @@ class ScanTask(SQLModel, table=True):
         default=3, sa_type=SmallInteger, sa_column_kwargs={"server_default": text("3")}
     )
     worker_id: str | None = None
+    # Execution token, set on every claim: a worker whose token is no longer the task's has
+    # lost ownership and must stop (fencing).
+    claim_token: str | None = None
     heartbeat_at: datetime | None = Field(default=None, sa_type=TIMESTAMPTZ)
     observed_at: datetime | None = Field(default=None, sa_type=TIMESTAMPTZ)
     coalesced_into: int | None = Field(
@@ -116,6 +125,7 @@ class ScanShard(SQLModel, table=True):
     resource_type: str = Field(primary_key=True)
     lease_task_id: int | None = Field(default=None, sa_type=BigInteger)
     lease_expires_at: datetime | None = Field(default=None, sa_type=TIMESTAMPTZ)
+    lease_token: str | None = None  # the claim token of the lease holder
     pending_task_id: int | None = Field(default=None, sa_type=BigInteger)  # at most one
     last_started_at: datetime | None = Field(default=None, sa_type=TIMESTAMPTZ)
     last_succeeded_at: datetime | None = Field(default=None, sa_type=TIMESTAMPTZ)

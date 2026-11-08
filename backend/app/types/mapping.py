@@ -339,6 +339,10 @@ def overlay(
     result = copy.deepcopy(existing_configuration)
     covered = sorted(covered)
     for path in covered:
+        # Arrays are atomic values: a covered path may name one, never reach into one.
+        for config in (new_configuration, existing_configuration):
+            if any(isinstance(get_path(config, path[:n]), list) for n in range(1, len(path))):
+                raise MappingError(f"covered path {'.'.join(path)} points inside an array")
         value = get_path(new_configuration, path)
         if value is MISSING:
             _delete_path(result, path)

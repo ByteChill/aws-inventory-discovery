@@ -75,3 +75,24 @@ def test_resource_has_absent_in_scan_at(db: psycopg.Connection) -> None:
     ).fetchone()
 
     assert row == ("timestamp with time zone",)
+
+
+def test_claim_query_has_a_partial_index_for_the_per_account_running_count(
+    db: psycopg.Connection,
+) -> None:
+    running = index_definitions(db, "t_inv_aws_scan_task")["ix_t_inv_aws_scan_task_running_account"]
+
+    assert "(account_id)" in running
+    assert "WHERE ((status)::text = 'running'::text)" in running
+
+
+def test_claim_and_lease_tokens_fence_task_and_shard_ownership(db: psycopg.Connection) -> None:
+    rows = db.execute(
+        "SELECT table_name, column_name FROM information_schema.columns "
+        "WHERE table_schema = current_schema() AND column_name IN ('claim_token', 'lease_token')"
+    ).fetchall()
+
+    assert set(rows) == {
+        ("t_inv_aws_scan_task", "claim_token"),
+        ("t_inv_aws_scan_shard", "lease_token"),
+    }

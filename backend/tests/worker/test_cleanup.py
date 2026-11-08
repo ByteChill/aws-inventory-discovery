@@ -19,6 +19,7 @@ from tests.worker.conftest import (
     RegistryServer,
     claim_one,
     lease_scope,
+    on_demand_shard,
     refresh,
 )
 
@@ -35,7 +36,7 @@ def run_one_refresh(session: Session, resource_id: str, account_id: str, at: dat
     """Create a refresh at `at` and run it to completion at `at`."""
     refresh(session, resource_id, account_id, now=at)
     task = claim_one(session, at)
-    queue.complete_task(session, task.id or 0, task.worker_id or "", now=at)
+    queue.complete_task(session, task.id or 0, task.claim_token or "", now=at)
 
 
 def test_the_scheduler_purges_finished_tasks_and_requests_after_their_retention(
@@ -118,7 +119,8 @@ def test_cleanup_purges_old_deleted_resources_and_long_inactive_accounts(
     sync_accounts(
         session, [a for a in without_dev if a.account_id != IMAGES], TODAY - timedelta(days=5)
     )
-    task = refresh(session, "queue-1", PAYMENTS_DEV, now=TODAY)
+    on_demand_shard(session, TODAY)  # a shard task holds a lease on the account's scope
+    task = claim_one(session, TODAY)
     assert leases.try_acquire(session, task, lease_scope(), TODAY) is leases.LeaseState.ACQUIRED
 
     result = cleanup.run_cleanup(session, settings, TODAY)

@@ -30,3 +30,8 @@ class TaskStopped(Exception):
 
 class TaskCancelled(Exception):
     """The scan request was cancelled; stop without any deletion judgement."""
+
+
+class TaskLost(Exception):
+    """This worker no longer owns the task (it was reaped and claimed again). Stop at once and
+    write nothing more: the new owner settles the task and its leases."""

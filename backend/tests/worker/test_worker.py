@@ -9,10 +9,12 @@ from sqlmodel import Session, select
 from app.aws.account_registry import RegistryAccount
 from app.core.config import Settings
 from app.models import ScanTask
+from app.models.scan import utcnow
+from app.worker import leases, queue
 from app.worker.handlers import HANDLERS, TaskContext
 from app.worker.main import Worker
 from app.worker.scheduler import Scheduler
-from tests.worker.conftest import NOW, refresh, task_state
+from tests.worker.conftest import NOW, refresh, scheduled_shard, shard_state, task_state
 
 
 def wait_for(condition: Callable[[], bool], timeout: float = 10.0) -> None:
@@ -84,3 +86,54 @@ def test_unimplemented_task_kinds_fail_without_retries_and_scheduled_work_waits_
     assert {
         t.status for t in session.exec(select(ScanTask).where(ScanTask.scan_request_id == sweep.id))
     } == {"queued"}
+
+
+def test_a_worker_that_lost_its_task_stops_and_writes_nothing_more(
+    engine: Engine,
+    session: Session,
+    make_settings: Callable[..., Settings],
+    accounts: list[RegistryAccount],
+) -> None:
+    task = scheduled_shard(session, utcnow() - timedelta(minutes=1))
+    outcome: list[str] = []
+
+    def stalled_scan(task: ScanTask, ctx: TaskContext) -> None:
+        with ctx.new_session() as own:
+            leases.acquire_or_settle(own, task)
+        try:
+            while True:
+                time.sleep(0.02)
+                ctx.checkpoint(task)
+        except BaseException as exc:
+            outcome.append(type(exc).__name__)
+            raise
+
+    worker = make_worker(engine, make_settings, {"shard": stalled_scan})
+    worker.start()
+    wait_for(lambda: task_state(session, task).status == "running")
+    wait_for(lambda: shard_state(session).lease_task_id == task.id)
+
+    # The reaper decides the worker is gone and a second worker claims the task.
+    future = utcnow() + timedelta(minutes=10)
+    assert queue.reap_lost_tasks(session, future).requeued == [task.id]
+    second = queue.claim_task(session, "worker-2", per_account_concurrency=9, now=future)
+    assert second is not None and second.id == task.id
+    stale_lease = shard_state(session)
+
+    wait_for(lambda: bool(outcome))
+    worker.stop()
+    assert worker.join(timeout=5)
+
+    assert outcome == ["TaskLost"]
+    now_state = task_state(session, task)
+    assert (now_state.status, now_state.claim_token, now_state.worker_id) == (
+        "running",
+        second.claim_token,
+        "worker-2",
+    )
+    after = shard_state(session)
+    assert (after.lease_task_id, after.lease_token, after.lease_expires_at) == (
+        stale_lease.lease_task_id,
+        stale_lease.lease_token,
+        stale_lease.lease_expires_at,
+    )

@@ -24,7 +24,7 @@ from app.core.db import make_engine
 from app.core.logging import log_context
 from app.models import ScanTask
 from app.worker import leases, queue
-from app.worker.errors import TaskCancelled, TaskError, TaskStopped
+from app.worker.errors import TaskCancelled, TaskError, TaskLost, TaskStopped
 from app.worker.handlers import HANDLERS, Handler, TaskContext
 from app.worker.scheduler import Scheduler
 
@@ -165,13 +165,14 @@ class Worker:
     def _heartbeat_loop(self) -> None:
         while not self._heartbeat_done.wait(self.heartbeat_interval):
             with self._running_lock:
-                task_ids = list(self._running)
-            if not task_ids:
+                claims = {i: t.claim_token or "" for i, t in self._running.items()}
+            if not claims:
                 continue
+            task_ids = list(claims)
             try:
                 with self.new_session() as session:
-                    owned = queue.heartbeat(session, self.worker_id, task_ids)
-                    leases.renew_leases(session, owned)
+                    owned = queue.heartbeat(session, claims)
+                    leases.renew_leases(session, {i: claims[i] for i in owned})
             except Exception:
                 logger.exception("heartbeat failed")
                 continue
@@ -212,6 +213,10 @@ class Worker:
                     "internal", f"no handler for task kind {task.kind!r}", retryable=False
                 )
             stats = handler(task, self.context)
+        except TaskLost:
+            # Reaped and claimed again: the new owner settles the task and its leases. Any
+            # write from here would only get in its way.
+            logger.warning("task ownership lost, abandoning the run")
         except TaskStopped:
             logger.info("task interrupted by shutdown, requeueing")
             self._release(task, success=None)
@@ -220,7 +225,9 @@ class Worker:
             logger.info("task stopped, scan request cancelled")
             self._release(task, success=None)
             self._settle(
-                lambda s: queue.finish_task(s, task_id, "cancelled", worker_id=self.worker_id)
+                lambda s: queue.finish_task(
+                    s, task_id, "cancelled", claim_token=task.claim_token or ""
+                )
             )
         except TaskError as exc:
             logger.warning("task failed: %s", exc.message, extra={"error_code": exc.error_code})
@@ -236,7 +243,7 @@ class Worker:
             self._fail(task, "internal", f"{type(exc).__name__}: {exc}", retryable=True)
         else:
             self._release(task, success=True)
-            self._settle(lambda s: queue.complete_task(s, task_id, self.worker_id, stats))
+            self._settle(lambda s: queue.complete_task(s, task_id, task.claim_token or "", stats))
 
     def _release(
         self, task: ScanTask, *, success: bool | None, error_code: str | None = None
@@ -244,7 +251,7 @@ class Worker:
         """Safety net: free whatever leases the handler left behind."""
         assert task.id is not None
         with self.new_session() as session:
-            leases.release_task_leases(session, task.id, success=success, error_code=error_code)
+            leases.release_task_leases(session, task, success=success, error_code=error_code)
 
     def _fail(self, task: ScanTask, error_code: str, message: str, *, retryable: bool) -> None:
         self._settle(lambda s: queue.fail_task(s, task, error_code, message, retryable=retryable))

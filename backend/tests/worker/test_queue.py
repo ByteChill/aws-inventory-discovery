@@ -1,6 +1,7 @@
 import random
 import threading
-from datetime import timedelta
+from collections.abc import Callable
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import Engine
@@ -10,6 +11,8 @@ from app.aws.account_registry import RegistryAccount
 from app.core.config import Settings
 from app.models import ScanRequest, ScanTask
 from app.worker import leases, queue, requests
+from app.worker.errors import TaskCancelled
+from app.worker.handlers import TaskContext
 from app.worker.scheduler import Scheduler
 from tests.worker.conftest import (
     IMAGES,
@@ -17,11 +20,15 @@ from tests.worker.conftest import (
     PAYMENTS_DEV,
     PAYMENTS_PROD,
     WORKER,
+    RegistryServer,
     claim,
     claim_one,
+    complete,
     lease_scope,
+    on_demand_shard,
     refresh,
     scheduled_shard,
+    shard_state,
     task_state,
 )
 
@@ -89,7 +96,7 @@ def test_per_account_concurrency_caps_running_tasks(
     assert sorted(t.account_id for t in first if t) == sorted([PAYMENTS_DEV, PAYMENTS_DEV, IMAGES])
     assert claim_capped() is None  # third payments task has to wait
     done = next(t for t in first if t and t.account_id == PAYMENTS_DEV)
-    queue.complete_task(session, done.id or 0, WORKER, now=NOW)
+    complete(session, done)
     assert claim_capped() is not None
 
 
@@ -194,7 +201,7 @@ def test_request_status_rolls_up_from_its_tasks(
             session.refresh(created.request)
             assert created.request.status == "running"
         if outcome == "ok":
-            queue.complete_task(session, task.id or 0, WORKER, now=NOW)
+            complete(session, task)
         else:
             queue.fail_task(session, task, "access_denied", "x", retryable=False, now=NOW)
         session.refresh(created.request)
@@ -234,9 +241,9 @@ def test_heartbeat_keeps_a_task_alive_and_reports_lost_ones(
     task = claim_one(session)
     later = NOW + timedelta(minutes=3)
 
-    assert queue.heartbeat(session, WORKER, [task.id or 0], later) == {task.id}
+    assert queue.heartbeat(session, {task.id or 0: task.claim_token or ""}, later) == {task.id}
     assert queue.reap_lost_tasks(session, later).requeued == []
-    assert queue.heartbeat(session, "someone-else", [task.id or 0], later) == set()
+    assert queue.heartbeat(session, {task.id or 0: "stale"}, later) == set()
 
 
 def test_requeue_does_not_count_the_interrupted_attempt(
@@ -271,32 +278,144 @@ def test_cancel_stops_queued_tasks_and_leaves_running_ones_to_notice(
     assert queue.is_cancelled(session, created.request.id or 0)
     assert task_state(session, running).status == "running"
     # The running task finishes its page, sees the cancel and stops; the request stays cancelled.
-    assert queue.finish_task(session, running.id or 0, "cancelled", worker_id=WORKER, now=NOW)
+    assert queue.finish_task(
+        session, running.id or 0, "cancelled", claim_token=running.claim_token or "", now=NOW
+    )
     assert request_of(session, running).status == "cancelled"
     statuses = sorted(t.status for t in session.exec(select(ScanTask)))
     assert statuses == ["cancelled", "cancelled", "cancelled"]
 
 
-def test_cancel_spares_a_task_that_another_request_is_waiting_on(
-    session: Session, scheduler: Scheduler, accounts: list[RegistryAccount]
-) -> None:
-    holder = scheduled_shard(session)
-    claimed_holder = claim_one(session)
-    assert claimed_holder.id == holder.id
-    assert leases.acquire_or_settle(session, claimed_holder, NOW) is leases.LeaseState.ACQUIRED
-    # Two on-demand refreshes of the same scope: the first is coalesced into the second (R2).
-    first = refresh(session, "queue-1")
-    second = refresh(session, "queue-2", now=NOW + timedelta(seconds=1))
+def park_two_on_demand_runs(session: Session) -> tuple[ScanTask, ScanTask, ScanTask, datetime]:
+    """A scope held by a scheduled holder, with request A's task coalesced into request B's."""
+    scheduled_shard(session)
+    holder = claim_one(session)
+    assert leases.acquire_or_settle(session, holder, NOW) is leases.LeaseState.ACQUIRED
+    first = on_demand_shard(session)
+    second = on_demand_shard(session, NOW + timedelta(seconds=1))
     later = NOW + timedelta(minutes=1)
     for _ in range(2):
         leases.acquire_or_settle(session, claim_one(session, later), later)
+    return holder, first, second, later
+
+
+def test_cancelling_a_request_keeps_a_shared_task_running_for_the_other_request(
+    engine: Engine, session: Session, scheduler: Scheduler, accounts: list[RegistryAccount]
+) -> None:
+    holder, first, second, later = park_two_on_demand_runs(session)
 
     queue.cancel_request(session, second.scan_request_id, later)
 
-    assert task_state(session, second).status == "queued"  # the first request still needs it
-    leases.release_lease(session, holder.id or 0, lease_scope(), success=True, now=later)
+    assert task_state(session, second).status == "queued"  # request A still needs it
+    leases.release_lease(session, holder, lease_scope(), success=True, now=later)
     trailing = claim_one(session, later)
     assert trailing.id == second.id
-    queue.complete_task(session, trailing.id or 0, WORKER, now=later)
+    assert leases.acquire_or_settle(session, trailing, later) is leases.LeaseState.ACQUIRED
+    context = TaskContext(
+        lambda: Session(engine, expire_on_commit=False), WORKER, threading.Event()
+    )
+    context.checkpoint(trailing)  # B is cancelled, A is not: keep going
+    assert complete(session, trailing, later)
     assert request_of(session, first).status == "succeeded"
     assert request_of(session, second).status == "cancelled"
+
+
+def test_a_shared_task_stops_once_every_request_that_needs_it_is_cancelled(
+    engine: Engine, session: Session, scheduler: Scheduler, accounts: list[RegistryAccount]
+) -> None:
+    _holder, first, second, later = park_two_on_demand_runs(session)
+    queue.cancel_request(session, second.scan_request_id, later)
+
+    queue.cancel_request(session, first.scan_request_id, later)
+
+    assert task_state(session, second).status == "cancelled"  # nobody needs it any more
+    assert task_state(session, first).status == "coalesced"
+    assert shard_state(session).pending_task_id is None
+
+
+def test_a_running_shared_task_checkpoints_until_all_dependents_are_cancelled(
+    engine: Engine, session: Session, scheduler: Scheduler, accounts: list[RegistryAccount]
+) -> None:
+    holder, first, second, later = park_two_on_demand_runs(session)
+    leases.release_lease(session, holder, lease_scope(), success=True, now=later)
+    trailing = claim_one(session, later)
+    assert leases.acquire_or_settle(session, trailing, later) is leases.LeaseState.ACQUIRED
+    context = TaskContext(
+        lambda: Session(engine, expire_on_commit=False), WORKER, threading.Event()
+    )
+
+    queue.cancel_request(session, second.scan_request_id, later)
+    context.checkpoint(trailing)
+    queue.cancel_request(session, first.scan_request_id, later)
+
+    with pytest.raises(TaskCancelled):
+        context.checkpoint(trailing)
+
+
+def test_cancel_does_not_deadlock_with_claim_and_finish(
+    engine: Engine, settings: Settings, accounts: list[RegistryAccount]
+) -> None:
+    # One global lock order (queue.py docstring): cancel, claim and finish race on the same rows.
+    errors: list[BaseException] = []
+
+    def run(action: Callable[[Session], object], barrier: threading.Barrier) -> None:
+        try:
+            with Session(engine, expire_on_commit=False) as own:
+                barrier.wait()
+                action(own)
+        except BaseException as exc:  # noqa: BLE001 - the test reports whatever went wrong
+            errors.append(exc)
+
+    for _ in range(25):
+        with Session(engine, expire_on_commit=False) as setup:
+            created = requests.create_scan(
+                setup,
+                requests.ScanSpec(account_ids=[PAYMENTS_DEV, PAYMENTS_PROD, IMAGES]),
+                settings,
+                now=NOW,
+            )
+            running = claim_one(setup)
+        barrier = threading.Barrier(3)
+        actions = race_actions(created.request.id or 0, running)
+        threads = [threading.Thread(target=run, args=(a, barrier)) for a in actions]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        assert not errors, errors
+        with Session(engine) as cleanup:
+            queue.cancel_request(cleanup, created.request.id or 0, NOW)
+
+
+def race_actions(request_id: int, running: ScanTask) -> list[Callable[[Session], object]]:
+    return [
+        lambda s: queue.cancel_request(s, request_id, NOW),
+        lambda s: claim(s),
+        lambda s: queue.complete_task(s, running.id or 0, running.claim_token or "", now=NOW),
+    ]
+
+
+def test_request_counts_persist_task_totals_and_resource_deltas(
+    session: Session,
+    scheduler: Scheduler,
+    registry: RegistryServer,
+    accounts: list[RegistryAccount],
+) -> None:
+    registry.always_fail = 500  # the sweep runs on the stored snapshot and records why
+    sweep = scheduler.start_sweep(session, NOW)
+    assert "registryError" in (sweep.counts or {})
+    total = (sweep.counts or {})["accounts"]
+    later = NOW + timedelta(hours=6)  # every account's stagger offset has passed
+    first, second = claim_one(session, later), claim_one(session, later)
+
+    assert complete(session, first, NOW, stats={"new": 3, "updated": 1})
+    mid = request_of(session, first).counts or {}
+    assert mid["tasks"] == {"succeeded": 1, "running": 1, "queued": total - 2}
+    assert mid["resources"] == {"new": 3, "updated": 1, "missing": 0, "deleted": 0}
+
+    assert complete(session, second, NOW, stats={"new": 2, "missing": 4, "deleted": 1})
+    counts = request_of(session, first).counts or {}
+    assert counts["resources"] == {"new": 5, "updated": 1, "missing": 4, "deleted": 1}
+    assert counts["tasks"] == {"succeeded": 2, "queued": total - 2}
+    assert counts["accounts"] == total
+    assert "registryError" in counts

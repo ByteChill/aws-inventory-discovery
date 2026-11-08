@@ -164,6 +164,33 @@ def scheduled_shard(session: Session, now: datetime = NOW) -> ScanTask:
     return task
 
 
+def on_demand_shard(session: Session, now: datetime = NOW, kind: str = "shard") -> ScanTask:
+    """An on-demand (priority 0) task on the test scope, in a request of its own."""
+    request = requests.create_sweep_request(
+        session, [], trigger="api", priority=0, scope={"all": False}, now=now
+    )
+    assert request.id is not None
+    (task,) = requests.add_tasks(
+        session,
+        request.id,
+        [requests.NewTask(kind, PAYMENTS_DEV, REGION, TYPE, source="cloudcontrol")],
+        now=now,
+    )
+    # The request had no accounts, so it started out finished; it has a task now.
+    request.status, request.started_at, request.finished_at = "queued", None, None
+    session.add(request)
+    session.commit()
+    return task
+
+
+def complete(
+    session: Session, task: ScanTask, now: datetime = NOW, stats: dict | None = None
+) -> bool:
+    """Finish a claimed task as its claimant."""
+    assert task.id is not None
+    return queue.complete_task(session, task.id, task.claim_token or "", stats=stats, now=now)
+
+
 def shard_state(session: Session) -> ScanShard:
     session.expire_all()
     return session.get_one(ScanShard, (PAYMENTS_DEV, REGION, TYPE))

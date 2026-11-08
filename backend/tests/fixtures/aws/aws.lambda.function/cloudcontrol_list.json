@@ -1,0 +1,9 @@
+{
+  "ResourceDescriptions": [
+    {
+      "Identifier": "MyTestRotationLambda",
+      "Properties": "{\"FunctionName\":\"MyTestRotationLambda\",\"Arn\":\"arn:aws:lambda:us-east-1:111122223333:function:MyTestRotationLambda\",\"Runtime\":\"python3.12\",\"Role\":\"arn:aws:iam::111122223333:role/MyTestRotationLambdaRole\",\"Handler\":\"lambda_function.lambda_handler\",\"Description\":\"Rotation function for MyTestDatabaseSecret\",\"Timeout\":30,\"MemorySize\":128,\"PackageType\":\"Zip\",\"Architectures\":[\"x86_64\"],\"EphemeralStorage\":{\"Size\":512},\"TracingConfig\":{\"Mode\":\"PassThrough\"},\"ReservedConcurrentExecutions\":10,\"VpcConfig\":{\"SubnetIds\":[\"subnet-0bb1c79de301436ee\"],\"SecurityGroupIds\":[\"sg-e4076980\"]},\"Environment\":{\"Variables\":{\"DB_PASSWORD\":\"dummy-password-for-tests\",\"LOG_LEVEL\":\"INFO\"}},\"Tags\":[{\"Key\":\"Owner\",\"Value\":\"TeamA\"}]}"
+    }
+  ],
+  "TypeName": "AWS::Lambda::Function"
+}

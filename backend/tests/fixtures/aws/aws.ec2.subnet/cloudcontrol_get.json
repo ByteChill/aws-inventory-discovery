@@ -1,0 +1,7 @@
+{
+  "ResourceDescription": {
+    "Identifier": "subnet-0bb1c79de301436ee",
+    "Properties": "{\"SubnetId\":\"subnet-0bb1c79de301436ee\",\"VpcId\":\"vpc-0ee975135dEXAMPLE\",\"CidrBlock\":\"10.0.2.0/24\",\"AvailabilityZone\":\"us-east-1c\",\"AvailabilityZoneId\":\"use1-az6\",\"MapPublicIpOnLaunch\":false,\"AssignIpv6AddressOnCreation\":false,\"Ipv6CidrBlocks\":[],\"Tags\":[{\"Key\":\"Name\",\"Value\":\"MySubnet\"}]}"
+  },
+  "TypeName": "AWS::EC2::Subnet"
+}

@@ -1,0 +1,7 @@
+{
+  "ResourceDescription": {
+    "Identifier": "i-1234567890abcdef0",
+    "Properties": "{\"InstanceId\":\"i-1234567890abcdef0\",\"ImageId\":\"ami-1234567890EXAMPLE\",\"InstanceType\":\"t2.micro\",\"KeyName\":\"my_keypair\",\"SubnetId\":\"subnet-0bb1c79de301436ee\",\"VpcId\":\"vpc-0ee975135dEXAMPLE\",\"AvailabilityZone\":\"us-east-1c\",\"PrivateIp\":\"10.0.2.88\",\"PrivateIpAddress\":\"10.0.2.88\",\"PrivateDnsName\":\"ip-10-0-2-88.us-east-1.compute.internal\",\"PublicIp\":\"54.194.252.215\",\"PublicDnsName\":\"ec2-54-194-252-215.us-east-1.compute.amazonaws.com\",\"State\":{\"Code\":\"16\",\"Name\":\"running\"},\"Tenancy\":\"default\",\"Monitoring\":false,\"SecurityGroupIds\":[\"sg-e4076980\"],\"SourceDestCheck\":true,\"EbsOptimized\":false,\"IamInstanceProfile\":\"AdminRole\",\"UserData\":\"ZWNobyBkdW1teQ==\",\"Tags\":[{\"Key\":\"Name\",\"Value\":\"Server_1\"}]}"
+  },
+  "TypeName": "AWS::EC2::Instance"
+}

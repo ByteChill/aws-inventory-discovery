@@ -142,7 +142,8 @@ class ResourceWriter:
                 if scan_request_id is not None and (counts.new or counts.updated):
                     db.connection().execute(
                         text(
-                            "UPDATE t_inv_aws_scan_request SET counts = coalesce(counts, '{}') "
+                            "UPDATE t_inv_aws_scan_request SET counts = "
+                            "(CASE WHEN jsonb_typeof(counts) = 'object' THEN counts ELSE '{}' END) "
                             "|| jsonb_build_object("
                             "'new', coalesce((counts->>'new')::int, 0) + :new, "
                             "'updated', coalesce((counts->>'updated')::int, 0) + :updated) "
@@ -314,11 +315,7 @@ class ResourceWriter:
         entries: list[tuple[int, Observation, dict[str, Any]]] = []
         for row_id, obs, relationships in jobs:
             for rel in relationships:
-                if (
-                    rel.get("resourceType")
-                    and rel.get("resourceId")
-                    and rel.get("relationshipName")
-                ):
+                if rel.get("resourceType") and rel.get("resourceId"):
                     entries.append((row_id, obs, rel))
                     scope = (obs.item.account_id, obs.item.aws_region)
                     wanted[(*scope, f"{rel['resourceType']}|{rel['resourceId']}")] = (
@@ -341,11 +338,13 @@ class ResourceWriter:
         rows: dict[tuple[int, str, str, str], dict[str, Any]] = {}
         for row_id, obs, rel in entries:
             scope = (obs.item.account_id, obs.item.aws_region)
-            rows[(row_id, rel["resourceType"], rel["resourceId"], rel["relationshipName"])] = {
+            rows[
+                (row_id, rel["resourceType"], rel["resourceId"], rel.get("relationshipName", ""))
+            ] = {
                 "from_resource_id": row_id,
                 "to_resource_type": rel["resourceType"],
                 "to_resource_key": rel["resourceId"],
-                "relation_name": rel["relationshipName"],
+                "relation_name": rel.get("relationshipName", ""),
                 "to_resource_id": targets.get((*scope, rel["resourceType"], rel["resourceId"])),
             }
         db.exec(pg_insert(ResourceRelation).values(list(rows.values())))

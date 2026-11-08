@@ -128,7 +128,8 @@ class Discovery:
         sweep = ConfigSweep({t: [] for t in types}, True, started)
         try:
             for raw in config_source.select(self._config, sorted(types)):
-                item = ConfigItem.model_validate(raw)
+                # Config leaves out fields it has no value for
+                item = ConfigItem.model_validate({"arn": None, "resourceName": None, **raw})
                 sweep.by_type.setdefault(item.resource_type, []).append(
                     Observation(
                         resource_type=item.resource_type,
@@ -229,7 +230,7 @@ class Discovery:
             properties = cloudcontrol_source.get_resource(
                 self._cloudcontrol, resource_type, identifier
             )
-        if properties is GONE or isinstance(properties, Gone):
+        if isinstance(properties, Gone):
             return GONE
         item = to_config_item(spec, properties, account_id=self.account_id, region=self.region)
         source: Source = "native" if spec.sources.native else "cloudcontrol"

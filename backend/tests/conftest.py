@@ -12,18 +12,17 @@ import boto3
 import httpx
 import psycopg
 import pytest
-import seed
+import seed  # ty: ignore[import-not-found]
 import uvicorn
 from alembic import command
 from alembic.config import Config
-from fake_aws.app import create_app
+from fake_aws.app import create_app  # ty: ignore[import-not-found]
 from fastapi.testclient import TestClient
 from moto.server import ThreadedMotoServer
 from psycopg import sql
 
 from app.aws.credentials import CredentialService
 from app.aws.session import make_session
-
 from app.core.config import get_settings
 from app.core.db import get_engine, get_read_engine, normalise_url
 
@@ -147,7 +146,7 @@ def aws_servers() -> Iterator[AwsEnv]:
     thread.start()
     while not server.started:
         time.sleep(0.05)
-    ids = seed.account_ids(3)  # the third account has Config off in eu-west-2
+    ids = seed.account_ids(7)  # [2] has Config off in eu-west-2; [6] records only 3 types
     env = AwsEnv(fake_url, moto_url, ids, seed.build_dataset(ids, AWS_REGIONS))
     env.reload()
     seed.create_amis(fake_url, moto_url, ids, AWS_REGIONS)

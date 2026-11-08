@@ -1,0 +1,5 @@
+[
+  {"account_id": "111122223333", "account_name": "payments-prod-renamed", "account_type": "prod", "eim_id": "10000001", "eim_app": "payments", "ba_id": "BA0001"},
+  {"account_id": "444455556666", "account_name": "shared-images", "account_type": "prod", "eim_id": "10000002", "eim_app": "golden-images", "ba_id": "BA0002"},
+  {"account_id": "999900001111", "account_name": "reporting-prod", "account_type": "prod", "eim_id": "10000004", "eim_app": "reporting", "ba_id": "BA0004"}
+]

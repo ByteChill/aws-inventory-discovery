@@ -1,0 +1,70 @@
+{
+  "typeName": "AWS::SQS::Queue",
+  "label": {
+    "zh-CN": "SQS 队列",
+    "en": "SQS queue"
+  },
+  "identity": {
+    "identifier": "QueueUrl",
+    "resourceIdFrom": "QueueUrl",
+    "arnFrom": "QueueArn",
+    "nameFrom": "QueueName"
+  },
+  "sources": {
+    "config": true,
+    "cloudControl": {
+      "read": true,
+      "list": true
+    }
+  },
+  "mapping": {
+    "keyCase": "pascal",
+    "properties": [
+      "QueueUrl",
+      "QueueName",
+      "VisibilityTimeout",
+      "MaximumMessageSize",
+      "MessageRetentionPeriod",
+      "DelaySeconds",
+      "ReceiveMessageWaitTimeSeconds",
+      "SqsManagedSseEnabled",
+      "RedrivePolicy"
+    ],
+    "rename": {
+      "Arn": "QueueArn"
+    },
+    "transform": {
+      "SqsManagedSseEnabled": "toString"
+    }
+  },
+  "columns": [
+    {
+      "key": "sseEnabled",
+      "label": {
+        "zh-CN": "SQS 托管加密",
+        "en": "SQS-managed encryption"
+      },
+      "type": "bool",
+      "path": "SqsManagedSseEnabled"
+    },
+    {
+      "key": "visibilityTimeout",
+      "label": {
+        "zh-CN": "可见性超时（秒）",
+        "en": "Visibility timeout (s)"
+      },
+      "type": "number",
+      "path": "VisibilityTimeout"
+    },
+    {
+      "key": "deadLetterTarget",
+      "label": {
+        "zh-CN": "死信队列",
+        "en": "Dead-letter queue"
+      },
+      "type": "text",
+      "path": "RedrivePolicy.deadLetterTargetArn",
+      "mono": true
+    }
+  ]
+}

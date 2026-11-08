@@ -1,0 +1,60 @@
+{
+  "typeName": "AWS::EC2::VPC",
+  "label": {
+    "zh-CN": "VPC",
+    "en": "VPC"
+  },
+  "identity": {
+    "identifier": "vpcId",
+    "resourceIdFrom": "vpcId",
+    "arnTemplate": "arn:{partition}:ec2:{region}:{account}:vpc/{id}",
+    "nameFrom": "tag:Name"
+  },
+  "sources": {
+    "config": true,
+    "cloudControl": {
+      "read": true,
+      "list": true
+    }
+  },
+  "mapping": {
+    "properties": [
+      "VpcId",
+      "CidrBlock",
+      "InstanceTenancy"
+    ],
+    "exclude": [
+      "CidrBlockAssociations"
+    ]
+  },
+  "columns": [
+    {
+      "key": "cidrBlock",
+      "label": {
+        "zh-CN": "CIDR",
+        "en": "CIDR"
+      },
+      "type": "text",
+      "path": "cidrBlock",
+      "mono": true
+    },
+    {
+      "key": "isDefault",
+      "label": {
+        "zh-CN": "默认 VPC",
+        "en": "Default VPC"
+      },
+      "type": "bool",
+      "path": "isDefault"
+    },
+    {
+      "key": "state",
+      "label": {
+        "zh-CN": "状态",
+        "en": "State"
+      },
+      "type": "enum",
+      "path": "state.value"
+    }
+  ]
+}

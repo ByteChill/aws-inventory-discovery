@@ -221,6 +221,12 @@ class ResourceWriter:
                 row.live_raw = values["live_raw"]
             if values["content_hash"] == row.content_hash:
                 counts.unchanged += 1
+                # relationships are outside the hash and are not a resource change (DESIGN 5.4):
+                # keep them current without counting an update or moving last_changed_at
+                if _canonical(values["relationships"]) != _canonical(row.relationships):
+                    row.relationships = values["relationships"]
+                    assert row.id is not None
+                    relation_jobs.append((row.id, obs, values["relationships"]))
             else:
                 for name in (
                     "arn",
@@ -601,6 +607,13 @@ class ResourceWriter:
                 account.last_scan_ok_at = now
             db.add(account)
         return status
+
+
+def _canonical(relationships: list[dict[str, Any]] | None) -> str:
+    """Relationships compared as a set: Config does not promise an order."""
+    return json.dumps(
+        sorted(json.dumps(r, sort_keys=True) for r in relationships or []), separators=(",", ":")
+    )
 
 
 def _group_scopes(

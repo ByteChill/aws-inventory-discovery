@@ -422,3 +422,39 @@ def test_an_accepted_gone_observation_blocks_an_older_in_flight_listing(
     assert (row.observed_at, row.observed_source) == (T0 + minutes(6), "native")
     assert writer.write([replace(lost, observed_at=T0 + minutes(5))]).stale == 1
     assert rows(session, QUEUE)[key].status == "deleted"
+
+
+def test_a_relationship_only_change_updates_the_relations_but_is_not_a_resource_change(
+    writer: ResourceWriter, disc: Discovery, session: Session
+) -> None:
+    sweep = disc.sweep_config(["AWS::EC2::VPC", "AWS::EC2::Subnet"])
+    writer.write([o for group in sweep.by_type.values() for o in group])
+    (vpc,) = rows(session, "AWS::EC2::VPC").values()
+    (subnet_obs,) = sweep.by_type["AWS::EC2::Subnet"]
+    full = subnet_obs.relationships or []
+    without_vpc = [r for r in full if r["resourceType"] != "AWS::EC2::VPC"]
+    assert 0 < len(without_vpc) < len(full)
+
+    def targets() -> dict[str, int | None]:
+        session.expire_all()
+        (subnet,) = rows(session, "AWS::EC2::Subnet").values()
+        found = session.exec(
+            select(ResourceRelation).where(ResourceRelation.from_resource_id == subnet.id)
+        ).all()
+        return {r.to_resource_key: r.to_resource_id for r in found}
+
+    dropped = replace(subnet_obs, relationships=without_vpc, observed_at=T0 + minutes(1))
+    counts = writer.write([dropped])
+
+    assert (counts.updated, counts.unchanged) == (0, 1)
+    (subnet,) = rows(session, "AWS::EC2::Subnet").values()
+    assert subnet.relationships == without_vpc
+    assert subnet.last_changed_at == subnet_obs.observed_at  # not a resource change
+    assert subnet.observed_at == T0 + minutes(1)
+    assert vpc.resource_id not in targets()
+
+    regained = replace(subnet_obs, relationships=full, observed_at=T0 + minutes(2))
+    assert writer.write([regained]).updated == 0
+    assert targets()[vpc.resource_id] == vpc.id  # resolved again
+    (subnet,) = rows(session, "AWS::EC2::Subnet").values()
+    assert subnet.relationships == full and subnet.last_changed_at == subnet_obs.observed_at

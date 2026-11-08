@@ -6,7 +6,7 @@ import { useI18n } from "@/i18n"
 import { formatNumber } from "@/lib/format"
 import type { Locale } from "@/lib/preferences"
 import { cn } from "@/lib/utils"
-import type { Column, FacetBucket, FilterValue, Range } from "./types"
+import type { Column, FilterValue, Option, Range } from "./types"
 
 type Change = (value: FilterValue | undefined) => void
 
@@ -20,7 +20,7 @@ export function FilterControl({
   column: Column
   value: FilterValue | undefined
   onChange: Change
-  options: FacetBucket[] | undefined
+  options: Option[] | undefined
 }) {
   switch (column.type) {
     case "text":
@@ -79,7 +79,7 @@ export function OptionList({
   onChange,
   className,
 }: {
-  options: FacetBucket[]
+  options: Option[]
   selected: string[]
   onChange: (next: string[]) => void
   className?: string
@@ -126,9 +126,11 @@ export function OptionList({
                   className="mt-1 accent-[var(--accent)]"
                 />
                 <span className="min-w-0 flex-1 break-words">{o.label}</span>
-                <span className="text-muted-foreground">
-                  {formatNumber(o.count, locale)}
-                </span>
+                {o.count !== undefined && (
+                  <span className="text-muted-foreground">
+                    {formatNumber(o.count, locale)}
+                  </span>
+                )}
               </label>
             </li>
           )
@@ -259,7 +261,7 @@ function BoolFilter({
 export function describeFilter(
   column: Pick<Column, "type" | "label"> | undefined,
   value: FilterValue,
-  options: FacetBucket[] | undefined,
+  options: Option[] | undefined,
   t: ReturnType<typeof useI18n>["t"],
   locale: Locale,
 ): string {

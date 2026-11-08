@@ -272,5 +272,27 @@
   "scanError.worker_lost.title": "The worker stopped",
   "scanError.worker_lost.hint": "See the task log.",
   "scanError.internal.title": "Internal error",
-  "scanError.internal.hint": "See the task log."
+  "scanError.internal.hint": "See the task log.",
+
+  "common.comingSoon": "Not available yet",
+  "page.notAvailable": "This page is not available yet",
+  "action.add": "Add",
+  "resources.tags.key": "Tag key",
+  "resources.tags.value": "Tag value",
+  "resources.tags.mode": "Tag condition",
+  "resources.group.tagMissing": "Missing tag",
+  "resources.facetsError": "Couldn't load the filter options",
+  "accounts.removed": "Removed accounts",
+  "accounts.searchPlaceholder": "Search by name or ID",
+  "accounts.noCoverage": "Nothing scanned yet",
+  "accounts.lastScanOk": "Last successful scan",
+  "accounts.cell.lastOk": "Last success {time}",
+  "accounts.cell.reason": "Reason: {reason}",
+  "detail.status": "Status",
+  "detail.missingSince": "First missed",
+  "detail.deletedAt": "Deleted",
+  "detail.rel.out": "Points to",
+  "detail.rel.in": "Pointed to by",
+  "detail.liveSearch": "Search live data",
+  "detail.noMatch": "Nothing matches"
 }

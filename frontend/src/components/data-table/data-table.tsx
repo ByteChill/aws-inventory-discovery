@@ -44,8 +44,8 @@ import { cn } from "@/lib/utils"
 import { describeFilter, FilterControl } from "./filters"
 import {
   type Column,
-  type FacetBucket,
   type FilterValue,
+  type Option,
   PAGE_SIZES,
   type RowFlag,
   type TableState,
@@ -64,7 +64,7 @@ export type DataTableProps<Row extends object> = {
   state: TableState
   onStateChange: (next: TableState) => void
   /** Option counts for enum filters, keyed by column key. */
-  facets?: Record<string, FacetBucket[]>
+  facets?: Record<string, Option[]>
   isLoading?: boolean
   error?: unknown
   onRetry?: () => void
@@ -79,6 +79,8 @@ export type DataTableProps<Row extends object> = {
   filterLabels?: Record<string, string>
   toolbarStart?: ReactNode
   toolbarEnd?: ReactNode
+  /** Column keys hidden until the user shows them. */
+  defaultHidden?: string[]
 }
 
 const DEFAULT_WIDTH: Record<Column["type"], number> = {
@@ -121,6 +123,7 @@ export function DataTable<Row extends object>({
   filterLabels,
   toolbarStart,
   toolbarEnd,
+  defaultHidden,
 }: DataTableProps<Row>) {
   const { t, locale } = useI18n()
   const [visibility, setVisibility] = useLocalStorage<VisibilityState>(
@@ -130,6 +133,11 @@ export function DataTable<Row extends object>({
   const [sizing, setSizing] = useLocalStorage<ColumnSizingState>(
     `table:${tableId}:sizing`,
     {},
+  )
+
+  const hiddenByDefault = useMemo(
+    () => Object.fromEntries((defaultHidden ?? []).map((k) => [k, false])),
+    [defaultHidden],
   )
 
   const defs = useMemo<ColumnDef<Row>[]>(
@@ -155,7 +163,10 @@ export function DataTable<Row extends object>({
     manualPagination: true,
     enableColumnResizing: true,
     columnResizeMode: "onChange",
-    state: { columnVisibility: visibility, columnSizing: sizing },
+    state: {
+      columnVisibility: { ...hiddenByDefault, ...visibility },
+      columnSizing: sizing,
+    },
     onColumnVisibilityChange: setVisibility,
     onColumnSizingChange: setSizing,
   })
@@ -468,7 +479,7 @@ export function DataTable<Row extends object>({
 
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 pt-3">
         <p>
-          {total > 0 || !isLoading
+          {!error && (total > 0 || !isLoading)
             ? t(`table.total.${entity}` as MessageKey, { count: total })
             : ""}
         </p>
@@ -527,7 +538,7 @@ function CellContent({
   column: Column
   value: unknown
   custom: ReactNode | undefined
-  options: FacetBucket[] | undefined
+  options: Option[] | undefined
 }) {
   const { t, locale } = useI18n()
   if (custom !== undefined) return <>{custom}</>

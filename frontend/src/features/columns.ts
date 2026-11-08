@@ -23,30 +23,25 @@ function col(
 
 /**
  * Accounts and scans are small fixed tables, so their columns are defined here.
- * Resource columns come from GET /columns. Enum columns get a filter once the
- * API returns option counts for them.
+ * Resource columns come from GET /columns. The accounts API filters by
+ * environment, EIM, BA and status; name and ID are searched with `q`.
  */
 export function useAccountColumns(): Column[] {
   const { t } = useI18n()
   return useMemo(
     () => [
-      col("accountName", t("accounts.column.name"), "text", {
+      col("accountName", t("accounts.column.name"), "text"),
+      col("accountId", t("accounts.column.id"), "text", { mono: true }),
+      col("accountType", t("accounts.column.env"), "enum", {
         filterable: true,
       }),
-      col("accountId", t("accounts.column.id"), "text", {
-        mono: true,
-        filterable: true,
-      }),
-      col("accountType", t("accounts.column.env"), "enum"),
       col("eimId", "EIM", "text", { filterable: true }),
       col("baId", "BA", "text", { filterable: true }),
-      col("resourceCount", t("accounts.column.resources"), "number", {
+      col("resourceCount", t("accounts.column.resources"), "number"),
+      col("accessStatus", t("accounts.column.status"), "enum", {
         filterable: true,
       }),
-      col("accessStatus", t("accounts.column.status"), "enum"),
-      col("lastScanAt", t("accounts.column.lastScan"), "datetime", {
-        filterable: true,
-      }),
+      col("lastScanOkAt", t("accounts.column.lastScan"), "datetime"),
     ],
     [t],
   )

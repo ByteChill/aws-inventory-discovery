@@ -272,5 +272,27 @@
   "scanError.worker_lost.title": "处理任务的程序中断了",
   "scanError.worker_lost.hint": "查看任务日志",
   "scanError.internal.title": "内部错误",
-  "scanError.internal.hint": "查看任务日志"
+  "scanError.internal.hint": "查看任务日志",
+
+  "common.comingSoon": "暂未开放",
+  "page.notAvailable": "这个页面暂未开放",
+  "action.add": "添加",
+  "resources.tags.key": "标签键",
+  "resources.tags.value": "标签值",
+  "resources.tags.mode": "标签条件",
+  "resources.group.tagMissing": "缺少标签",
+  "resources.facetsError": "无法加载筛选选项",
+  "accounts.removed": "已移除的账号",
+  "accounts.searchPlaceholder": "搜索名称或 ID",
+  "accounts.noCoverage": "还没有扫描记录",
+  "accounts.lastScanOk": "上次成功扫描",
+  "accounts.cell.lastOk": "上次成功 {time}",
+  "accounts.cell.reason": "原因：{reason}",
+  "detail.status": "状态",
+  "detail.missingSince": "首次未发现",
+  "detail.deletedAt": "删除时间",
+  "detail.rel.out": "指向",
+  "detail.rel.in": "被指向",
+  "detail.liveSearch": "在实时数据中搜索",
+  "detail.noMatch": "没有匹配的内容"
 }

@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { HealthApiV1HealthGetData, HealthApiV1HealthGetResponses } from './types.gen';
+import type { ExportResourcesData, ExportResourcesErrors, ExportResourcesResponses, GetAccountData, GetAccountErrors, GetAccountResponses, GetCoverageData, GetCoverageErrors, GetCoverageResponses, GetRelationshipsData, GetRelationshipsErrors, GetRelationshipsResponses, GetResourceData, GetResourceErrors, GetResourceResponses, HealthData, HealthResponses, ListAccountsData, ListAccountsErrors, ListAccountsResponses, ListColumnsData, ListColumnsErrors, ListColumnsResponses, ListResourcesData, ListResourcesErrors, ListResourcesResponses, ListResourceTypesData, ListResourceTypesErrors, ListResourceTypesResponses, LookupResourceData, LookupResourceErrors, LookupResourceResponses, OverviewData, OverviewErrors, OverviewResponses, ResourceFacetsData, ResourceFacetsErrors, ResourceFacetsResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -23,4 +23,64 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
  *
  * Database down is a 503; Redis down only slows things, so it stays 200.
  */
-export const healthApiV1HealthGet = <ThrowOnError extends boolean = false>(options?: Options<HealthApiV1HealthGetData, ThrowOnError>): RequestResult<HealthApiV1HealthGetResponses, unknown, ThrowOnError> => (options?.client ?? client).get<HealthApiV1HealthGetResponses, unknown, ThrowOnError>({ url: '/api/v1/health', ...options });
+export const health = <ThrowOnError extends boolean = false>(options?: Options<HealthData, ThrowOnError>): RequestResult<HealthResponses, unknown, ThrowOnError> => (options?.client ?? client).get<HealthResponses, unknown, ThrowOnError>({ url: '/api/v1/health', ...options });
+
+/**
+ * List Resources
+ */
+export const listResources = <ThrowOnError extends boolean = false>(options?: Options<ListResourcesData, ThrowOnError>): RequestResult<ListResourcesResponses, ListResourcesErrors, ThrowOnError> => (options?.client ?? client).get<ListResourcesResponses, ListResourcesErrors, ThrowOnError>({ url: '/api/v1/resources', ...options });
+
+/**
+ * Resource Facets
+ */
+export const resourceFacets = <ThrowOnError extends boolean = false>(options?: Options<ResourceFacetsData, ThrowOnError>): RequestResult<ResourceFacetsResponses, ResourceFacetsErrors, ThrowOnError> => (options?.client ?? client).get<ResourceFacetsResponses, ResourceFacetsErrors, ThrowOnError>({ url: '/api/v1/resources/facets', ...options });
+
+/**
+ * Export Resources
+ */
+export const exportResources = <ThrowOnError extends boolean = false>(options?: Options<ExportResourcesData, ThrowOnError>): RequestResult<ExportResourcesResponses, ExportResourcesErrors, ThrowOnError> => (options?.client ?? client).get<ExportResourcesResponses, ExportResourcesErrors, ThrowOnError>({ url: '/api/v1/resources/export', ...options });
+
+/**
+ * Lookup Resource
+ */
+export const lookupResource = <ThrowOnError extends boolean = false>(options: Options<LookupResourceData, ThrowOnError>): RequestResult<LookupResourceResponses, LookupResourceErrors, ThrowOnError> => (options.client ?? client).get<LookupResourceResponses, LookupResourceErrors, ThrowOnError>({ url: '/api/v1/resources/lookup', ...options });
+
+/**
+ * Get Resource
+ */
+export const getResource = <ThrowOnError extends boolean = false>(options: Options<GetResourceData, ThrowOnError>): RequestResult<GetResourceResponses, GetResourceErrors, ThrowOnError> => (options.client ?? client).get<GetResourceResponses, GetResourceErrors, ThrowOnError>({ url: '/api/v1/resources/{resource_id}', ...options });
+
+/**
+ * Get Relationships
+ */
+export const getRelationships = <ThrowOnError extends boolean = false>(options: Options<GetRelationshipsData, ThrowOnError>): RequestResult<GetRelationshipsResponses, GetRelationshipsErrors, ThrowOnError> => (options.client ?? client).get<GetRelationshipsResponses, GetRelationshipsErrors, ThrowOnError>({ url: '/api/v1/resources/{resource_id}/relationships', ...options });
+
+/**
+ * List Resource Types
+ */
+export const listResourceTypes = <ThrowOnError extends boolean = false>(options?: Options<ListResourceTypesData, ThrowOnError>): RequestResult<ListResourceTypesResponses, ListResourceTypesErrors, ThrowOnError> => (options?.client ?? client).get<ListResourceTypesResponses, ListResourceTypesErrors, ThrowOnError>({ url: '/api/v1/resource-types', ...options });
+
+/**
+ * List Columns
+ */
+export const listColumns = <ThrowOnError extends boolean = false>(options?: Options<ListColumnsData, ThrowOnError>): RequestResult<ListColumnsResponses, ListColumnsErrors, ThrowOnError> => (options?.client ?? client).get<ListColumnsResponses, ListColumnsErrors, ThrowOnError>({ url: '/api/v1/columns', ...options });
+
+/**
+ * Overview
+ */
+export const overview = <ThrowOnError extends boolean = false>(options?: Options<OverviewData, ThrowOnError>): RequestResult<OverviewResponses, OverviewErrors, ThrowOnError> => (options?.client ?? client).get<OverviewResponses, OverviewErrors, ThrowOnError>({ url: '/api/v1/stats/overview', ...options });
+
+/**
+ * List Accounts
+ */
+export const listAccounts = <ThrowOnError extends boolean = false>(options?: Options<ListAccountsData, ThrowOnError>): RequestResult<ListAccountsResponses, ListAccountsErrors, ThrowOnError> => (options?.client ?? client).get<ListAccountsResponses, ListAccountsErrors, ThrowOnError>({ url: '/api/v1/accounts', ...options });
+
+/**
+ * Get Account
+ */
+export const getAccount = <ThrowOnError extends boolean = false>(options: Options<GetAccountData, ThrowOnError>): RequestResult<GetAccountResponses, GetAccountErrors, ThrowOnError> => (options.client ?? client).get<GetAccountResponses, GetAccountErrors, ThrowOnError>({ url: '/api/v1/accounts/{account_id}', ...options });
+
+/**
+ * Get Coverage
+ */
+export const getCoverage = <ThrowOnError extends boolean = false>(options: Options<GetCoverageData, ThrowOnError>): RequestResult<GetCoverageResponses, GetCoverageErrors, ThrowOnError> => (options.client ?? client).get<GetCoverageResponses, GetCoverageErrors, ThrowOnError>({ url: '/api/v1/accounts/{account_id}/coverage', ...options });

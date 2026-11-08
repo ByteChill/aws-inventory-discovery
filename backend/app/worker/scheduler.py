@@ -18,22 +18,18 @@ from app.core.config import Settings
 from app.models import Account, ScanRequest
 from app.models.scan import utcnow
 from app.worker import cleanup, queue, requests
-from app.worker.locks import advisory_lock_key, lock_full_sweeps
+from app.worker.locks import SCHEDULER_LOCK_NAME, advisory_lock_key, lock_full_sweeps
 
 logger = logging.getLogger(__name__)
 
-SCHEDULER_LOCK_NAME = "aws-inventory-discovery:scheduler"
 TICK_INTERVAL_SECONDS = 60
 CLEANUP_HOUR_UTC = 3
-
-
-SCHEDULER_LOCK_KEY = advisory_lock_key(SCHEDULER_LOCK_NAME)
 
 
 class AdvisoryLock:
     """A session-level advisory lock on its own connection. Not thread-safe: one owner."""
 
-    def __init__(self, engine: Engine, key: int = SCHEDULER_LOCK_KEY) -> None:
+    def __init__(self, engine: Engine, key: int) -> None:
         self.engine = engine
         self.key = key
         self._connection: Connection | None = None
@@ -126,7 +122,9 @@ class Scheduler:
         self.engine = engine
         self.settings = settings
         self.registry = registry
-        self.lock = lock or AdvisoryLock(engine)
+        self.lock = lock or AdvisoryLock(
+            engine, advisory_lock_key(SCHEDULER_LOCK_NAME, settings.DATABASE_SCHEMA)
+        )
         self._last_cleanup_on = None
 
     @classmethod
@@ -201,7 +199,7 @@ class Scheduler:
             sync_accounts(session, fetched, now)
         # Full sweeps are created one at a time (shared with POST /scans all=true); look again
         # inside the lock, since another instance may have started one while we fetched.
-        lock_full_sweeps(session)
+        lock_full_sweeps(session, self.settings.DATABASE_SCHEMA)
         if only_if_due and not self._sweep_due(session, now):
             session.rollback()
             return None

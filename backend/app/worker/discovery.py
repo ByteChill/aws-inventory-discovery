@@ -211,7 +211,8 @@ class Discovery:
         """Read one resource. `GONE` only when the source explicitly says so; errors raise.
 
         `configuration` (the stored Config-format data) supplies the other parts of a composite
-        Cloud Control identifier, such as the ECS cluster of a service.
+        Cloud Control identifier, such as the ECS cluster of a service; without it the type's
+        `cloudcontrol_identifier` hook derives them from the resource id.
         """
         spec = self.registry.get(resource_type)
         hooks = self.hooks.get(resource_type, Hooks())
@@ -226,6 +227,8 @@ class Discovery:
         else:
             if configuration is not None:
                 identifier = cloudcontrol_identifier(spec, configuration)
+            elif hooks.cloudcontrol_identifier is not None:
+                identifier = hooks.cloudcontrol_identifier(resource_id)
             elif spec.identity.identifier_fields == [spec.identity.resource_id_from]:
                 identifier = resource_id
             else:

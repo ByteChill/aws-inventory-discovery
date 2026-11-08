@@ -26,7 +26,7 @@ from boto3.session import Session
 from botocore.exceptions import ClientError
 
 from app.aws.session import make_client
-from app.types.mapping import ami_gone
+from app.types.mapping import MappingError, ami_gone
 
 Properties = dict[str, Any]
 
@@ -63,12 +63,22 @@ class Enrich(Protocol):
     ) -> Properties: ...
 
 
+class CloudControlIdentifier(Protocol):
+    def __call__(self, resource_id: str, /) -> str:
+        """The composite Cloud Control Identifier from the resource id alone; raise
+        `MappingError` when the id cannot carry it."""
+        ...
+
+
 @dataclass(frozen=True)
 class Hooks:
     list_live: ListLive | None = None  # default: Cloud Control ListResources
     get_live: GetLive | None = None  # default: Cloud Control GetResource
     filter: Filter | None = None  # default: no filtering
     enrich: Enrich | None = None  # default: no enrichment
+    # Composite identifiers only: build it from the resource id when no stored configuration
+    # exists (default: needs the stored configuration)
+    cloudcontrol_identifier: CloudControlIdentifier | None = None
 
 
 # --- AMI (resource-types.md 4.1) ----------------------------------------------------------
@@ -106,6 +116,30 @@ def get_ami(
     return _with_ownership(response["Images"][0], account_id)
 
 
+# --- ECS service (Cloud Control identifier `ServiceArn|Cluster`) ---------------------------
+
+
+def ecs_service_identifier(service_arn: str) -> str:
+    """`<service ARN>|<cluster ARN>`, with the cluster taken from the service ARN.
+
+    The long ARN format is `arn:<partition>:ecs:<region>:<account>:service/<cluster>/<service>`;
+    the cluster ARN is `arn:<partition>:ecs:<region>:<account>:cluster/<cluster>`. The old short
+    format `arn:<partition>:ecs:<region>:<account>:service/<service>` does not contain the
+    cluster and is rejected."""
+    prefix, _, resource = service_arn.partition(":service/")
+    parts = prefix.split(":")
+    cluster, _, name = resource.partition("/")
+    if len(parts) != 5 or parts[0] != "arn" or parts[2] != "ecs" or not resource:
+        raise MappingError(f"not an ECS service ARN: {service_arn!r}")
+    if not name or "/" in name:
+        raise MappingError(
+            f"ECS service ARN {service_arn!r} is in the old short format without the cluster; "
+            "use arn:<partition>:ecs:<region>:<account>:service/<cluster>/<service>"
+        )
+    return f"{service_arn}|{prefix}:cluster/{cluster}"
+
+
 TYPE_HOOKS: dict[str, Hooks] = {
+    "AWS::ECS::Service": Hooks(cloudcontrol_identifier=ecs_service_identifier),
     "AWS::EC2::Image": Hooks(list_live=list_amis, get_live=get_ami),
 }

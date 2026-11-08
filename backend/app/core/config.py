@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     INACTIVE_ACCOUNT_PURGE_DAYS: int = 30
 
     WORKER_LOG_GROUP: str = "/aws-inventory-discovery/worker"
+    # Touched by the worker every 30 s; `python -m app.cli healthcheck` reads its age.
+    WORKER_HEARTBEAT_FILE: Path = Path("/tmp/aws-inventory-discovery-worker.heartbeat")  # noqa: S108
 
     # boto3 reads these two natively; they are only ever set in the local environment.
     AWS_ENDPOINT_URL: str | None = None

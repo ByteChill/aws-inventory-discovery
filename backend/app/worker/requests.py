@@ -216,7 +216,7 @@ def create_scan(
     if spec.all_accounts:
         # Check-then-insert must not interleave with another full sweep being created (the
         # lock is released by the commit below or by the rollback of an early return).
-        lock_full_sweeps(session)
+        lock_full_sweeps(session, settings.DATABASE_SCHEMA)
         running = (
             session.connection()
             .execute(

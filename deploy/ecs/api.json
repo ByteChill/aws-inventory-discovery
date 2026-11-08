@@ -1,0 +1,148 @@
+{
+  "family": "aws-inventory-discovery-api",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::<hub-account-id>:role/aws-inventory-discovery-task-execution",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "containerDefinitions": [
+    {
+      "name": "api",
+      "image": "<hub-account-id>.dkr.ecr.ap-east-1.amazonaws.com/aws-inventory-discovery:<image-tag>",
+      "essential": true,
+      "command": [
+        "fastapi",
+        "run",
+        "--port",
+        "8000"
+      ],
+      "environment": [
+        {
+          "name": "DATABASE_SCHEMA",
+          "value": "<schema>"
+        },
+        {
+          "name": "ACCOUNT_REGISTRY_URL",
+          "value": "<account-registry-url>"
+        },
+        {
+          "name": "CREDENTIAL_SERVICE_URL",
+          "value": "<credential-service-url>"
+        },
+        {
+          "name": "REACHABLE_REGIONS",
+          "value": "ap-east-1,us-east-1,eu-west-1,eu-west-2"
+        },
+        {
+          "name": "SWEEP_ENABLED",
+          "value": "true"
+        },
+        {
+          "name": "SWEEP_INTERVAL_HOURS",
+          "value": "6"
+        },
+        {
+          "name": "WORKER_THREADS",
+          "value": "16"
+        },
+        {
+          "name": "WORKER_ONDEMAND_THREADS",
+          "value": "4"
+        },
+        {
+          "name": "PER_ACCOUNT_CONCURRENCY",
+          "value": "4"
+        },
+        {
+          "name": "MAX_SCAN_ACCOUNTS",
+          "value": "50"
+        },
+        {
+          "name": "CONFIG_LAG_GRACE_MINUTES",
+          "value": "15"
+        },
+        {
+          "name": "MISSING_GUARD_RATIO",
+          "value": "0.5"
+        },
+        {
+          "name": "MISSING_GUARD_MIN",
+          "value": "20"
+        },
+        {
+          "name": "TASK_RETENTION_DAYS",
+          "value": "14"
+        },
+        {
+          "name": "REQUEST_RETENTION_DAYS",
+          "value": "90"
+        },
+        {
+          "name": "DELETED_PURGE_DAYS",
+          "value": "30"
+        },
+        {
+          "name": "INACTIVE_ACCOUNT_PURGE_DAYS",
+          "value": "30"
+        },
+        {
+          "name": "WORKER_LOG_GROUP",
+          "value": "/aws-inventory-discovery/worker"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "DATABASE_URL",
+          "valueFrom": "arn:aws:secretsmanager:ap-east-1:<hub-account-id>:secret:aws-inventory-discovery/db:DATABASE_URL::"
+        },
+        {
+          "name": "REDIS_URL",
+          "valueFrom": "arn:aws:secretsmanager:ap-east-1:<hub-account-id>:secret:aws-inventory-discovery/redis:REDIS_URL::"
+        },
+        {
+          "name": "DATABASE_READ_URL",
+          "valueFrom": "arn:aws:secretsmanager:ap-east-1:<hub-account-id>:secret:aws-inventory-discovery/db:DATABASE_READ_URL::"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aws-inventory-discovery/api",
+          "awslogs-region": "ap-east-1",
+          "awslogs-stream-prefix": "api"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=4).status == 200 else 1)"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 20
+      },
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "key": "Project",
+      "value": "aws-inventory-discovery"
+    }
+  ],
+  "taskRoleArn": "arn:aws:iam::<hub-account-id>:role/aws-inventory-discovery-api-task"
+}

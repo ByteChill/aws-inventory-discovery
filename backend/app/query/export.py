@@ -56,6 +56,7 @@ class ExportParams(ResourceFilter):
     format: Literal["csv", "jsonl"] = "csv"
     columns: str | None = None  # comma-separated column keys (CSV)
     sort: str | None = None
+    lang: Language | None = None  # overrides Accept-Language for the header labels
 
 
 @dataclass(frozen=True)

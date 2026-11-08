@@ -102,10 +102,13 @@ class Discovery:
         region: str,
         registry: TypeRegistry,
         hooks: Mapping[str, Hooks] = TYPE_HOOKS,
+        item_region: str | None = None,
     ) -> None:
         self.session = session
         self.account_id = account_id
-        self.region = region
+        self.region = region  # where the clients connect
+        # The region items are filed under: `global` for a global type read from one region.
+        self.item_region = item_region or region
         self.registry = registry
         self.hooks = hooks
 
@@ -186,7 +189,7 @@ class Discovery:
                         item=properties,
                     )
                 item = to_config_item(
-                    spec, properties, account_id=self.account_id, region=self.region
+                    spec, properties, account_id=self.account_id, region=self.item_region
                 )
             except AWS_ERRORS as exc:
                 errors.append(classify(exc))
@@ -232,6 +235,6 @@ class Discovery:
             )
         if isinstance(properties, Gone):
             return GONE
-        item = to_config_item(spec, properties, account_id=self.account_id, region=self.region)
+        item = to_config_item(spec, properties, account_id=self.account_id, region=self.item_region)
         source: Source = "native" if spec.sources.native else "cloudcontrol"
         return Observation(resource_type, item, properties, started, source)

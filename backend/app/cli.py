@@ -6,8 +6,6 @@ from app.core.logging import setup_logging
 
 logger = logging.getLogger(__name__)
 
-NOT_IMPLEMENTED = 2
-
 
 def run_worker() -> int:
     from app.worker.main import Worker
@@ -16,8 +14,14 @@ def run_worker() -> int:
 
 
 def run_doctor() -> int:
-    logger.error("doctor is not implemented yet")
-    return NOT_IMPLEMENTED
+    from app.core.config import get_settings
+    from app.doctor import format_table, run_checks
+
+    checks = run_checks(get_settings())
+    print(format_table(checks))
+    failed = [c for c in checks if not c.ok]
+    print(f"\n{len(checks) - len(failed)}/{len(checks)} checks passed")
+    return 1 if failed else 0
 
 
 COMMANDS = {"worker": run_worker, "doctor": run_doctor}

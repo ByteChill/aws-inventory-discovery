@@ -1,6 +1,6 @@
 """Writes the API's OpenAPI schema to a file (default: ../frontend/openapi.json).
 
-    DATABASE_URL=... DATABASE_SCHEMA=... uv run python scripts/export_openapi.py
+DATABASE_URL=... DATABASE_SCHEMA=... uv run python scripts/export_openapi.py
 """
 
 import json
@@ -19,7 +19,5 @@ for path_item in schema["paths"].values():
 
 default = Path(__file__).resolve().parents[2] / "frontend" / "openapi.json"
 target = Path(sys.argv[1]) if len(sys.argv) > 1 else default
-target.write_text(
-    json.dumps(schema,indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-)
+target.write_text(json.dumps(schema, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print(f"wrote {target}")

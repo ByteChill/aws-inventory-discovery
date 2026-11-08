@@ -214,6 +214,25 @@ def test_relationships_are_replaced_and_resolved_to_row_ids(
     assert None in by_target.values()  # the instance is not inventoried: unresolved
 
 
+def test_relation_to_a_resource_inserted_later_is_resolved_late(
+    writer: ResourceWriter, disc: Discovery, session: Session
+) -> None:
+    sweep = disc.sweep_config(["AWS::EC2::VPC", "AWS::EC2::Subnet"])
+    writer.write(sweep.by_type["AWS::EC2::Subnet"])
+    (subnet,) = rows(session, "AWS::EC2::Subnet").values()
+    to_vpc = select(ResourceRelation).where(
+        ResourceRelation.from_resource_id == subnet.id,
+        ResourceRelation.to_resource_type == "AWS::EC2::VPC",
+    )
+    assert session.exec(to_vpc).one().to_resource_id is None
+
+    writer.write(sweep.by_type["AWS::EC2::VPC"])
+
+    (vpc,) = rows(session, "AWS::EC2::VPC").values()
+    session.expire_all()
+    assert session.exec(to_vpc).one().to_resource_id == vpc.id
+
+
 # --- deletion (R5, R6) ------------------------------------------------------------------------
 
 

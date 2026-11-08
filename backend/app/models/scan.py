@@ -138,3 +138,5 @@ class ScanShard(SQLModel, table=True):
     )
     guard_detected_at: datetime | None = Field(default=None, sa_type=TIMESTAMPTZ)
     guard_confirmed_by: str | None = None
+    # How many resources the scan that tripped the guard wanted to mark missing.
+    candidate_count: int | None = None

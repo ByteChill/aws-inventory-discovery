@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from botocore.exceptions import BotoCoreError, ClientError
+from pydantic.alias_generators import to_camel
 from sqlalchemy import func, text
 from sqlmodel import Session, col, select
 
@@ -59,7 +60,9 @@ def request_out(request: ScanRequest) -> ScanRequestOut:
             "trigger": request.trigger,
             "caller_id": request.caller_id,
             "scope": ScanScope(**scope) if request.scope is not None else None,
-            "target": request.target,
+            "target": (
+                {to_camel(k): v for k, v in request.target.items()} if request.target else None
+            ),
             "status": request.status,
             "counts": ScanCounts(
                 tasks=counts.get("tasks", {}),

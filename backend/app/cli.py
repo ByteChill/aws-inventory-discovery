@@ -17,6 +17,8 @@ def run_doctor() -> int:
     from app.core.config import get_settings
     from app.doctor import format_table, run_checks
 
+    for noisy in ("httpx", "botocore"):  # the table is the output, not the request log
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     checks = run_checks(get_settings())
     print(format_table(checks))
     failed = [c for c in checks if not c.ok]

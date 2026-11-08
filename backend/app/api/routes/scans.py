@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 from app.api.deps import LogsClientDep, RegistryDep, SessionDep
-from app.api.support import check_resource_type, ensure_accounts
+from app.api.support import check_resource_type, ensure_accounts, refresh_accounts
 from app.core.config import get_settings
 from app.core.db import get_engine
 from app.core.errors import ApiError
@@ -82,6 +82,8 @@ def create_scan(
     settings = get_settings()
     for type_name in spec.resource_types:
         check_resource_type(registry, type_name)
+    if spec.all_accounts:
+        refresh_accounts(session, settings)
     try:
         try:
             created = requests.create_scan(

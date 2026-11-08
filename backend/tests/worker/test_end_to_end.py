@@ -322,6 +322,10 @@ def test_refresh_returns_fresh_data_and_a_gone_resource_is_only_marked_missing(
     )
     assert refreshed["configuration"]["VisibilityTimeout"] in (99, "99")
     assert refreshed["refreshError"] is None and refreshed["status"] == "active"
+    # a refresh is a scan request too, listed with its roll-up like any other
+    (refresh_scan,) = stack.get("/scans", trigger="api", pageSize=200)["items"][:1]
+    assert refresh_scan["target"]["resourceId"] == first["resourceId"]
+    assert refresh_scan["counts"]["tasks"] == {"succeeded": 1}
     by_arn = stack.post("/resources/refresh?wait=10", {"arn": first["arn"]})
     assert by_arn["id"] == first["id"]
 
@@ -344,7 +348,7 @@ def test_refresh_returns_fresh_data_and_a_gone_resource_is_only_marked_missing(
 def test_cancel_stops_a_queued_scan(stack: Stack, engine: Engine) -> None:
     # no sweep can start before the cancel: the worker's claim loop is not that fast, so the
     # scan is cancelled while its first tasks are queued or running
-    created = stack.post("/scans", {"accountIds": stack.accounts}, expect=201)
+    created = stack.post("/scans", {"all": True}, expect=201)  # the registry fills the accounts
 
     cancelled = stack.post(f"/scans/{created['id']}/cancel")
 
@@ -357,6 +361,7 @@ def test_cancel_stops_a_queued_scan(stack: Stack, engine: Engine) -> None:
         assert time.monotonic() < deadline
         time.sleep(0.2)
     assert stack.get(f"/scans/{created['id']}")["status"] == "cancelled"
+    assert stack.get("/accounts", pageSize=1)["total"] == len(stack.accounts)
 
 
 def test_task_logs_come_from_cloudwatch_and_carry_the_task_id(

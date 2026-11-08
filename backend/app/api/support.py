@@ -3,6 +3,7 @@ does not know yet, resolving a refresh target and waiting for a refresh task."""
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Sequence
 
@@ -19,6 +20,7 @@ from app.types.registry import TypeRegistry
 from app.worker.requests import ResourceKey
 from app.worker.scheduler import sync_accounts
 
+logger = logging.getLogger(__name__)
 POLL_INTERVAL_SECONDS = 0.5
 NOT_FINISHED = ("queued", "running")
 
@@ -48,6 +50,22 @@ def ensure_accounts(session: Session, settings: Settings, account_ids: Sequence[
     missing = [a for a in unknown if a not in found]
     if missing:
         raise ApiError(404, "account_not_found", "账号不存在", {"accountIds": missing})
+
+
+def refresh_accounts(session: Session, settings: Settings) -> None:
+    """Start of a full scan (scanner.md 5.1 step 1): bring the account snapshot up to date from
+    the registry. When the registry can't be read the existing snapshot is used as it is."""
+    if not settings.ACCOUNT_REGISTRY_URL:
+        return
+    try:
+        accounts = AccountRegistryClient(
+            settings.ACCOUNT_REGISTRY_URL, retries=1, backoff=0.5
+        ).fetch_accounts()
+    except RegistryError:
+        logger.exception("account registry unavailable, scanning the existing snapshot")
+        return
+    if accounts:  # an empty list would deactivate every account
+        sync_accounts(session, accounts, utcnow())
 
 
 def resolve_refresh_target(session: Session, body: RefreshByKey | RefreshByArn) -> ResourceKey:

@@ -28,6 +28,9 @@ REGIONS = ("ap-east-1", "us-east-1", "eu-west-1", "eu-west-2")
 ACCOUNT_COUNT = 20
 FIXTURE_ACCOUNT = "111122223333"
 FIXTURE_REGION = "us-east-1"
+# Global types (Route 53): one copy per account, read through the home region's endpoints.
+GLOBAL_REGION = "global"
+GLOBAL_HOME = "us-east-1"
 IMAGE_FIXTURE = "aws.ec2.image"
 
 # Config is off in these (account index, region); one account records only a subset; one
@@ -86,7 +89,15 @@ def load_fixtures(fixtures: Path = FIXTURES) -> list[dict[str, Any]]:
             (d["Identifier"], json.loads(d["Properties"])) for d in listing["ResourceDescriptions"]
         ]
         items = [json.loads(p.read_text()) for p in sorted(directory.glob("config_item*.json"))]
-        types.append({"type_name": listing["TypeName"], "resources": resources, "items": items})
+        types.append(
+            {
+                "type_name": listing["TypeName"],
+                "resources": resources,
+                "items": items,
+                # a Config item of a global type is filed under the region `global`
+                "global": any(item["awsRegion"] == GLOBAL_REGION for item in items),
+            }
+        )
     return types
 
 
@@ -183,23 +194,34 @@ def build_dataset(
                 }
             )
             for spec in types:
-                for identifier, props in spec["resources"]:
-                    new_id = remap(identifier, account_id, region)
-                    dataset["resources"].append(
-                        {
-                            "account_id": account_id,
-                            "region": region,
-                            "type_name": spec["type_name"],
-                            "identifier": new_id,
-                            "properties": remap(props, account_id, region),
-                        }
-                    )
-                if recorded is not None and spec["type_name"] not in recorded:
-                    continue
-                dataset["config_items"].extend(
-                    remap(item, account_id, region) for item in spec["items"]
-                )
+                # global types are copied once per account, into the home region
+                if not spec["global"] or region == GLOBAL_HOME:
+                    _add_type(dataset, spec, account_id, region, recorded)
     return dataset
+
+
+def _add_type(
+    dataset: dict[str, Any],
+    spec: dict[str, Any],
+    account_id: str,
+    region: str,
+    recorded: list[str] | None,
+) -> None:
+    """Copy one type's Cloud Control resources (served from `region`) and, if the recorder
+    records it, its Config items into the dataset."""
+    for identifier, props in spec["resources"]:
+        dataset["resources"].append(
+            {
+                "account_id": account_id,
+                "region": region,
+                "type_name": spec["type_name"],
+                "identifier": remap(identifier, account_id, region),
+                "properties": remap(props, account_id, region),
+            }
+        )
+    if recorded is not None and spec["type_name"] not in recorded:
+        return
+    dataset["config_items"].extend(remap(item, account_id, region) for item in spec["items"])
 
 
 # --- AMIs in moto ----------------------------------------------------------------------------

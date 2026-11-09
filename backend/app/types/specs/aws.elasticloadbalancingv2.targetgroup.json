@@ -1,0 +1,98 @@
+{
+  "typeName": "AWS::ElasticLoadBalancingV2::TargetGroup",
+  "label": {
+    "zh-CN": "目标组",
+    "en": "Target group"
+  },
+  "identity": {
+    "identifier": "targetGroupArn",
+    "resourceIdFrom": "targetGroupArn",
+    "arnFrom": "targetGroupArn",
+    "nameFrom": "targetGroupName"
+  },
+  "sources": {
+    "config": false,
+    "cloudControl": {
+      "read": true,
+      "list": true
+    }
+  },
+  "mapping": {
+    "properties": [
+      "TargetGroupArn",
+      "TargetGroupName",
+      "TargetGroupFullName",
+      "Protocol",
+      "ProtocolVersion",
+      "Port",
+      "VpcId",
+      "TargetType",
+      "IpAddressType",
+      "TargetControlPort",
+      "LoadBalancerArns",
+      "HealthCheckEnabled",
+      "HealthCheckProtocol",
+      "HealthCheckPort",
+      "HealthCheckPath",
+      "HealthCheckIntervalSeconds",
+      "HealthCheckTimeoutSeconds",
+      "HealthyThresholdCount",
+      "UnhealthyThresholdCount",
+      "Matcher"
+    ],
+    "exclude": [
+      "Name",
+      "Targets",
+      "TargetGroupAttributes"
+    ]
+  },
+  "columns": [
+    {
+      "key": "protocol",
+      "label": {
+        "zh-CN": "协议",
+        "en": "Protocol"
+      },
+      "type": "enum",
+      "path": "protocol"
+    },
+    {
+      "key": "port",
+      "label": {
+        "zh-CN": "端口",
+        "en": "Port"
+      },
+      "type": "number",
+      "path": "port"
+    },
+    {
+      "key": "targetType",
+      "label": {
+        "zh-CN": "目标类型",
+        "en": "Target type"
+      },
+      "type": "enum",
+      "path": "targetType"
+    },
+    {
+      "key": "vpcId",
+      "label": {
+        "zh-CN": "VPC",
+        "en": "VPC"
+      },
+      "type": "text",
+      "path": "vpcId",
+      "mono": true
+    },
+    {
+      "key": "loadBalancerCount",
+      "label": {
+        "zh-CN": "负载均衡器数",
+        "en": "Load balancers"
+      },
+      "type": "number",
+      "path": "loadBalancerArns",
+      "count": true
+    }
+  ]
+}

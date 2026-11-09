@@ -21,7 +21,7 @@ def test_resource_types_are_localized(get_json: Callable[..., Any], registry: Ty
     assert [t["typeName"] for t in zh] == [s.type_name for s in registry]
     assert {t["typeName"]: t["label"] for t in zh}["AWS::EC2::Instance"] == "EC2 实例"
     assert {t["typeName"]: t["label"] for t in en}["AWS::EC2::Instance"] == "EC2 instance"
-    assert all(t["global"] is False for t in zh)
+    assert [t["typeName"] for t in zh if t["global"]] == ["AWS::Route53::HostedZone"]
 
 
 def test_columns_are_common_only_without_a_type_and_add_the_type_columns_with_one(

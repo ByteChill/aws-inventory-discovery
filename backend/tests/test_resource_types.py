@@ -102,7 +102,7 @@ def under(path: KeyPath, covered: frozenset[KeyPath]) -> bool:
 def test_registry_loads_a_spec_per_fixture_folder() -> None:
     folders = {path.name for path in FIXTURES.glob("aws.*") if path.is_dir()}
     assert {spec.file_name.removesuffix(".json") for spec in REGISTRY} == folders
-    assert len(REGISTRY) == 12
+    assert len(REGISTRY) == 15
 
 
 def test_invalid_spec_file_fails_loudly(tmp_path: Path) -> None:
@@ -374,6 +374,37 @@ def test_every_column_has_a_value(case: Case) -> None:
     assert values
     assert {k: v for k, v in values.items() if v is None} == {}
     assert set(column_paths(case.spec)) == set(values)
+
+
+def cloudcontrol_only_cases() -> list[Any]:
+    """Types Config's SelectResourceConfig cannot return (no config_item.json): Cloud Control
+    data alone, so the mapping is checked against the documented identifiers."""
+    cases = []
+    for spec in REGISTRY:
+        if spec.sources.config or spec.sources.native:
+            continue
+        folder = FIXTURES / spec.file_name.removesuffix(".json")
+        for path in sorted(folder.glob("cloudcontrol_get*.json")):
+            description = load(path)["ResourceDescription"]
+            case = (spec, json.loads(description["Properties"]), description["Identifier"])
+            cases.append(pytest.param(*case, id=f"{spec.type_name}:{path.stem}"))
+    return cases
+
+
+@pytest.mark.parametrize(("spec", "properties", "identifier"), cloudcontrol_only_cases())
+def test_target_group_maps_from_cloud_control_alone(
+    spec: ResourceTypeSpec, properties: dict[str, Any], identifier: str
+) -> None:
+    mapping = spec.mapping
+    assert set(properties) <= {*mapping.properties, *mapping.rename, *mapping.exclude, "Tags"}
+    item = to_config_item(spec, properties, account_id=main_account(), region="us-east-1")
+
+    assert item.resource_id == identifier == cloudcontrol_identifier(spec, item.configuration)
+    assert item.arn == identifier  # a target group is identified by its ARN
+    assert item.resource_name == properties["TargetGroupName"]
+    values = column_values(spec, item.configuration)
+    assert {k: v for k, v in values.items() if v is None} == {}
+    assert values["loadBalancerCount"] == len(properties["LoadBalancerArns"])
 
 
 @pytest.mark.parametrize("image_file", ["describe_images_self.json", "describe_images_shared.json"])

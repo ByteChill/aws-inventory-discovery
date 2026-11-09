@@ -13,6 +13,8 @@ htmlcov/
 # Node
 node_modules/
 frontend/dist/
+test-results/
+frontend/playwright-report/
 
 # Environment
 .env
@@ -23,3 +25,11 @@ frontend/dist/
 .DS_Store
 .idea/
 .vscode/
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# Personal Claude Code settings and agent worktrees
+.claude/settings.local.json
+.claude/worktrees/
+.claude/scheduled_tasks.lock

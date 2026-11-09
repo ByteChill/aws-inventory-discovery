@@ -1,0 +1,7 @@
+{
+  "ResourceDescription": {
+    "Identifier": "arn:aws:ecs:us-east-1:111122223333:task-definition/hello_world:10",
+    "Properties": "{\"TaskDefinitionArn\":\"arn:aws:ecs:us-east-1:111122223333:task-definition/hello_world:10\",\"Family\":\"hello_world\",\"ContainerDefinitions\":[{\"Name\":\"wordpress\",\"Image\":\"public.ecr.aws/docker/library/wordpress:latest\",\"Cpu\":10,\"Memory\":500,\"Essential\":true,\"Links\":[\"mysql\"],\"Environment\":[],\"MountPoints\":[],\"VolumesFrom\":[],\"PortMappings\":[{\"ContainerPort\":80,\"HostPort\":80}]},{\"Name\":\"mysql\",\"Image\":\"public.ecr.aws/docker/library/mysql:latest\",\"Cpu\":10,\"Memory\":500,\"Essential\":true,\"Environment\":[{\"Name\":\"MYSQL_ROOT_PASSWORD\",\"Value\":\"password\"},{\"Name\":\"MYSQL_DATABASE\",\"Value\":\"wordpress\"}],\"MountPoints\":[],\"VolumesFrom\":[],\"PortMappings\":[]}],\"Volumes\":[],\"Tags\":[{\"Key\":\"Owner\",\"Value\":\"TeamA\"}]}"
+  },
+  "TypeName": "AWS::ECS::TaskDefinition"
+}

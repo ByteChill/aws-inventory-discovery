@@ -1,0 +1,79 @@
+{
+  "typeName": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+  "label": {
+    "zh-CN": "负载均衡器",
+    "en": "Load balancer"
+  },
+  "identity": {
+    "identifier": "loadBalancerArn",
+    "resourceIdFrom": "loadBalancerArn",
+    "arnFrom": "loadBalancerArn",
+    "nameFrom": "loadBalancerName"
+  },
+  "sources": {
+    "config": true,
+    "cloudControl": {
+      "read": true,
+      "list": true
+    }
+  },
+  "mapping": {
+    "properties": [
+      "LoadBalancerArn",
+      "LoadBalancerName",
+      "LoadBalancerFullName",
+      "Scheme",
+      "Type",
+      "IpAddressType"
+    ],
+    "rename": {
+      "DNSName": "dNSName",
+      "CanonicalHostedZoneID": "canonicalHostedZoneId"
+    },
+    "exclude": [
+      "Name",
+      "Subnets",
+      "SecurityGroups"
+    ]
+  },
+  "columns": [
+    {
+      "key": "type",
+      "label": {
+        "zh-CN": "类型",
+        "en": "Type"
+      },
+      "type": "enum",
+      "path": "type"
+    },
+    {
+      "key": "scheme",
+      "label": {
+        "zh-CN": "访问方式",
+        "en": "Scheme"
+      },
+      "type": "enum",
+      "path": "scheme"
+    },
+    {
+      "key": "dnsName",
+      "label": {
+        "zh-CN": "DNS 名称",
+        "en": "DNS name"
+      },
+      "type": "text",
+      "path": "dNSName",
+      "mono": true
+    },
+    {
+      "key": "vpcId",
+      "label": {
+        "zh-CN": "VPC",
+        "en": "VPC"
+      },
+      "type": "text",
+      "path": "vpcId",
+      "mono": true
+    }
+  ]
+}

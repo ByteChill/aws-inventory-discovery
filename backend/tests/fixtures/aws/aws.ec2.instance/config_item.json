@@ -1,0 +1,148 @@
+{
+  "arn": "arn:aws:ec2:us-east-1:111122223333:instance/i-1234567890abcdef0",
+  "resourceId": "i-1234567890abcdef0",
+  "resourceType": "AWS::EC2::Instance",
+  "awsRegion": "us-east-1",
+  "accountId": "111122223333",
+  "configuration": {
+    "instanceId": "i-1234567890abcdef0",
+    "imageId": "ami-1234567890EXAMPLE",
+    "state": {
+      "code": 16,
+      "name": "running"
+    },
+    "privateDnsName": "ip-10-0-2-88.us-east-1.compute.internal",
+    "publicDnsName": "ec2-54-194-252-215.us-east-1.compute.amazonaws.com",
+    "stateTransitionReason": "",
+    "keyName": "my_keypair",
+    "amiLaunchIndex": 0,
+    "productCodes": [],
+    "instanceType": "t2.micro",
+    "launchTime": "2018-05-08T16:46:19.000Z",
+    "placement": {
+      "availabilityZone": "us-east-1c",
+      "groupName": "",
+      "tenancy": "default"
+    },
+    "monitoring": {
+      "state": "disabled"
+    },
+    "subnetId": "subnet-0bb1c79de301436ee",
+    "vpcId": "vpc-0ee975135dEXAMPLE",
+    "privateIpAddress": "10.0.2.88",
+    "publicIpAddress": "54.194.252.215",
+    "sourceDestCheck": true,
+    "securityGroups": [
+      {
+        "groupId": "sg-e4076980",
+        "groupName": "SecurityGroup1"
+      }
+    ],
+    "architecture": "x86_64",
+    "rootDeviceType": "ebs",
+    "rootDeviceName": "/dev/xvda",
+    "blockDeviceMappings": [
+      {
+        "deviceName": "/dev/xvda",
+        "ebs": {
+          "volumeId": "vol-1234567890abcdef0",
+          "status": "attached",
+          "attachTime": "2015-12-22T10:44:09.000Z",
+          "deleteOnTermination": true
+        }
+      }
+    ],
+    "virtualizationType": "hvm",
+    "clientToken": "xMcwG14507example",
+    "hypervisor": "xen",
+    "networkInterfaces": [
+      {
+        "networkInterfaceId": "eni-551ba033",
+        "subnetId": "subnet-0bb1c79de301436ee",
+        "vpcId": "vpc-0ee975135dEXAMPLE",
+        "description": "Primary network interface",
+        "ownerId": "111122223333",
+        "status": "in-use",
+        "macAddress": "02:dd:2c:5e:01:69",
+        "privateIpAddress": "10.0.2.88",
+        "privateDnsName": "ip-10-0-2-88.us-east-1.compute.internal",
+        "sourceDestCheck": true,
+        "groups": [
+          {
+            "groupId": "sg-e4076980",
+            "groupName": "SecurityGroup1"
+          }
+        ],
+        "attachment": {
+          "attachmentId": "eni-attach-39697adc",
+          "deviceIndex": 0,
+          "status": "attached",
+          "attachTime": "2018-05-08T16:46:19.000Z",
+          "deleteOnTermination": true
+        },
+        "association": {
+          "publicIp": "54.194.252.215",
+          "publicDnsName": "ec2-54-194-252-215.us-east-1.compute.amazonaws.com",
+          "ipOwnerId": "amazon"
+        },
+        "privateIpAddresses": [
+          {
+            "privateIpAddress": "10.0.2.88",
+            "privateDnsName": "ip-10-0-2-88.us-east-1.compute.internal",
+            "primary": true,
+            "association": {
+              "publicIp": "54.194.252.215",
+              "publicDnsName": "ec2-54-194-252-215.us-east-1.compute.amazonaws.com",
+              "ipOwnerId": "amazon"
+            }
+          }
+        ],
+        "ipv6Addresses": [
+          {
+            "ipv6Address": "2001:db8:1234:1a2b::123"
+          }
+        ]
+      }
+    ],
+    "iamInstanceProfile": {
+      "arn": "arn:aws:iam::111122223333:instance-profile/AdminRole",
+      "id": "ABCAJEDNCAA64SSD123AB"
+    },
+    "ebsOptimized": false,
+    "cpuOptions": {
+      "coreCount": 1,
+      "threadsPerCore": 1
+    }
+  },
+  "supplementaryConfiguration": {},
+  "tags": [
+    {
+      "key": "Name",
+      "value": "Server_1"
+    }
+  ],
+  "relationships": [
+    {
+      "resourceType": "AWS::EC2::NetworkInterface",
+      "resourceId": "eni-551ba033"
+    },
+    {
+      "resourceType": "AWS::EC2::SecurityGroup",
+      "resourceId": "sg-e4076980"
+    },
+    {
+      "resourceType": "AWS::EC2::Volume",
+      "resourceId": "vol-1234567890abcdef0"
+    },
+    {
+      "resourceType": "AWS::EC2::Subnet",
+      "resourceId": "subnet-0bb1c79de301436ee"
+    },
+    {
+      "resourceType": "AWS::EC2::VPC",
+      "resourceId": "vpc-0ee975135dEXAMPLE"
+    }
+  ],
+  "configurationItemCaptureTime": "2026-11-06T09:15:22.401Z",
+  "configurationItemStatus": "OK"
+}

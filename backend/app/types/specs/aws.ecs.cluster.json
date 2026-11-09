@@ -1,0 +1,41 @@
+{
+  "typeName": "AWS::ECS::Cluster",
+  "label": {
+    "zh-CN": "ECS 集群",
+    "en": "ECS cluster"
+  },
+  "identity": {
+    "identifier": "ClusterName",
+    "resourceIdFrom": "Arn",
+    "arnFrom": "Arn",
+    "nameFrom": "ClusterName"
+  },
+  "sources": {
+    "config": true,
+    "cloudControl": {
+      "read": true,
+      "list": true
+    }
+  },
+  "mapping": {
+    "keyCase": "pascal",
+    "properties": [
+      "ClusterName",
+      "Arn",
+      "CapacityProviders",
+      "ClusterSettings"
+    ]
+  },
+  "columns": [
+    {
+      "key": "capacityProviderCount",
+      "label": {
+        "zh-CN": "容量提供程序数",
+        "en": "Capacity providers"
+      },
+      "type": "number",
+      "path": "CapacityProviders",
+      "count": true
+    }
+  ]
+}

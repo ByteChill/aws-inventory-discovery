@@ -1,0 +1,34 @@
+{
+  "Images": [
+    {
+      "ImageId": "ami-1a2b3c4d",
+      "ImageLocation": "444455556666/example-shared-ami.1",
+      "State": "available",
+      "OwnerId": "444455556666",
+      "Public": false,
+      "Architecture": "x86_64",
+      "ImageType": "machine",
+      "Name": "example-shared-ami.1",
+      "Description": "Shared AMI from the second account",
+      "RootDeviceType": "ebs",
+      "RootDeviceName": "/dev/sda1",
+      "BlockDeviceMappings": [
+        {
+          "DeviceName": "/dev/sda1",
+          "Ebs": {
+            "SnapshotId": "snap-1234567890abcdef0",
+            "VolumeSize": 8,
+            "DeleteOnTermination": true
+          }
+        }
+      ],
+      "VirtualizationType": "hvm",
+      "Hypervisor": "xen",
+      "EnaSupport": true,
+      "PlatformDetails": "Linux/UNIX",
+      "UsageOperation": "RunInstances",
+      "CreationDate": "2019-05-10T13:17:12.000Z",
+      "Tags": []
+    }
+  ]
+}

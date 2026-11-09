@@ -1,0 +1,183 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design tokens.
+ * Neutrals are warm grays. The only chromatic color on a page is the accent,
+ * chosen from three palettes (see PALETTES.md) via html[data-palette].
+ * Status colors are used for small text and badges only, never for large areas.
+ */
+:root {
+  color-scheme: light;
+
+  --bg: #faf8f5;
+  --surface: #fffefb;
+  --subtle: #f3f0eb;
+  --subtle-strong: #ebe7e0;
+  --border: #e4dfd7;
+  --input-border: #968e83;
+  --fg: #2a2622;
+  --fg-muted: #6b645c;
+
+  --warn: #6b5410;
+  --warn-soft: #f3ebcf;
+  --danger: #9b2c2c;
+  --danger-soft: #f6e4e1;
+
+  /* Accent: 黛绿 by default */
+  --accent: #2e5e52;
+  --accent-fg: #ffffff;
+
+  --radius: 8px;
+  --shadow-float: 0 4px 16px rgb(42 38 34 / 0.1);
+  --duration: 120ms;
+}
+
+:root.dark {
+  color-scheme: dark;
+
+  --bg: #1b1917;
+  --surface: #232120;
+  --subtle: #2c2926;
+  --subtle-strong: #37332f;
+  --border: #3a3632;
+  --input-border: #7c746a;
+  --fg: #ece7e0;
+  --fg-muted: #a39b91;
+
+  --warn: #dcc274;
+  --warn-soft: #322d1b;
+  --danger: #e58e8e;
+  --danger-soft: #3a2220;
+
+  --accent: #8cc4b3;
+  --accent-fg: #12201c;
+
+  --shadow-float: 0 4px 16px rgb(0 0 0 / 0.4);
+}
+
+/* 黛蓝 */
+:root[data-palette="dai-lan"] {
+  --accent: #3d5873;
+}
+:root.dark[data-palette="dai-lan"] {
+  --accent: #9db9d6;
+  --accent-fg: #10202e;
+}
+
+/* 胭脂 */
+:root[data-palette="yan-zhi"] {
+  --accent: #8f2b35;
+}
+:root.dark[data-palette="yan-zhi"] {
+  --accent: #e59aa0;
+  --accent-fg: #2e0e11;
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--fg);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--fg);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-fg);
+  --color-primary-soft: color-mix(in oklab, var(--accent) 10%, var(--bg));
+  --color-secondary: var(--subtle);
+  --color-secondary-foreground: var(--fg);
+  --color-muted: var(--subtle);
+  --color-muted-foreground: var(--fg-muted);
+  --color-accent: var(--subtle);
+  --color-accent-foreground: var(--fg);
+  --color-subtle: var(--subtle);
+  --color-subtle-strong: var(--subtle-strong);
+  --color-destructive: var(--danger);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-border: var(--border);
+  --color-input: var(--input-border);
+  --color-ring: var(--accent);
+
+  /* Concentric radii: menu 8 = item 4 + padding 4; panel 8 = control 6 + padding 2 */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+}
+
+@theme {
+  --font-sans:
+    "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei",
+    system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Four font sizes in the whole product. */
+  --text-*: initial;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.25rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.375rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.5rem;
+  --text-lg--line-height: 2rem;
+  --text-lg--letter-spacing: -0.01em;
+
+  --shadow-*: initial;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    font-family: var(--font-sans);
+    font-size: 16px;
+  }
+  body {
+    @apply bg-background text-foreground text-sm;
+    letter-spacing: 0.01em;
+    -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+  h1 {
+    @apply text-lg font-semibold;
+  }
+  h2 {
+    @apply text-base font-semibold;
+  }
+  h3 {
+    @apply text-sm font-semibold;
+  }
+  button,
+  [role="button"],
+  a {
+    transition-property: color, background-color, border-color;
+    transition-duration: var(--duration);
+    transition-timing-function: ease;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--accent) 25%, transparent);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      /* biome-ignore lint/complexity/noImportantStyles: reduced motion must win over utilities */
+      animation-duration: 0.01ms !important;
+      /* biome-ignore lint/complexity/noImportantStyles: reduced motion must win over utilities */
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@utility shadow-float {
+  box-shadow: var(--shadow-float);
+}

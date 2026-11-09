@@ -1,0 +1,117 @@
+{
+  "typeName": "AWS::EC2::Instance",
+  "label": {
+    "zh-CN": "EC2 实例",
+    "en": "EC2 instance"
+  },
+  "identity": {
+    "identifier": "instanceId",
+    "resourceIdFrom": "instanceId",
+    "arnTemplate": "arn:{partition}:ec2:{region}:{account}:instance/{id}",
+    "nameFrom": "tag:Name"
+  },
+  "sources": {
+    "config": true,
+    "cloudControl": {
+      "read": true,
+      "list": true
+    }
+  },
+  "mapping": {
+    "properties": [
+      "InstanceId",
+      "ImageId",
+      "InstanceType",
+      "KeyName",
+      "SubnetId",
+      "VpcId",
+      "PrivateIpAddress",
+      "PrivateDnsName",
+      "PublicDnsName",
+      "State",
+      "SourceDestCheck",
+      "EbsOptimized",
+      "UserData"
+    ],
+    "rename": {
+      "AvailabilityZone": "placement.availabilityZone",
+      "Tenancy": "placement.tenancy",
+      "PublicIp": "publicIpAddress"
+    },
+    "exclude": [
+      "PrivateIp",
+      "Monitoring",
+      "SecurityGroupIds",
+      "IamInstanceProfile"
+    ],
+    "transform": {
+      "state.code": "toInt"
+    }
+  },
+  "redact": [
+    {
+      "path": "userData",
+      "mode": "drop"
+    }
+  ],
+  "columns": [
+    {
+      "key": "instanceType",
+      "label": {
+        "zh-CN": "实例类型",
+        "en": "Instance type"
+      },
+      "type": "enum",
+      "path": "instanceType"
+    },
+    {
+      "key": "state",
+      "label": {
+        "zh-CN": "运行状态",
+        "en": "State"
+      },
+      "type": "enum",
+      "path": "state.name"
+    },
+    {
+      "key": "privateIp",
+      "label": {
+        "zh-CN": "私有 IP",
+        "en": "Private IP"
+      },
+      "type": "text",
+      "path": "privateIpAddress",
+      "mono": true
+    },
+    {
+      "key": "publicIp",
+      "label": {
+        "zh-CN": "公网 IP",
+        "en": "Public IP"
+      },
+      "type": "text",
+      "path": "publicIpAddress",
+      "mono": true
+    },
+    {
+      "key": "vpcId",
+      "label": {
+        "zh-CN": "VPC",
+        "en": "VPC"
+      },
+      "type": "text",
+      "path": "vpcId",
+      "mono": true
+    },
+    {
+      "key": "imageId",
+      "label": {
+        "zh-CN": "AMI",
+        "en": "AMI"
+      },
+      "type": "text",
+      "path": "imageId",
+      "mono": true
+    }
+  ]
+}

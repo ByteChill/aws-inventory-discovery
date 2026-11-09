@@ -1,0 +1,7 @@
+{
+  "ResourceDescription": {
+    "Identifier": "vpc-0ee975135dEXAMPLE",
+    "Properties": "{\"VpcId\":\"vpc-0ee975135dEXAMPLE\",\"CidrBlock\":\"10.0.0.0/16\",\"CidrBlockAssociations\":[\"vpc-cidr-assoc-067c3a0a1fEXAMPLE\"],\"InstanceTenancy\":\"default\",\"Tags\":[{\"Key\":\"Name\",\"Value\":\"MyVPC-Main\"}]}"
+  },
+  "TypeName": "AWS::EC2::VPC"
+}

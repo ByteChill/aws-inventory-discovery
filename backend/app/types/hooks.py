@@ -1,0 +1,169 @@
+"""Per-type code for the few things a spec file cannot express (resource-types.md section 4).
+
+A hook only reads and enriches data. It never touches the database, redacts, or decides
+deletion. `get_live` has three outcomes: the resource, `GONE`, or an exception.
+
+Decisions recorded here (checked against the CloudFormation resource type schemas):
+
+* AWS::ECS::Service has no `list_live` hook. Its `handlers.list` has no handlerSchema that
+  requires a parent property and its permissions include `ecs:ListClusters` and
+  `ecs:ListServices`: the Cloud Control handler enumerates the clusters itself, so a plain
+  `ListResources` is complete.
+* AWS::ECS::TaskDefinition has no `filter` hook. Cloud Control exposes neither `Status` nor
+  `Revision`, so "only the latest ACTIVE revision per family" cannot be computed from its data.
+  The list handler calls `ecs:ListTaskDefinitions`, whose default status filter is ACTIVE, so
+  Cloud Control lists every ACTIVE revision (not only the latest). All of them are inventoried;
+  a revision that becomes INACTIVE drops out of the list, is marked missing, and the by-ID read
+  (`DescribeTaskDefinition` still answers for INACTIVE revisions) keeps it from being deleted.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from dataclasses import dataclass
+from typing import Any, Protocol
+
+from boto3.session import Session
+from botocore.exceptions import ClientError
+
+from app.aws.session import make_client
+from app.types.mapping import MappingError, ami_gone
+
+Properties = dict[str, Any]
+
+
+@dataclass(frozen=True)
+class Gone:
+    """A by-ID read that explicitly says the resource does not exist."""
+
+
+GONE = Gone()
+
+
+class ListLive(Protocol):
+    def __call__(
+        self, session: Session, *, account_id: str, region: str
+    ) -> Iterator[list[Properties]]:
+        """List every resource, one list per page, as a generator the caller consumes inside
+        the scope lease. Raise on any failed page or parent so a list is never partial."""
+        ...
+
+
+class GetLive(Protocol):
+    def __call__(
+        self, session: Session, *, account_id: str, region: str, resource_id: str
+    ) -> Properties | Gone:
+        """Return the resource, or GONE when it is explicitly gone. Raise on anything else."""
+        ...
+
+
+class Filter(Protocol):
+    def __call__(self, items: list[Properties]) -> list[Properties]:
+        """Sees the whole list (a filter may compare items): the pages are buffered for it."""
+        ...
+
+
+class Enrich(Protocol):
+    def __call__(
+        self, session: Session, *, account_id: str, region: str, item: Properties
+    ) -> Properties: ...
+
+
+class CloudControlIdentifier(Protocol):
+    def __call__(self, resource_id: str, /) -> str:
+        """The composite Cloud Control Identifier from the resource id alone; raise
+        `MappingError` when the id cannot carry it."""
+        ...
+
+
+@dataclass(frozen=True)
+class Hooks:
+    list_live: ListLive | None = None  # default: Cloud Control ListResources
+    get_live: GetLive | None = None  # default: Cloud Control GetResource
+    filter: Filter | None = None  # default: no filtering
+    enrich: Enrich | None = None  # default: no enrichment
+    # Composite identifiers only: build it from the resource id when no stored configuration
+    # exists (default: needs the stored configuration)
+    cloudcontrol_identifier: CloudControlIdentifier | None = None
+
+
+# --- AMI (resource-types.md 4.1) ----------------------------------------------------------
+
+IMAGE_FLAGS = {"IncludeDeprecated": True, "IncludeDisabled": True}
+
+
+def _with_ownership(image: Properties, account_id: str) -> Properties:
+    return {**image, "Ownership": "self" if image["OwnerId"] == account_id else "shared"}
+
+
+def list_amis(session: Session, *, account_id: str, region: str) -> Iterator[list[Properties]]:
+    """AMIs the account owns plus those shared with it (or its organization / OU), one list per
+    `DescribeImages` page; an AMI in both audiences is yielded once (as the owned one)."""
+    ec2 = make_client(session, "ec2", region)
+    seen: set[str] = set()
+    for audience in ({"Owners": ["self"]}, {"ExecutableUsers": ["self"]}):
+        for page in ec2.get_paginator("describe_images").paginate(**IMAGE_FLAGS, **audience):
+            fresh = [image for image in page["Images"] if image["ImageId"] not in seen]
+            seen.update(image["ImageId"] for image in fresh)
+            if fresh:
+                yield [_with_ownership(image, account_id) for image in fresh]
+
+
+def get_ami(
+    session: Session, *, account_id: str, region: str, resource_id: str
+) -> Properties | Gone:
+    ec2 = make_client(session, "ec2", region)
+    try:
+        response = ec2.describe_images(ImageIds=[resource_id], **IMAGE_FLAGS)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "InvalidAMIID.NotFound":
+            return GONE
+        raise
+    if ami_gone(response):
+        return GONE
+    return _with_ownership(response["Images"][0], account_id)
+
+
+# --- ECS service (Cloud Control identifier `ServiceArn|Cluster`) ---------------------------
+
+
+def ecs_service_identifier(service_arn: str) -> str:
+    """`<service ARN>|<cluster ARN>`, with the cluster taken from the service ARN.
+
+    The long ARN format is `arn:<partition>:ecs:<region>:<account>:service/<cluster>/<service>`;
+    the cluster ARN is `arn:<partition>:ecs:<region>:<account>:cluster/<cluster>`. The old short
+    format `arn:<partition>:ecs:<region>:<account>:service/<service>` does not contain the
+    cluster and is rejected."""
+    prefix, _, resource = service_arn.partition(":service/")
+    parts = prefix.split(":")
+    cluster, _, name = resource.partition("/")
+    if len(parts) != 5 or parts[0] != "arn" or parts[2] != "ecs" or not resource:
+        raise MappingError(f"not an ECS service ARN: {service_arn!r}")
+    if not name or "/" in name:
+        raise MappingError(
+            f"ECS service ARN {service_arn!r} is in the old short format without the cluster; "
+            "use arn:<partition>:ecs:<region>:<account>:service/<cluster>/<service>"
+        )
+    return f"{service_arn}|{prefix}:cluster/{cluster}"
+
+
+# --- ECS cluster (resource id is the ARN, Cloud Control identifier is `ClusterName`) --------
+
+
+def ecs_cluster_identifier(cluster_arn: str) -> str:
+    """The cluster name of `arn:<partition>:ecs:<region>:<account>:cluster/<name>`."""
+    parts = cluster_arn.split(":", 5)
+    kind, _, name = parts[5].partition("/") if len(parts) == 6 else ("", "", "")
+    if parts[:1] != ["arn"] or parts[2] != "ecs" or kind != "cluster" or not name or "/" in name:
+        raise MappingError(
+            f"not an ECS cluster ARN: {cluster_arn!r}; "
+            "use arn:<partition>:ecs:<region>:<account>:cluster/<name>"
+        )
+    return name
+
+
+TYPE_HOOKS: dict[str, Hooks] = {
+    "AWS::ECS::Cluster": Hooks(cloudcontrol_identifier=ecs_cluster_identifier),
+    "AWS::ECS::Service": Hooks(cloudcontrol_identifier=ecs_service_identifier),
+    "AWS::EC2::Image": Hooks(list_live=list_amis, get_live=get_ami),
+}

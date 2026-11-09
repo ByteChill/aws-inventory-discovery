@@ -1,0 +1,79 @@
+{
+  "typeName": "AWS::Lambda::Function",
+  "label": {
+    "zh-CN": "Lambda 函数",
+    "en": "Lambda function"
+  },
+  "identity": {
+    "identifier": "functionName",
+    "resourceIdFrom": "functionName",
+    "arnFrom": "functionArn",
+    "nameFrom": "functionName"
+  },
+  "sources": {
+    "config": true,
+    "cloudControl": {
+      "read": true,
+      "list": true
+    }
+  },
+  "mapping": {
+    "properties": [
+      "FunctionName",
+      "Runtime",
+      "Role",
+      "Handler",
+      "Description",
+      "Timeout",
+      "MemorySize",
+      "PackageType",
+      "Architectures",
+      "EphemeralStorage",
+      "TracingConfig",
+      "ReservedConcurrentExecutions",
+      "VpcConfig",
+      "Environment"
+    ],
+    "rename": {
+      "Arn": "functionArn"
+    },
+    "preserveKeysUnder": [
+      "Environment.Variables"
+    ]
+  },
+  "redact": [
+    {
+      "path": "environment.variables",
+      "mode": "values"
+    }
+  ],
+  "columns": [
+    {
+      "key": "runtime",
+      "label": {
+        "zh-CN": "运行时",
+        "en": "Runtime"
+      },
+      "type": "enum",
+      "path": "runtime"
+    },
+    {
+      "key": "memorySize",
+      "label": {
+        "zh-CN": "内存（MB）",
+        "en": "Memory (MB)"
+      },
+      "type": "number",
+      "path": "memorySize"
+    },
+    {
+      "key": "timeout",
+      "label": {
+        "zh-CN": "超时（秒）",
+        "en": "Timeout (s)"
+      },
+      "type": "number",
+      "path": "timeout"
+    }
+  ]
+}

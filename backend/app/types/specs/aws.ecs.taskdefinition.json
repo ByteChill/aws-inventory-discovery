@@ -1,0 +1,65 @@
+{
+  "typeName": "AWS::ECS::TaskDefinition",
+  "label": {
+    "zh-CN": "ECS 任务定义",
+    "en": "ECS task definition"
+  },
+  "identity": {
+    "identifier": "TaskDefinitionArn",
+    "resourceIdFrom": "TaskDefinitionArn",
+    "arnFrom": "TaskDefinitionArn",
+    "nameFrom": "Family"
+  },
+  "sources": {
+    "config": true,
+    "cloudControl": {
+      "read": true,
+      "list": true
+    }
+  },
+  "mapping": {
+    "keyCase": "pascal",
+    "properties": [
+      "TaskDefinitionArn",
+      "Family",
+      "ContainerDefinitions",
+      "Volumes"
+    ]
+  },
+  "redact": [
+    {
+      "path": "ContainerDefinitions[].Environment[].Value",
+      "mode": "values"
+    }
+  ],
+  "columns": [
+    {
+      "key": "family",
+      "label": {
+        "zh-CN": "系列",
+        "en": "Family"
+      },
+      "type": "text",
+      "path": "Family"
+    },
+    {
+      "key": "status",
+      "label": {
+        "zh-CN": "状态",
+        "en": "Status"
+      },
+      "type": "enum",
+      "path": "Status"
+    },
+    {
+      "key": "containerCount",
+      "label": {
+        "zh-CN": "容器数",
+        "en": "Containers"
+      },
+      "type": "number",
+      "path": "ContainerDefinitions",
+      "count": true
+    }
+  ]
+}

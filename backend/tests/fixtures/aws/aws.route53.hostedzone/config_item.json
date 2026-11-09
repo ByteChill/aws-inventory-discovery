@@ -1,0 +1,23 @@
+{
+  "arn": "arn:aws:route53:::hostedzone/Z1PA6795UKMFR9",
+  "resourceId": "Z1PA6795UKMFR9",
+  "resourceName": "example.com.",
+  "resourceType": "AWS::Route53::HostedZone",
+  "awsRegion": "global",
+  "accountId": "111122223333",
+  "configuration": {
+    "Id": "Z1PA6795UKMFR9",
+    "Name": "example.com.",
+    "NameServers": [
+      "ns-2048.awsdns-64.com",
+      "ns-2049.awsdns-65.net",
+      "ns-2050.awsdns-66.org",
+      "ns-2051.awsdns-67.co.uk"
+    ]
+  },
+  "supplementaryConfiguration": {},
+  "tags": [],
+  "relationships": [],
+  "configurationItemCaptureTime": "2026-11-06T09:15:22.401Z",
+  "configurationItemStatus": "OK"
+}

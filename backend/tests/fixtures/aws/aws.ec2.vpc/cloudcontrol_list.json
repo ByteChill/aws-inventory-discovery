@@ -1,0 +1,13 @@
+{
+  "ResourceDescriptions": [
+    {
+      "Identifier": "vpc-0ee975135dEXAMPLE",
+      "Properties": "{\"VpcId\":\"vpc-0ee975135dEXAMPLE\",\"CidrBlock\":\"10.0.0.0/16\",\"CidrBlockAssociations\":[\"vpc-cidr-assoc-067c3a0a1fEXAMPLE\"],\"InstanceTenancy\":\"default\",\"Tags\":[{\"Key\":\"Name\",\"Value\":\"MyVPC-Main\"}]}"
+    },
+    {
+      "Identifier": "vpc-081ec835f3EXAMPLE",
+      "Properties": "{\"VpcId\":\"vpc-081ec835f3EXAMPLE\",\"CidrBlock\":\"10.0.1.0/24\",\"CidrBlockAssociations\":[\"vpc-cidr-assoc-043f572c17EXAMPLE\"],\"InstanceTenancy\":\"default\",\"Tags\":[{\"Key\":\"Name\",\"Value\":\"MyVPC\"}]}"
+    }
+  ],
+  "TypeName": "AWS::EC2::VPC"
+}

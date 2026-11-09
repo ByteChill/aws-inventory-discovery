@@ -1,0 +1,7 @@
+{
+  "ResourceDescription": {
+    "Identifier": "https://sqs.us-east-1.amazonaws.com/111122223333/MyQueue",
+    "Properties": "{\"QueueUrl\":\"https://sqs.us-east-1.amazonaws.com/111122223333/MyQueue\",\"Arn\":\"arn:aws:sqs:us-east-1:111122223333:MyQueue\",\"QueueName\":\"MyQueue\",\"VisibilityTimeout\":40,\"MaximumMessageSize\":262144,\"MessageRetentionPeriod\":345600,\"DelaySeconds\":0,\"ReceiveMessageWaitTimeSeconds\":0,\"SqsManagedSseEnabled\":true,\"RedrivePolicy\":{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:111122223333:MyQueue-dlq\",\"maxReceiveCount\":5},\"Tags\":[{\"Key\":\"Owner\",\"Value\":\"TeamA\"}]}"
+  },
+  "TypeName": "AWS::SQS::Queue"
+}

@@ -1,0 +1,67 @@
+{
+  "typeName": "AWS::ECS::Service",
+  "label": {
+    "zh-CN": "ECS 服务",
+    "en": "ECS service"
+  },
+  "identity": {
+    "identifier": [
+      "ServiceArn",
+      "Cluster"
+    ],
+    "resourceIdFrom": "ServiceArn",
+    "arnFrom": "ServiceArn",
+    "nameFrom": "ServiceName"
+  },
+  "sources": {
+    "config": true,
+    "cloudControl": {
+      "read": true,
+      "list": true
+    }
+  },
+  "mapping": {
+    "keyCase": "pascal",
+    "properties": [
+      "ServiceArn",
+      "Name",
+      "ServiceName",
+      "Cluster",
+      "TaskDefinition",
+      "DesiredCount",
+      "DeploymentConfiguration",
+      "LoadBalancers"
+    ]
+  },
+  "columns": [
+    {
+      "key": "cluster",
+      "label": {
+        "zh-CN": "集群",
+        "en": "Cluster"
+      },
+      "type": "text",
+      "path": "Cluster",
+      "mono": true
+    },
+    {
+      "key": "desiredCount",
+      "label": {
+        "zh-CN": "期望任务数",
+        "en": "Desired tasks"
+      },
+      "type": "number",
+      "path": "DesiredCount"
+    },
+    {
+      "key": "taskDefinition",
+      "label": {
+        "zh-CN": "任务定义",
+        "en": "Task definition"
+      },
+      "type": "text",
+      "path": "TaskDefinition",
+      "mono": true
+    }
+  ]
+}

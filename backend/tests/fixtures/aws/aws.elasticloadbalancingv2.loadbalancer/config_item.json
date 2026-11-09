@@ -1,0 +1,64 @@
+{
+  "arn": "arn:aws:elasticloadbalancing:us-east-1:111122223333:loadbalancer/app/my-load-balancer/50dc6c495c0c9188",
+  "resourceId": "arn:aws:elasticloadbalancing:us-east-1:111122223333:loadbalancer/app/my-load-balancer/50dc6c495c0c9188",
+  "resourceName": "my-load-balancer",
+  "resourceType": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+  "awsRegion": "us-east-1",
+  "accountId": "111122223333",
+  "configuration": {
+    "loadBalancerArn": "arn:aws:elasticloadbalancing:us-east-1:111122223333:loadbalancer/app/my-load-balancer/50dc6c495c0c9188",
+    "loadBalancerName": "my-load-balancer",
+    "scheme": "internet-facing",
+    "vpcId": "vpc-0ee975135dEXAMPLE",
+    "canonicalHostedZoneId": "Z2P70J7EXAMPLE",
+    "createdTime": "2016-03-25T21:26:12.920Z",
+    "availabilityZones": [
+      {
+        "subnetId": "subnet-0bb1c79de301436ee",
+        "zoneName": "us-east-1c"
+      },
+      {
+        "subnetId": "subnet-02bf4c428bf44ebce",
+        "zoneName": "us-east-1b"
+      }
+    ],
+    "securityGroups": [
+      {
+        "value": "sg-5943793c"
+      }
+    ],
+    "dNSName": "my-load-balancer-424835706.us-east-1.elb.amazonaws.com",
+    "state": {
+      "code": "active"
+    },
+    "type": "application",
+    "ipAddressType": "ipv4"
+  },
+  "supplementaryConfiguration": {},
+  "tags": [
+    {
+      "key": "Owner",
+      "value": "TeamA"
+    }
+  ],
+  "relationships": [
+    {
+      "resourceType": "AWS::EC2::SecurityGroup",
+      "resourceId": "sg-5943793c"
+    },
+    {
+      "resourceType": "AWS::EC2::Subnet",
+      "resourceId": "subnet-0bb1c79de301436ee"
+    },
+    {
+      "resourceType": "AWS::EC2::Subnet",
+      "resourceId": "subnet-02bf4c428bf44ebce"
+    },
+    {
+      "resourceType": "AWS::EC2::VPC",
+      "resourceId": "vpc-0ee975135dEXAMPLE"
+    }
+  ],
+  "configurationItemCaptureTime": "2026-11-06T09:15:22.401Z",
+  "configurationItemStatus": "OK"
+}

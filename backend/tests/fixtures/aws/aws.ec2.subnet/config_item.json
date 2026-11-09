@@ -1,0 +1,47 @@
+{
+  "arn": "arn:aws:ec2:us-east-1:111122223333:subnet/subnet-0bb1c79de301436ee",
+  "resourceId": "subnet-0bb1c79de301436ee",
+  "resourceType": "AWS::EC2::Subnet",
+  "awsRegion": "us-east-1",
+  "accountId": "111122223333",
+  "configuration": {
+    "subnetId": "subnet-0bb1c79de301436ee",
+    "subnetArn": "arn:aws:ec2:us-east-1:111122223333:subnet/subnet-0bb1c79de301436ee",
+    "state": {
+      "value": "available"
+    },
+    "ownerId": "111122223333",
+    "vpcId": "vpc-0ee975135dEXAMPLE",
+    "cidrBlock": "10.0.2.0/24",
+    "ipv6CidrBlockAssociationSet": [],
+    "availableIpAddressCount": 251,
+    "availabilityZone": "us-east-1c",
+    "availabilityZoneId": "use1-az6",
+    "defaultForAz": false,
+    "mapPublicIpOnLaunch": false,
+    "assignIpv6AddressOnCreation": false
+  },
+  "supplementaryConfiguration": {},
+  "tags": [
+    {
+      "key": "Name",
+      "value": "MySubnet"
+    }
+  ],
+  "relationships": [
+    {
+      "resourceType": "AWS::EC2::VPC",
+      "resourceId": "vpc-0ee975135dEXAMPLE"
+    },
+    {
+      "resourceType": "AWS::EC2::Instance",
+      "resourceId": "i-1234567890abcdef0"
+    },
+    {
+      "resourceType": "AWS::EC2::NetworkInterface",
+      "resourceId": "eni-551ba033"
+    }
+  ],
+  "configurationItemCaptureTime": "2026-11-06T09:15:22.401Z",
+  "configurationItemStatus": "OK"
+}

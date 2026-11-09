@@ -1,0 +1,74 @@
+{
+  "typeName": "AWS::EC2::Subnet",
+  "label": {
+    "zh-CN": "子网",
+    "en": "Subnet"
+  },
+  "identity": {
+    "identifier": "subnetId",
+    "resourceIdFrom": "subnetId",
+    "arnTemplate": "arn:{partition}:ec2:{region}:{account}:subnet/{id}",
+    "nameFrom": "tag:Name"
+  },
+  "sources": {
+    "config": true,
+    "cloudControl": {
+      "read": true,
+      "list": true
+    }
+  },
+  "mapping": {
+    "properties": [
+      "SubnetId",
+      "VpcId",
+      "CidrBlock",
+      "AvailabilityZone",
+      "AvailabilityZoneId",
+      "MapPublicIpOnLaunch",
+      "AssignIpv6AddressOnCreation"
+    ],
+    "exclude": [
+      "Ipv6CidrBlocks"
+    ]
+  },
+  "columns": [
+    {
+      "key": "vpcId",
+      "label": {
+        "zh-CN": "VPC",
+        "en": "VPC"
+      },
+      "type": "text",
+      "path": "vpcId",
+      "mono": true
+    },
+    {
+      "key": "cidrBlock",
+      "label": {
+        "zh-CN": "CIDR",
+        "en": "CIDR"
+      },
+      "type": "text",
+      "path": "cidrBlock",
+      "mono": true
+    },
+    {
+      "key": "availabilityZone",
+      "label": {
+        "zh-CN": "可用区",
+        "en": "Availability Zone"
+      },
+      "type": "enum",
+      "path": "availabilityZone"
+    },
+    {
+      "key": "mapPublicIpOnLaunch",
+      "label": {
+        "zh-CN": "自动分配公网 IP",
+        "en": "Auto-assign public IP"
+      },
+      "type": "bool",
+      "path": "mapPublicIpOnLaunch"
+    }
+  ]
+}

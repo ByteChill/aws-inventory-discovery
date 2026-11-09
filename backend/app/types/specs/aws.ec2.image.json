@@ -1,0 +1,132 @@
+{
+  "typeName": "AWS::EC2::Image",
+  "label": {
+    "zh-CN": "AMI",
+    "en": "AMI"
+  },
+  "identity": {
+    "identifier": "imageId",
+    "resourceIdFrom": "imageId",
+    "arnTemplate": "arn:{partition}:ec2:{region}::image/{id}",
+    "nameFrom": "name"
+  },
+  "sources": {
+    "config": false,
+    "cloudControl": {
+      "read": false,
+      "list": false
+    },
+    "native": true
+  },
+  "mapping": {
+    "properties": [
+      "Architecture",
+      "BlockDeviceMappings",
+      "BootMode",
+      "CreationDate",
+      "DeprecationTime",
+      "Description",
+      "EnaSupport",
+      "Hypervisor",
+      "ImageId",
+      "ImageLocation",
+      "ImageOwnerAlias",
+      "ImageType",
+      "ImdsSupport",
+      "KernelId",
+      "LastLaunchedTime",
+      "Name",
+      "OwnerId",
+      "Ownership",
+      "Platform",
+      "PlatformDetails",
+      "ProductCodes",
+      "Public",
+      "RamdiskId",
+      "RootDeviceName",
+      "RootDeviceType",
+      "SourceInstanceId",
+      "SriovNetSupport",
+      "State",
+      "StateReason",
+      "TpmSupport",
+      "UsageOperation",
+      "VirtualizationType"
+    ]
+  },
+  "columns": [
+    {
+      "key": "name",
+      "label": {
+        "zh-CN": "名称",
+        "en": "Name"
+      },
+      "type": "text",
+      "path": "name"
+    },
+    {
+      "key": "ownership",
+      "label": {
+        "zh-CN": "来源",
+        "en": "Source"
+      },
+      "type": "enum",
+      "path": "ownership"
+    },
+    {
+      "key": "ownerId",
+      "label": {
+        "zh-CN": "所有者账号",
+        "en": "Owner account"
+      },
+      "type": "text",
+      "path": "ownerId",
+      "mono": true
+    },
+    {
+      "key": "state",
+      "label": {
+        "zh-CN": "状态",
+        "en": "State"
+      },
+      "type": "enum",
+      "path": "state"
+    },
+    {
+      "key": "architecture",
+      "label": {
+        "zh-CN": "架构",
+        "en": "Architecture"
+      },
+      "type": "enum",
+      "path": "architecture"
+    },
+    {
+      "key": "platformDetails",
+      "label": {
+        "zh-CN": "平台",
+        "en": "Platform"
+      },
+      "type": "enum",
+      "path": "platformDetails"
+    },
+    {
+      "key": "creationDate",
+      "label": {
+        "zh-CN": "创建时间",
+        "en": "Created"
+      },
+      "type": "datetime",
+      "path": "creationDate"
+    },
+    {
+      "key": "public",
+      "label": {
+        "zh-CN": "是否公开",
+        "en": "Public"
+      },
+      "type": "bool",
+      "path": "public"
+    }
+  ]
+}

@@ -1,0 +1,283 @@
+"""The write side of the API: error codes and status codes of refresh, scans, tasks and scopes.
+
+No worker runs here: requests stay queued, which is exactly what the contract is about.
+The end-to-end behaviour is in tests/worker/test_end_to_end.py.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Iterator
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, text
+
+from app.core.db import make_engine
+from tests.conftest import NOWHERE, TEST_DATABASE_URL
+from tests.support.seed import DEV_ACCOUNT, IMAGES_ACCOUNT, MAIN_ACCOUNT, Seeded
+
+API = "/api/v1"
+SCOPE = {"accountId": MAIN_ACCOUNT, "awsRegion": "eu-west-1", "resourceType": "AWS::SNS::Topic"}
+
+
+@pytest.fixture
+def db_engine(schema_name: str) -> Iterator[Engine]:
+    engine = make_engine(TEST_DATABASE_URL, schema_name)
+    yield engine
+    with engine.begin() as connection:  # leave the shared seed as it was
+        connection.execute(text("TRUNCATE t_inv_aws_scan_task, t_inv_aws_scan_request CASCADE"))
+        connection.execute(
+            text(
+                "UPDATE t_inv_aws_scan_shard SET guard_state = 'normal', candidate_count = NULL,"
+                " guard_detected_at = NULL, guard_confirmed_by = NULL"
+            )
+        )
+    engine.dispose()
+
+
+@pytest.fixture
+def api(client: TestClient, db_engine: Engine) -> TestClient:
+    del db_engine  # only needed for its clean-up
+    return client
+
+
+def error_of(response: Any, status: int) -> dict[str, Any]:
+    assert response.status_code == status, response.text
+    return response.json()
+
+
+def test_create_scan_validates_the_body_and_the_scope(
+    api: TestClient, make_client: Callable[..., TestClient], seeded: Seeded
+) -> None:
+    for body in ({}, {"accountIds": [MAIN_ACCOUNT], "all": True}, {"accountIds": ["12"]}):
+        assert error_of(api.post(f"{API}/scans", json=body), 422)["code"] == "validation_error"
+    unknown_type = {"accountIds": [MAIN_ACCOUNT], "resourceTypes": ["AWS::Nope::Thing"]}
+    assert error_of(api.post(f"{API}/scans", json=unknown_type), 422)["code"] == (
+        "validation_error"
+    )
+    missing = error_of(api.post(f"{API}/scans", json={"accountIds": ["999999999999"]}), 404)
+    assert missing["code"] == "account_not_found"
+    assert missing["details"] == {"accountIds": ["999999999999"]}
+
+    small = make_client(MAX_SCAN_ACCOUNTS="1")
+    too_large = error_of(
+        small.post(f"{API}/scans", json={"accountIds": [MAIN_ACCOUNT, IMAGES_ACCOUNT]}), 422
+    )
+    assert too_large["code"] == "scope_too_large"
+    assert too_large["details"] == {"limit": 1, "requested": 2}
+
+
+def test_create_scan_status_codes_and_idempotency(api: TestClient) -> None:
+    body = {"accountIds": [MAIN_ACCOUNT], "awsRegions": ["us-east-1"]}
+    headers = {"Idempotency-Key": "key-1", "X-Caller-Id": "dashboard"}
+
+    created = api.post(f"{API}/scans", json=body, headers=headers)
+    again = api.post(f"{API}/scans", json=body, headers=headers)
+    different = api.post(
+        f"{API}/scans", json={"accountIds": [IMAGES_ACCOUNT]}, headers={"Idempotency-Key": "key-1"}
+    )
+
+    assert created.status_code == 201 and again.status_code == 200
+    assert again.json()["id"] == created.json()["id"]
+    assert created.json()["callerId"] == "dashboard" and created.json()["status"] == "queued"
+    assert created.json()["scope"] == {
+        "accountIds": [MAIN_ACCOUNT],
+        "awsRegions": ["us-east-1"],
+        "resourceTypes": None,
+        "all": None,
+    }
+    assert error_of(different, 409)["code"] == "idempotency_conflict"
+
+    everything = api.post(f"{API}/scans", json={"all": True})
+    running = api.post(f"{API}/scans", json={"all": True})
+    assert (everything.status_code, running.status_code) == (201, 200)
+    assert running.json()["id"] == everything.json()["id"]
+
+
+def test_scan_listing_detail_tasks_and_cancel(api: TestClient) -> None:
+    created = api.post(f"{API}/scans", json={"accountIds": [MAIN_ACCOUNT, IMAGES_ACCOUNT]}).json()
+    scan_id = created["id"]
+
+    listed = api.get(f"{API}/scans", params={"status": "queued", "trigger": "api"}).json()
+    assert [s["id"] for s in listed["items"]] == [scan_id] and listed["total"] == 1
+    assert api.get(f"{API}/scans", params={"trigger": "schedule"}).json()["total"] == 0
+    detail = api.get(f"{API}/scans/{scan_id}").json()
+    assert detail["failuresByCode"] == [] and detail["counts"]["resources"]["new"] == 0
+    tasks = api.get(f"{API}/scans/{scan_id}/tasks", params={"kind": "sweep_account"}).json()
+    assert tasks["total"] == 2 and {t["accountId"] for t in tasks["items"]} == {
+        MAIN_ACCOUNT,
+        IMAGES_ACCOUNT,
+    }
+    assert api.get(f"{API}/scans/{scan_id}/tasks", params={"status": "failed"}).json()["total"] == 0
+    task = api.get(f"{API}/tasks/{tasks['items'][0]['id']}").json()
+    assert task["status"] == "queued" and task["attempt"] == 0 and task["maxAttempts"] == 3
+
+    cancelled = api.post(f"{API}/scans/{scan_id}/cancel")
+    assert cancelled.status_code == 200 and cancelled.json()["status"] == "cancelled"
+    assert error_of(api.post(f"{API}/scans/{scan_id}/cancel"), 409)["code"] == (
+        "scan_not_cancellable"
+    )
+    assert error_of(api.post(f"{API}/scans/{scan_id}/retry-failed"), 409)["code"] == (
+        "scan_cancelled"
+    )
+    cancelled_tasks = api.get(f"{API}/scans/{scan_id}/tasks").json()["items"]
+    assert {t["status"] for t in cancelled_tasks} == {"cancelled"}
+
+
+def test_unknown_scans_and_tasks_are_404(api: TestClient) -> None:
+    for method, path, code in (
+        ("get", "/scans/999999", "scan_not_found"),
+        ("get", "/scans/999999/tasks", "scan_not_found"),
+        ("post", "/scans/999999/cancel", "scan_not_found"),
+        ("post", "/scans/999999/retry-failed", "scan_not_found"),
+        ("get", "/tasks/999999", "task_not_found"),
+        ("get", "/tasks/999999/logs", "task_not_found"),
+    ):
+        assert error_of(getattr(api, method)(f"{API}{path}"), 404)["code"] == code, path
+
+
+def test_retry_failed_requeues_only_failed_tasks(api: TestClient, db_engine: Engine) -> None:
+    scan_id = api.post(f"{API}/scans", json={"accountIds": [MAIN_ACCOUNT]}).json()["id"]
+    with db_engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE t_inv_aws_scan_task SET status = 'failed', attempt = 3,"
+                " error_code = 'throttled', finished_at = now() WHERE scan_request_id = :id"
+            ),
+            {"id": scan_id},
+        )
+
+    assert api.post(f"{API}/scans/{scan_id}/retry-failed").json() == {"requeued": 1}
+
+    (task,) = api.get(f"{API}/scans/{scan_id}/tasks").json()["items"]
+    assert (task["status"], task["attempt"], task["errorCode"]) == ("queued", 0, None)
+    assert api.post(f"{API}/scans/{scan_id}/retry-failed").json() == {"requeued": 0}
+
+
+def test_summary_reports_the_backlog(api: TestClient) -> None:
+    api.post(f"{API}/scans", json={"accountIds": [MAIN_ACCOUNT, IMAGES_ACCOUNT]})
+
+    summary = api.get(f"{API}/scans/summary").json()
+
+    assert summary["backlog"]["onDemand"]["queued"] == 2
+    assert summary["backlog"]["scheduled"] == {"queued": 0, "oldestWaitSeconds": 0}
+    assert summary["sweep"] is None and summary["failures24h"] == []
+    assert summary["workers"] == {"activeTasks": 0, "lastHeartbeatAt": None}
+    assert summary["abnormalScopeCount"] == 0
+
+
+def test_refresh_without_waiting_is_202_and_shares_the_inflight_task(
+    api: TestClient, seeded: Seeded
+) -> None:
+    row = seeded.where(account_id=DEV_ACCOUNT, resource_type="AWS::SQS::Queue")[0]
+    body = {
+        "accountId": row["account_id"],
+        "awsRegion": row["aws_region"],
+        "resourceType": row["resource_type"],
+        "resourceId": row["resource_id"],
+    }
+
+    first = api.post(f"{API}/resources/refresh", json=body)
+    waited = api.post(f"{API}/resources/refresh?wait=1", json=body)  # nobody works the queue
+
+    assert first.status_code == 202 and waited.status_code == 202
+    assert first.json() == waited.json() and first.json()["taskId"] > 0
+    task = api.get(f"{API}/tasks/{first.json()['taskId']}").json()
+    assert (task["kind"], task["resourceId"]) == ("resource", row["resource_id"])
+
+
+def test_refresh_rejects_bad_requests(api: TestClient, seeded: Seeded) -> None:
+    key = {"accountId": MAIN_ACCOUNT, "awsRegion": "us-east-1", "resourceId": "x"}
+    for path, body in (
+        ("/resources/refresh?wait=21", {"arn": "arn:aws:x"}),
+        ("/resources/refresh", {}),
+        ("/resources/refresh", {**key, "arn": "arn:aws:x"}),
+        ("/resources/refresh", {**key, "resourceType": "AWS::Nope::Thing"}),
+    ):
+        assert error_of(api.post(f"{API}{path}", json=body), 422)["code"] == "validation_error"
+    unknown_account = {**key, "accountId": "999999999999", "resourceType": "AWS::SQS::Queue"}
+    assert error_of(api.post(f"{API}/resources/refresh", json=unknown_account), 404)["code"] == (
+        "account_not_found"
+    )
+    missing_arn = error_of(api.post(f"{API}/resources/refresh", json={"arn": "arn:aws:nope"}), 404)
+    assert missing_arn["code"] == "resource_not_found"
+
+
+def test_refresh_by_arn_that_is_in_two_accounts_is_ambiguous(
+    api: TestClient, seeded: Seeded
+) -> None:
+    arn = seeded.one(account_id=IMAGES_ACCOUNT, resource_type="AWS::EC2::Image")["arn"]
+
+    body = error_of(api.post(f"{API}/resources/refresh", json={"arn": arn}), 409)
+
+    assert body["code"] == "ambiguous_arn"
+    assert IMAGES_ACCOUNT in body["details"]["accountIds"]
+    assert len(body["details"]["accountIds"]) > 1
+
+
+def test_scan_scopes_and_confirming_an_abnormal_one(api: TestClient, db_engine: Engine) -> None:
+    assert api.get(f"{API}/scan-scopes").json()["total"] == 0
+    assert error_of(api.post(f"{API}/scan-scopes/confirm-change", json=SCOPE), 409)["code"] == (
+        "scope_not_abnormal"
+    )
+    nothing = {**SCOPE, "awsRegion": "mars-1"}
+    assert error_of(api.post(f"{API}/scan-scopes/confirm-change", json=nothing), 404)["code"] == (
+        "scope_not_found"
+    )
+    with db_engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE t_inv_aws_scan_shard SET guard_state = 'abnormal', candidate_count = 30,"
+                " guard_detected_at = now() WHERE account_id = :a AND region = :r"
+                " AND resource_type = :t"
+            ),
+            {"a": SCOPE["accountId"], "r": SCOPE["awsRegion"], "t": SCOPE["resourceType"]},
+        )
+    (abnormal,) = api.get(f"{API}/scan-scopes").json()["items"]
+    assert abnormal["candidateCount"] == 30 and abnormal["resourceType"] == SCOPE["resourceType"]
+    assert api.get(f"{API}/scans/summary").json()["abnormalScopeCount"] == 1
+
+    confirmed = api.post(
+        f"{API}/scan-scopes/confirm-change", json=SCOPE, headers={"X-Caller-Id": "alice"}
+    )
+
+    assert confirmed.status_code == 200
+    scan = api.get(f"{API}/scans/{confirmed.json()['scanRequestId']}").json()
+    assert scan["target"] == {k: SCOPE[k] for k in SCOPE} and scan["callerId"] == "alice"
+    (task,) = api.get(f"{API}/scans/{scan['id']}/tasks").json()["items"]
+    assert (task["kind"], task["source"], task["resourceType"]) == (
+        "shard",
+        "cloudcontrol",
+        SCOPE["resourceType"],
+    )
+    with db_engine.connect() as connection:
+        shard = connection.execute(
+            text(
+                "SELECT guard_state, guard_confirmed_by FROM t_inv_aws_scan_shard"
+                " WHERE account_id = :a AND region = :r AND resource_type = :t"
+            ),
+            {"a": SCOPE["accountId"], "r": SCOPE["awsRegion"], "t": SCOPE["resourceType"]},
+        ).one()
+    assert tuple(shard) == ("confirmed", "alice")
+
+
+def test_task_logs_are_503_when_cloudwatch_cannot_be_reached(
+    make_client: Callable[..., TestClient],
+    seeded: Seeded,
+    db_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
+    client = make_client(AWS_ENDPOINT_URL=f"http://{NOWHERE}")
+    scan = client.post(f"{API}/scans", json={"accountIds": [MAIN_ACCOUNT]}).json()
+    (task,) = client.get(f"{API}/scans/{scan['id']}/tasks").json()["items"]
+
+    response = client.get(f"{API}/tasks/{task['id']}/logs")
+
+    assert error_of(response, 503)["code"] == "dependency_unavailable"
+    assert error_of(client.get(f"{API}/tasks/{task['id']}/logs?limit=1001"), 422)["code"] == (
+        "validation_error"
+    )

@@ -1,0 +1,50 @@
+{
+  "arn": "arn:aws:ec2:us-east-1:111122223333:vpc/vpc-0ee975135dEXAMPLE",
+  "resourceId": "vpc-0ee975135dEXAMPLE",
+  "resourceType": "AWS::EC2::VPC",
+  "awsRegion": "us-east-1",
+  "accountId": "111122223333",
+  "configuration": {
+    "vpcId": "vpc-0ee975135dEXAMPLE",
+    "ownerId": "111122223333",
+    "state": {
+      "value": "available"
+    },
+    "cidrBlock": "10.0.0.0/16",
+    "cidrBlockAssociationSet": [
+      {
+        "associationId": "vpc-cidr-assoc-067c3a0a1fEXAMPLE",
+        "cidrBlock": "10.0.0.0/16",
+        "cidrBlockState": {
+          "state": "associated"
+        }
+      }
+    ],
+    "dhcpOptionsId": "dopt-f30d649a",
+    "instanceTenancy": "default",
+    "isDefault": false
+  },
+  "supplementaryConfiguration": {},
+  "tags": [
+    {
+      "key": "Name",
+      "value": "MyVPC-Main"
+    }
+  ],
+  "relationships": [
+    {
+      "resourceType": "AWS::EC2::Subnet",
+      "resourceId": "subnet-0bb1c79de301436ee"
+    },
+    {
+      "resourceType": "AWS::EC2::Subnet",
+      "resourceId": "subnet-02bf4c428bf44ebce"
+    },
+    {
+      "resourceType": "AWS::EC2::Instance",
+      "resourceId": "i-1234567890abcdef0"
+    }
+  ],
+  "configurationItemCaptureTime": "2026-11-06T09:15:22.401Z",
+  "configurationItemStatus": "OK"
+}

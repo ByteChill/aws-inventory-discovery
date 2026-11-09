@@ -1,0 +1,67 @@
+{
+  "arn": "arn:aws:ec2:us-east-1:111122223333:security-group/sg-5943793c",
+  "resourceId": "sg-5943793c",
+  "resourceName": "SSHAccess",
+  "resourceType": "AWS::EC2::SecurityGroup",
+  "awsRegion": "us-east-1",
+  "accountId": "111122223333",
+  "configuration": {
+    "description": "Security group for SSH access",
+    "groupId": "sg-5943793c",
+    "groupName": "SSHAccess",
+    "ipPermissions": [
+      {
+        "fromPort": 22,
+        "ipProtocol": "tcp",
+        "ipRanges": [
+          "0.0.0.0/0"
+        ],
+        "ipv4Ranges": [
+          {
+            "cidrIp": "0.0.0.0/0"
+          }
+        ],
+        "ipv6Ranges": [
+          {
+            "cidrIpv6": "::/0"
+          }
+        ],
+        "prefixListIds": [],
+        "toPort": 22,
+        "userIdGroupPairs": []
+      }
+    ],
+    "ipPermissionsEgress": [
+      {
+        "ipProtocol": "-1",
+        "ipRanges": [
+          "0.0.0.0/0"
+        ],
+        "ipv4Ranges": [
+          {
+            "cidrIp": "0.0.0.0/0"
+          }
+        ],
+        "ipv6Ranges": [
+          {
+            "cidrIpv6": "::/0"
+          }
+        ],
+        "prefixListIds": [],
+        "userIdGroupPairs": []
+      }
+    ],
+    "ownerId": "111122223333",
+    "vpcId": "vpc-0ee975135dEXAMPLE"
+  },
+  "supplementaryConfiguration": {},
+  "tags": [],
+  "relationships": [
+    {
+      "resourceType": "AWS::EC2::VPC",
+      "resourceId": "vpc-0ee975135dEXAMPLE"
+    }
+  ],
+  "configurationItemCaptureTime": "2026-11-06T09:15:22.401Z",
+  "configurationItemStatus": "OK"
+}

@@ -1,0 +1,49 @@
+{
+  "typeName": "AWS::Route53::HostedZone",
+  "label": {
+    "zh-CN": "Route 53 托管区域",
+    "en": "Route 53 hosted zone"
+  },
+  "global": true,
+  "identity": {
+    "identifier": "Id",
+    "resourceIdFrom": "Id",
+    "arnTemplate": "arn:{partition}:route53:::hostedzone/{id}",
+    "nameFrom": "Name"
+  },
+  "sources": {
+    "config": true,
+    "cloudControl": {
+      "read": true,
+      "list": true
+    }
+  },
+  "mapping": {
+    "keyCase": "pascal",
+    "tagsProperty": "HostedZoneTags",
+    "properties": [
+      "Id",
+      "Name",
+      "NameServers",
+      "VPCs"
+    ],
+    "exclude": [
+      "HostedZoneConfig",
+      "HostedZoneFeatures",
+      "QueryLoggingConfig",
+      "DelegationSetId"
+    ]
+  },
+  "columns": [
+    {
+      "key": "vpcCount",
+      "label": {
+        "zh-CN": "关联 VPC 数",
+        "en": "Associated VPCs"
+      },
+      "type": "number",
+      "path": "VPCs",
+      "count": true
+    }
+  ]
+}

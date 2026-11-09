@@ -1,0 +1,9 @@
+{
+  "ResourceDescriptions": [
+    {
+      "Identifier": "arn:aws:ecs:us-east-1:111122223333:service/telemetry/test-service|arn:aws:ecs:us-east-1:111122223333:cluster/telemetry",
+      "Properties": "{\"ServiceArn\":\"arn:aws:ecs:us-east-1:111122223333:service/telemetry/test-service\",\"Name\":\"test-service\",\"ServiceName\":\"test-service\",\"Cluster\":\"arn:aws:ecs:us-east-1:111122223333:cluster/telemetry\",\"TaskDefinition\":\"arn:aws:ecs:us-east-1:111122223333:task-definition/hello_world:10\",\"DesiredCount\":4,\"DeploymentConfiguration\":{\"MaximumPercent\":200,\"MinimumHealthyPercent\":100},\"LoadBalancers\":[],\"Tags\":[{\"Key\":\"Owner\",\"Value\":\"TeamA\"}]}"
+    }
+  ],
+  "TypeName": "AWS::ECS::Service"
+}

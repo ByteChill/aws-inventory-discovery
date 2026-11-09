@@ -1,0 +1,50 @@
+{
+  "typeName": "AWS::SNS::Topic",
+  "label": {
+    "zh-CN": "SNS 主题",
+    "en": "SNS topic"
+  },
+  "identity": {
+    "identifier": "TopicArn",
+    "resourceIdFrom": "TopicArn",
+    "arnFrom": "TopicArn",
+    "nameFrom": "tail:TopicArn"
+  },
+  "sources": {
+    "config": true,
+    "cloudControl": {
+      "read": true,
+      "list": true
+    }
+  },
+  "mapping": {
+    "keyCase": "pascal",
+    "properties": [
+      "TopicArn",
+      "TopicName",
+      "FifoTopic",
+      "Subscription"
+    ],
+    "transform": {
+      "FifoTopic": "toString"
+    }
+  },
+  "redact": [
+    {
+      "path": "Subscription",
+      "mode": "summarize",
+      "by": "Protocol"
+    }
+  ],
+  "columns": [
+    {
+      "key": "fifo",
+      "label": {
+        "zh-CN": "FIFO",
+        "en": "FIFO"
+      },
+      "type": "bool",
+      "path": "FifoTopic"
+    }
+  ]
+}

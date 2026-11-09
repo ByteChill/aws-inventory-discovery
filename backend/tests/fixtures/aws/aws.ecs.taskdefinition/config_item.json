@@ -1,0 +1,65 @@
+{
+  "arn": "arn:aws:ecs:us-east-1:111122223333:task-definition/hello_world:10",
+  "resourceId": "arn:aws:ecs:us-east-1:111122223333:task-definition/hello_world:10",
+  "resourceName": "hello_world",
+  "resourceType": "AWS::ECS::TaskDefinition",
+  "awsRegion": "us-east-1",
+  "accountId": "111122223333",
+  "configuration": {
+    "TaskDefinitionArn": "arn:aws:ecs:us-east-1:111122223333:task-definition/hello_world:10",
+    "Family": "hello_world",
+    "Status": "ACTIVE",
+    "ContainerDefinitions": [
+      {
+        "Name": "wordpress",
+        "Image": "public.ecr.aws/docker/library/wordpress:latest",
+        "Cpu": 10,
+        "Memory": 500,
+        "Essential": true,
+        "Links": [
+          "mysql"
+        ],
+        "Environment": [],
+        "MountPoints": [],
+        "VolumesFrom": [],
+        "PortMappings": [
+          {
+            "ContainerPort": 80,
+            "HostPort": 80
+          }
+        ]
+      },
+      {
+        "Name": "mysql",
+        "Image": "public.ecr.aws/docker/library/mysql:latest",
+        "Cpu": 10,
+        "Memory": 500,
+        "Essential": true,
+        "Environment": [
+          {
+            "Name": "MYSQL_ROOT_PASSWORD",
+            "Value": "password"
+          },
+          {
+            "Name": "MYSQL_DATABASE",
+            "Value": "wordpress"
+          }
+        ],
+        "MountPoints": [],
+        "VolumesFrom": [],
+        "PortMappings": []
+      }
+    ],
+    "Volumes": []
+  },
+  "supplementaryConfiguration": {},
+  "tags": [
+    {
+      "key": "Owner",
+      "value": "TeamA"
+    }
+  ],
+  "relationships": [],
+  "configurationItemCaptureTime": "2026-11-06T09:15:22.401Z",
+  "configurationItemStatus": "OK"
+}

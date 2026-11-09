@@ -1,0 +1,4734 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "aws-inventory-discovery",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "tags": ["health"],
+        "summary": "Health",
+        "description": "Database down is a 503; Redis down only slows things, so it stays 200.",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resources": {
+      "get": {
+        "tags": ["resources"],
+        "summary": "List Resources",
+        "operationId": "list_resources",
+        "parameters": [
+          {
+            "name": "accountId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Accountid"
+            }
+          },
+          {
+            "name": "eimId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Eimid"
+            }
+          },
+          {
+            "name": "baId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Baid"
+            }
+          },
+          {
+            "name": "accountType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Accounttype"
+            }
+          },
+          {
+            "name": "awsRegion",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Awsregion"
+            }
+          },
+          {
+            "name": "resourceType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Resourcetype"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": ["active", "missing", "deleted"],
+                "type": "string"
+              },
+              "default": [],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Tag"
+            }
+          },
+          {
+            "name": "tagMissing",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Tagmissing"
+            }
+          },
+          {
+            "name": "configurationItemCaptureTime.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Configurationitemcapturetime.Gte"
+            }
+          },
+          {
+            "name": "configurationItemCaptureTime.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Configurationitemcapturetime.Lte"
+            }
+          },
+          {
+            "name": "firstSeenAt.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Firstseenat.Gte"
+            }
+          },
+          {
+            "name": "firstSeenAt.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Firstseenat.Lte"
+            }
+          },
+          {
+            "name": "lastChangedAt.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lastchangedat.Gte"
+            }
+          },
+          {
+            "name": "lastChangedAt.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lastchangedat.Lte"
+            }
+          },
+          {
+            "name": "missingSince.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Missingsince.Gte"
+            }
+          },
+          {
+            "name": "missingSince.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Missingsince.Lte"
+            }
+          },
+          {
+            "name": "deletedAt.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deletedat.Gte"
+            }
+          },
+          {
+            "name": "deletedAt.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deletedat.Lte"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Pagesize"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ResourceItem_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resources/facets": {
+      "get": {
+        "tags": ["resources"],
+        "summary": "Resource Facets",
+        "operationId": "resource_facets",
+        "parameters": [
+          {
+            "name": "accountId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Accountid"
+            }
+          },
+          {
+            "name": "eimId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Eimid"
+            }
+          },
+          {
+            "name": "baId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Baid"
+            }
+          },
+          {
+            "name": "accountType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Accounttype"
+            }
+          },
+          {
+            "name": "awsRegion",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Awsregion"
+            }
+          },
+          {
+            "name": "resourceType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Resourcetype"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": ["active", "missing", "deleted"],
+                "type": "string"
+              },
+              "default": [],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Tag"
+            }
+          },
+          {
+            "name": "tagMissing",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Tagmissing"
+            }
+          },
+          {
+            "name": "configurationItemCaptureTime.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Configurationitemcapturetime.Gte"
+            }
+          },
+          {
+            "name": "configurationItemCaptureTime.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Configurationitemcapturetime.Lte"
+            }
+          },
+          {
+            "name": "firstSeenAt.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Firstseenat.Gte"
+            }
+          },
+          {
+            "name": "firstSeenAt.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Firstseenat.Lte"
+            }
+          },
+          {
+            "name": "lastChangedAt.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lastchangedat.Gte"
+            }
+          },
+          {
+            "name": "lastChangedAt.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lastchangedat.Lte"
+            }
+          },
+          {
+            "name": "missingSince.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Missingsince.Gte"
+            }
+          },
+          {
+            "name": "missingSince.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Missingsince.Lte"
+            }
+          },
+          {
+            "name": "deletedAt.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deletedat.Gte"
+            }
+          },
+          {
+            "name": "deletedAt.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deletedat.Lte"
+            }
+          },
+          {
+            "name": "field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Field"
+            }
+          },
+          {
+            "name": "accept-language",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accept-Language"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/FacetBucket"
+                    }
+                  },
+                  "title": "Response Resource Facets Api V1 Resources Facets Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resources/export": {
+      "get": {
+        "tags": ["resources"],
+        "summary": "Export Resources",
+        "operationId": "export_resources",
+        "parameters": [
+          {
+            "name": "accountId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Accountid"
+            }
+          },
+          {
+            "name": "eimId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Eimid"
+            }
+          },
+          {
+            "name": "baId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Baid"
+            }
+          },
+          {
+            "name": "accountType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Accounttype"
+            }
+          },
+          {
+            "name": "awsRegion",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Awsregion"
+            }
+          },
+          {
+            "name": "resourceType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Resourcetype"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": ["active", "missing", "deleted"],
+                "type": "string"
+              },
+              "default": [],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Tag"
+            }
+          },
+          {
+            "name": "tagMissing",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Tagmissing"
+            }
+          },
+          {
+            "name": "configurationItemCaptureTime.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Configurationitemcapturetime.Gte"
+            }
+          },
+          {
+            "name": "configurationItemCaptureTime.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Configurationitemcapturetime.Lte"
+            }
+          },
+          {
+            "name": "firstSeenAt.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Firstseenat.Gte"
+            }
+          },
+          {
+            "name": "firstSeenAt.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Firstseenat.Lte"
+            }
+          },
+          {
+            "name": "lastChangedAt.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lastchangedat.Gte"
+            }
+          },
+          {
+            "name": "lastChangedAt.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lastchangedat.Lte"
+            }
+          },
+          {
+            "name": "missingSince.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Missingsince.Gte"
+            }
+          },
+          {
+            "name": "missingSince.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Missingsince.Lte"
+            }
+          },
+          {
+            "name": "deletedAt.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deletedat.Gte"
+            }
+          },
+          {
+            "name": "deletedAt.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deletedat.Lte"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["csv", "jsonl"],
+              "type": "string",
+              "default": "csv",
+              "title": "Format"
+            }
+          },
+          {
+            "name": "columns",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Columns"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort"
+            }
+          },
+          {
+            "name": "lang",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": ["zh-CN", "en"],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lang"
+            }
+          },
+          {
+            "name": "accept-language",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accept-Language"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resources/lookup": {
+      "get": {
+        "tags": ["resources"],
+        "summary": "Lookup Resource",
+        "operationId": "lookup_resource",
+        "parameters": [
+          {
+            "name": "arn",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Arn"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ResourceDetail"
+                  },
+                  "title": "Response Lookup Resource Api V1 Resources Lookup Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resources/refresh": {
+      "post": {
+        "tags": ["resources"],
+        "summary": "Refresh Resource",
+        "operationId": "refresh_resource",
+        "parameters": [
+          {
+            "name": "wait",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 0,
+              "default": 0,
+              "title": "Wait"
+            }
+          },
+          {
+            "name": "x-caller-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Caller-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RefreshByKey"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RefreshByArn"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RefreshedResource"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RefreshAccepted"
+                    }
+                  ],
+                  "title": "Response Refresh Resource Api V1 Resources Refresh Post"
+                }
+              }
+            }
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshAccepted"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resources/{resource_id}": {
+      "get": {
+        "tags": ["resources"],
+        "summary": "Get Resource",
+        "operationId": "get_resource",
+        "parameters": [
+          {
+            "name": "resource_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Resource Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resources/{resource_id}/relationships": {
+      "get": {
+        "tags": ["resources"],
+        "summary": "Get Relationships",
+        "operationId": "get_relationships",
+        "parameters": [
+          {
+            "name": "resource_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Resource Id"
+            }
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["out", "in", "both"],
+              "type": "string",
+              "default": "both",
+              "title": "Direction"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Pagesize"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_RelationshipEntry_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/resource-types": {
+      "get": {
+        "tags": ["metadata"],
+        "summary": "List Resource Types",
+        "operationId": "list_resource_types",
+        "parameters": [
+          {
+            "name": "accept-language",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accept-Language"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ResourceTypeInfo"
+                  },
+                  "title": "Response List Resource Types Api V1 Resource Types Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/columns": {
+      "get": {
+        "tags": ["metadata"],
+        "summary": "List Columns",
+        "operationId": "list_columns",
+        "parameters": [
+          {
+            "name": "resourceType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resourcetype"
+            }
+          },
+          {
+            "name": "accept-language",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accept-Language"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Column"
+                  },
+                  "title": "Response List Columns Api V1 Columns Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stats/overview": {
+      "get": {
+        "tags": ["metadata"],
+        "summary": "Overview",
+        "operationId": "overview",
+        "parameters": [
+          {
+            "name": "accept-language",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accept-Language"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsOverview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/accounts": {
+      "get": {
+        "tags": ["accounts"],
+        "summary": "List Accounts",
+        "operationId": "list_accounts",
+        "parameters": [
+          {
+            "name": "accountType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Accounttype"
+            }
+          },
+          {
+            "name": "eimId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Eimid"
+            }
+          },
+          {
+            "name": "baId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Baid"
+            }
+          },
+          {
+            "name": "accessStatus",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Accessstatus"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Active"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Pagesize"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "accountName",
+              "title": "Sort"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_AccountSummary_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}": {
+      "get": {
+        "tags": ["accounts"],
+        "summary": "Get Account",
+        "operationId": "get_account",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/coverage": {
+      "get": {
+        "tags": ["accounts"],
+        "summary": "Get Coverage",
+        "operationId": "get_coverage",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CoverageCell"
+                  },
+                  "title": "Response Get Coverage Api V1 Accounts  Account Id  Coverage Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans/summary": {
+      "get": {
+        "tags": ["scans"],
+        "summary": "Scan Summary",
+        "operationId": "scan_summary",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanSummary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans": {
+      "post": {
+        "tags": ["scans"],
+        "summary": "Create Scan",
+        "operationId": "create_scan",
+        "parameters": [
+          {
+            "name": "x-caller-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Caller-Id"
+            }
+          },
+          {
+            "name": "idempotency-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanSpec"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanRequestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["scans"],
+        "summary": "List Scans",
+        "operationId": "list_scans",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Pagesize"
+            }
+          },
+          {
+            "name": "trigger",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": ["schedule", "api"],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trigger"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "queued",
+                    "running",
+                    "succeeded",
+                    "partial",
+                    "failed",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ScanRequestOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans/{scan_id}": {
+      "get": {
+        "tags": ["scans"],
+        "summary": "Get Scan",
+        "operationId": "get_scan",
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans/{scan_id}/tasks": {
+      "get": {
+        "tags": ["scans"],
+        "summary": "List Scan Tasks",
+        "operationId": "list_scan_tasks",
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Scan Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Pagesize"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "errorCode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Errorcode"
+            }
+          },
+          {
+            "name": "accountId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accountid"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_TaskOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans/{scan_id}/retry-failed": {
+      "post": {
+        "tags": ["scans"],
+        "summary": "Retry Failed",
+        "operationId": "retry_failed",
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Requeued"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans/{scan_id}/cancel": {
+      "post": {
+        "tags": ["scans"],
+        "summary": "Cancel Scan",
+        "operationId": "cancel_scan",
+        "parameters": [
+          {
+            "name": "scan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Scan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanRequestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}": {
+      "get": {
+        "tags": ["scans"],
+        "summary": "Get Task",
+        "operationId": "get_task",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/logs": {
+      "get": {
+        "tags": ["scans"],
+        "summary": "Get Task Logs",
+        "operationId": "get_task_logs",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 200,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "nextToken",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Nexttoken"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskLogs"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scan-scopes": {
+      "get": {
+        "tags": ["scans"],
+        "summary": "List Scan Scopes",
+        "operationId": "list_scan_scopes",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Pagesize"
+            }
+          },
+          {
+            "name": "guardState",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["normal", "abnormal", "confirmed"],
+              "type": "string",
+              "default": "abnormal",
+              "title": "Guardstate"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ScanScopeOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scan-scopes/confirm-change": {
+      "post": {
+        "tags": ["scans"],
+        "summary": "Confirm Scope Change",
+        "operationId": "confirm_scope_change",
+        "parameters": [
+          {
+            "name": "x-caller-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Caller-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmChangeBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanCreated"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AccountDetail": {
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "title": "Accountid"
+          },
+          "accountName": {
+            "type": "string",
+            "title": "Accountname"
+          },
+          "accountType": {
+            "type": "string",
+            "enum": ["dev", "preprod", "prod"],
+            "title": "Accounttype"
+          },
+          "eimId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eimid"
+          },
+          "eimApp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eimapp"
+          },
+          "baId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baid"
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active"
+          },
+          "accessStatus": {
+            "type": "string",
+            "title": "Accessstatus"
+          },
+          "accessError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accesserror"
+          },
+          "resourceCount": {
+            "type": "integer",
+            "title": "Resourcecount"
+          },
+          "lastScanOkAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastscanokat"
+          },
+          "purgeAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purgeat"
+          },
+          "regions": {
+            "items": {
+              "$ref": "#/components/schemas/AccountRegionInfo"
+            },
+            "type": "array",
+            "title": "Regions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accountId",
+          "accountName",
+          "accountType",
+          "eimId",
+          "eimApp",
+          "baId",
+          "active",
+          "accessStatus",
+          "accessError",
+          "resourceCount",
+          "lastScanOkAt",
+          "purgeAt",
+          "regions"
+        ],
+        "title": "AccountDetail"
+      },
+      "AccountRef": {
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "title": "Accountid"
+          },
+          "accountName": {
+            "type": "string",
+            "title": "Accountname"
+          },
+          "accountType": {
+            "type": "string",
+            "enum": ["dev", "preprod", "prod"],
+            "title": "Accounttype"
+          },
+          "eimId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eimid"
+          },
+          "eimApp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eimapp"
+          },
+          "baId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accountId",
+          "accountName",
+          "accountType",
+          "eimId",
+          "eimApp",
+          "baId"
+        ],
+        "title": "AccountRef"
+      },
+      "AccountRegionInfo": {
+        "properties": {
+          "region": {
+            "type": "string",
+            "title": "Region"
+          },
+          "optInStatus": {
+            "type": "string",
+            "title": "Optinstatus"
+          },
+          "reachable": {
+            "type": "boolean",
+            "title": "Reachable"
+          },
+          "configRecording": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configrecording"
+          }
+        },
+        "type": "object",
+        "required": ["region", "optInStatus", "reachable", "configRecording"],
+        "title": "AccountRegionInfo"
+      },
+      "AccountSummary": {
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "title": "Accountid"
+          },
+          "accountName": {
+            "type": "string",
+            "title": "Accountname"
+          },
+          "accountType": {
+            "type": "string",
+            "enum": ["dev", "preprod", "prod"],
+            "title": "Accounttype"
+          },
+          "eimId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eimid"
+          },
+          "eimApp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eimapp"
+          },
+          "baId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baid"
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active"
+          },
+          "accessStatus": {
+            "type": "string",
+            "title": "Accessstatus"
+          },
+          "accessError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accesserror"
+          },
+          "resourceCount": {
+            "type": "integer",
+            "title": "Resourcecount"
+          },
+          "lastScanOkAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastscanokat"
+          },
+          "purgeAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purgeat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accountId",
+          "accountName",
+          "accountType",
+          "eimId",
+          "eimApp",
+          "baId",
+          "active",
+          "accessStatus",
+          "accessError",
+          "resourceCount",
+          "lastScanOkAt",
+          "purgeAt"
+        ],
+        "title": "AccountSummary"
+      },
+      "AccountTypeCount": {
+        "properties": {
+          "accountType": {
+            "type": "string",
+            "title": "Accounttype"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": ["accountType", "label", "count"],
+        "title": "AccountTypeCount"
+      },
+      "Backlog": {
+        "properties": {
+          "queued": {
+            "type": "integer",
+            "title": "Queued"
+          },
+          "oldestWaitSeconds": {
+            "type": "integer",
+            "title": "Oldestwaitseconds"
+          }
+        },
+        "type": "object",
+        "required": ["queued", "oldestWaitSeconds"],
+        "title": "Backlog"
+      },
+      "BacklogPair": {
+        "properties": {
+          "onDemand": {
+            "$ref": "#/components/schemas/Backlog"
+          },
+          "scheduled": {
+            "$ref": "#/components/schemas/Backlog"
+          }
+        },
+        "type": "object",
+        "required": ["onDemand", "scheduled"],
+        "title": "BacklogPair"
+      },
+      "Column": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["text", "enum", "number", "bool", "datetime"],
+            "title": "Type"
+          },
+          "mono": {
+            "type": "boolean",
+            "title": "Mono"
+          },
+          "sortable": {
+            "type": "boolean",
+            "title": "Sortable"
+          },
+          "filterable": {
+            "type": "boolean",
+            "title": "Filterable"
+          },
+          "scope": {
+            "type": "string",
+            "enum": ["common", "type"],
+            "title": "Scope"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "type",
+          "mono",
+          "sortable",
+          "filterable",
+          "scope"
+        ],
+        "title": "Column"
+      },
+      "ConfirmChangeBody": {
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "pattern": "^\\d{12}$",
+            "title": "Accountid"
+          },
+          "awsRegion": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Awsregion"
+          },
+          "resourceType": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Resourcetype"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["accountId", "awsRegion", "resourceType"],
+        "title": "ConfirmChangeBody"
+      },
+      "CoverageCell": {
+        "properties": {
+          "region": {
+            "type": "string",
+            "title": "Region"
+          },
+          "resourceType": {
+            "type": "string",
+            "title": "Resourcetype"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["ok", "failed", "access_denied", "stale", "never"],
+            "title": "State"
+          },
+          "lastSucceededAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastsucceededat"
+          },
+          "lastErrorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lasterrorcode"
+          }
+        },
+        "type": "object",
+        "required": [
+          "region",
+          "resourceType",
+          "state",
+          "lastSucceededAt",
+          "lastErrorCode"
+        ],
+        "title": "CoverageCell"
+      },
+      "FacetBucket": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": ["value", "label", "count"],
+        "title": "FacetBucket"
+      },
+      "FailureCount": {
+        "properties": {
+          "errorCode": {
+            "type": "string",
+            "title": "Errorcode"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": ["errorCode", "count"],
+        "title": "FailureCount"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthStatus": {
+        "properties": {
+          "database": {
+            "type": "string",
+            "enum": ["ok", "unavailable"],
+            "title": "Database"
+          },
+          "redis": {
+            "type": "string",
+            "enum": ["ok", "unavailable"],
+            "title": "Redis"
+          }
+        },
+        "type": "object",
+        "required": ["database", "redis"],
+        "title": "HealthStatus"
+      },
+      "LiveData": {
+        "properties": {
+          "properties": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Properties"
+          },
+          "observedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Observedat"
+          }
+        },
+        "type": "object",
+        "required": ["properties", "observedAt"],
+        "title": "LiveData"
+      },
+      "LogEvent": {
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "level": {
+            "type": "string",
+            "title": "Level"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": ["timestamp", "level", "message", "data"],
+        "title": "LogEvent"
+      },
+      "Page_AccountSummary_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AccountSummary"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "pageSize": {
+            "type": "integer",
+            "title": "Pagesize"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": ["items", "page", "pageSize", "total"],
+        "title": "Page[AccountSummary]"
+      },
+      "Page_RelationshipEntry_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RelationshipEntry"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "pageSize": {
+            "type": "integer",
+            "title": "Pagesize"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": ["items", "page", "pageSize", "total"],
+        "title": "Page[RelationshipEntry]"
+      },
+      "Page_ResourceItem_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ResourceItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "pageSize": {
+            "type": "integer",
+            "title": "Pagesize"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": ["items", "page", "pageSize", "total"],
+        "title": "Page[ResourceItem]"
+      },
+      "Page_ScanRequestOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScanRequestOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "pageSize": {
+            "type": "integer",
+            "title": "Pagesize"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": ["items", "page", "pageSize", "total"],
+        "title": "Page[ScanRequestOut]"
+      },
+      "Page_ScanScopeOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScanScopeOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "pageSize": {
+            "type": "integer",
+            "title": "Pagesize"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": ["items", "page", "pageSize", "total"],
+        "title": "Page[ScanScopeOut]"
+      },
+      "Page_TaskOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TaskOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "pageSize": {
+            "type": "integer",
+            "title": "Pagesize"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": ["items", "page", "pageSize", "total"],
+        "title": "Page[TaskOut]"
+      },
+      "RefreshAccepted": {
+        "properties": {
+          "taskId": {
+            "type": "integer",
+            "title": "Taskid"
+          }
+        },
+        "type": "object",
+        "required": ["taskId"],
+        "title": "RefreshAccepted"
+      },
+      "RefreshByArn": {
+        "properties": {
+          "arn": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Arn"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["arn"],
+        "title": "RefreshByArn"
+      },
+      "RefreshByKey": {
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "pattern": "^\\d{12}$",
+            "title": "Accountid"
+          },
+          "awsRegion": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Awsregion"
+          },
+          "resourceType": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Resourcetype"
+          },
+          "resourceId": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Resourceid"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["accountId", "awsRegion", "resourceType", "resourceId"],
+        "title": "RefreshByKey"
+      },
+      "RefreshError": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": ["code", "message"],
+        "title": "RefreshError"
+      },
+      "RefreshedResource": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "arn": {
+            "type": "string",
+            "title": "Arn"
+          },
+          "accountId": {
+            "type": "string",
+            "title": "Accountid"
+          },
+          "awsRegion": {
+            "type": "string",
+            "title": "Awsregion"
+          },
+          "resourceType": {
+            "type": "string",
+            "title": "Resourcetype"
+          },
+          "resourceId": {
+            "type": "string",
+            "title": "Resourceid"
+          },
+          "resourceName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourcename"
+          },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/Tag"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "account": {
+            "$ref": "#/components/schemas/AccountRef"
+          },
+          "attrs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Attrs"
+          },
+          "relationshipCount": {
+            "type": "integer",
+            "title": "Relationshipcount"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "missing", "deleted"],
+            "title": "Status"
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale"
+          },
+          "configurationItemCaptureTime": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configurationitemcapturetime"
+          },
+          "firstSeenAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Firstseenat"
+          },
+          "lastChangedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Lastchangedat"
+          },
+          "missingSince": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missingsince"
+          },
+          "deletedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deletedat"
+          },
+          "configuration": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configuration"
+          },
+          "relationships": {
+            "items": {
+              "$ref": "#/components/schemas/RelationshipRef"
+            },
+            "type": "array",
+            "title": "Relationships"
+          },
+          "live": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LiveData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "observedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Observedat"
+          },
+          "observedSource": {
+            "type": "string",
+            "enum": ["config", "cloudcontrol", "native"],
+            "title": "Observedsource"
+          },
+          "refreshError": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RefreshError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "arn",
+          "accountId",
+          "awsRegion",
+          "resourceType",
+          "resourceId",
+          "resourceName",
+          "tags",
+          "account",
+          "attrs",
+          "relationshipCount",
+          "status",
+          "stale",
+          "configurationItemCaptureTime",
+          "firstSeenAt",
+          "lastChangedAt",
+          "missingSince",
+          "deletedAt",
+          "configuration",
+          "relationships",
+          "live",
+          "observedAt",
+          "observedSource"
+        ],
+        "title": "RefreshedResource"
+      },
+      "RelationshipEntry": {
+        "properties": {
+          "direction": {
+            "type": "string",
+            "enum": ["out", "in"],
+            "title": "Direction"
+          },
+          "relationName": {
+            "type": "string",
+            "title": "Relationname"
+          },
+          "resourceType": {
+            "type": "string",
+            "title": "Resourcetype"
+          },
+          "resourceKey": {
+            "type": "string",
+            "title": "Resourcekey"
+          },
+          "resource": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResourceItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "direction",
+          "relationName",
+          "resourceType",
+          "resourceKey",
+          "resource"
+        ],
+        "title": "RelationshipEntry"
+      },
+      "RelationshipRef": {
+        "properties": {
+          "resourceType": {
+            "type": "string",
+            "title": "Resourcetype"
+          },
+          "resourceId": {
+            "type": "string",
+            "title": "Resourceid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["resourceType", "resourceId", "name"],
+        "title": "RelationshipRef"
+      },
+      "Requeued": {
+        "properties": {
+          "requeued": {
+            "type": "integer",
+            "title": "Requeued"
+          }
+        },
+        "type": "object",
+        "required": ["requeued"],
+        "title": "Requeued"
+      },
+      "ResourceCounts": {
+        "properties": {
+          "new": {
+            "type": "integer",
+            "title": "New",
+            "default": 0
+          },
+          "updated": {
+            "type": "integer",
+            "title": "Updated",
+            "default": 0
+          },
+          "missing": {
+            "type": "integer",
+            "title": "Missing",
+            "default": 0
+          },
+          "deleted": {
+            "type": "integer",
+            "title": "Deleted",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "ResourceCounts"
+      },
+      "ResourceDetail": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "arn": {
+            "type": "string",
+            "title": "Arn"
+          },
+          "accountId": {
+            "type": "string",
+            "title": "Accountid"
+          },
+          "awsRegion": {
+            "type": "string",
+            "title": "Awsregion"
+          },
+          "resourceType": {
+            "type": "string",
+            "title": "Resourcetype"
+          },
+          "resourceId": {
+            "type": "string",
+            "title": "Resourceid"
+          },
+          "resourceName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourcename"
+          },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/Tag"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "account": {
+            "$ref": "#/components/schemas/AccountRef"
+          },
+          "attrs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Attrs"
+          },
+          "relationshipCount": {
+            "type": "integer",
+            "title": "Relationshipcount"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "missing", "deleted"],
+            "title": "Status"
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale"
+          },
+          "configurationItemCaptureTime": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configurationitemcapturetime"
+          },
+          "firstSeenAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Firstseenat"
+          },
+          "lastChangedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Lastchangedat"
+          },
+          "missingSince": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missingsince"
+          },
+          "deletedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deletedat"
+          },
+          "configuration": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configuration"
+          },
+          "relationships": {
+            "items": {
+              "$ref": "#/components/schemas/RelationshipRef"
+            },
+            "type": "array",
+            "title": "Relationships"
+          },
+          "live": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LiveData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "observedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Observedat"
+          },
+          "observedSource": {
+            "type": "string",
+            "enum": ["config", "cloudcontrol", "native"],
+            "title": "Observedsource"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "arn",
+          "accountId",
+          "awsRegion",
+          "resourceType",
+          "resourceId",
+          "resourceName",
+          "tags",
+          "account",
+          "attrs",
+          "relationshipCount",
+          "status",
+          "stale",
+          "configurationItemCaptureTime",
+          "firstSeenAt",
+          "lastChangedAt",
+          "missingSince",
+          "deletedAt",
+          "configuration",
+          "relationships",
+          "live",
+          "observedAt",
+          "observedSource"
+        ],
+        "title": "ResourceDetail"
+      },
+      "ResourceItem": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "arn": {
+            "type": "string",
+            "title": "Arn"
+          },
+          "accountId": {
+            "type": "string",
+            "title": "Accountid"
+          },
+          "awsRegion": {
+            "type": "string",
+            "title": "Awsregion"
+          },
+          "resourceType": {
+            "type": "string",
+            "title": "Resourcetype"
+          },
+          "resourceId": {
+            "type": "string",
+            "title": "Resourceid"
+          },
+          "resourceName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourcename"
+          },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/Tag"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "account": {
+            "$ref": "#/components/schemas/AccountRef"
+          },
+          "attrs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Attrs"
+          },
+          "relationshipCount": {
+            "type": "integer",
+            "title": "Relationshipcount"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "missing", "deleted"],
+            "title": "Status"
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale"
+          },
+          "configurationItemCaptureTime": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configurationitemcapturetime"
+          },
+          "firstSeenAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Firstseenat"
+          },
+          "lastChangedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Lastchangedat"
+          },
+          "missingSince": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missingsince"
+          },
+          "deletedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deletedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "arn",
+          "accountId",
+          "awsRegion",
+          "resourceType",
+          "resourceId",
+          "resourceName",
+          "tags",
+          "account",
+          "attrs",
+          "relationshipCount",
+          "status",
+          "stale",
+          "configurationItemCaptureTime",
+          "firstSeenAt",
+          "lastChangedAt",
+          "missingSince",
+          "deletedAt"
+        ],
+        "title": "ResourceItem"
+      },
+      "ResourceTypeInfo": {
+        "properties": {
+          "typeName": {
+            "type": "string",
+            "title": "Typename"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "global": {
+            "type": "boolean",
+            "title": "Global"
+          }
+        },
+        "type": "object",
+        "required": ["typeName", "label", "global"],
+        "title": "ResourceTypeInfo"
+      },
+      "ScanCounts": {
+        "properties": {
+          "tasks": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Tasks"
+          },
+          "resources": {
+            "$ref": "#/components/schemas/ResourceCounts"
+          }
+        },
+        "type": "object",
+        "required": ["tasks", "resources"],
+        "title": "ScanCounts"
+      },
+      "ScanCreated": {
+        "properties": {
+          "scanRequestId": {
+            "type": "integer",
+            "title": "Scanrequestid"
+          }
+        },
+        "type": "object",
+        "required": ["scanRequestId"],
+        "title": "ScanCreated"
+      },
+      "ScanDetail": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "trigger": {
+            "type": "string",
+            "enum": ["schedule", "api"],
+            "title": "Trigger"
+          },
+          "callerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Callerid"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScanScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "partial",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ScanCounts"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          },
+          "failuresByCode": {
+            "items": {
+              "$ref": "#/components/schemas/FailureCount"
+            },
+            "type": "array",
+            "title": "Failuresbycode"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "trigger",
+          "callerId",
+          "scope",
+          "target",
+          "status",
+          "counts",
+          "createdAt",
+          "startedAt",
+          "finishedAt",
+          "failuresByCode"
+        ],
+        "title": "ScanDetail"
+      },
+      "ScanRequestOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "trigger": {
+            "type": "string",
+            "enum": ["schedule", "api"],
+            "title": "Trigger"
+          },
+          "callerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Callerid"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScanScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "partial",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ScanCounts"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "trigger",
+          "callerId",
+          "scope",
+          "target",
+          "status",
+          "counts",
+          "createdAt",
+          "startedAt",
+          "finishedAt"
+        ],
+        "title": "ScanRequestOut"
+      },
+      "ScanScope": {
+        "properties": {
+          "accountIds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accountids"
+          },
+          "awsRegions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Awsregions"
+          },
+          "resourceTypes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourcetypes"
+          },
+          "all": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "All"
+          }
+        },
+        "type": "object",
+        "title": "ScanScope"
+      },
+      "ScanScopeOut": {
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "title": "Accountid"
+          },
+          "region": {
+            "type": "string",
+            "title": "Region"
+          },
+          "resourceType": {
+            "type": "string",
+            "title": "Resourcetype"
+          },
+          "guardState": {
+            "type": "string",
+            "title": "Guardstate"
+          },
+          "guardDetectedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guarddetectedat"
+          },
+          "candidateCount": {
+            "type": "integer",
+            "title": "Candidatecount"
+          },
+          "activeCount": {
+            "type": "integer",
+            "title": "Activecount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accountId",
+          "region",
+          "resourceType",
+          "guardState",
+          "guardDetectedAt",
+          "candidateCount",
+          "activeCount"
+        ],
+        "title": "ScanScopeOut"
+      },
+      "ScanSpec": {
+        "properties": {
+          "accountIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Accountids"
+          },
+          "awsRegions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Awsregions"
+          },
+          "resourceTypes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Resourcetypes"
+          },
+          "all": {
+            "type": "boolean",
+            "title": "All",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ScanSpec",
+        "description": "The body of `POST /scans`: either a list of accounts or `all` (`all_accounts`)."
+      },
+      "ScanSummary": {
+        "properties": {
+          "sweep": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SweepProgress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "backlog": {
+            "$ref": "#/components/schemas/BacklogPair"
+          },
+          "failures24h": {
+            "items": {
+              "$ref": "#/components/schemas/FailureCount"
+            },
+            "type": "array",
+            "title": "Failures24H"
+          },
+          "missingCount": {
+            "type": "integer",
+            "title": "Missingcount"
+          },
+          "abnormalScopeCount": {
+            "type": "integer",
+            "title": "Abnormalscopecount"
+          },
+          "workers": {
+            "$ref": "#/components/schemas/WorkerActivity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sweep",
+          "backlog",
+          "failures24h",
+          "missingCount",
+          "abnormalScopeCount",
+          "workers"
+        ],
+        "title": "ScanSummary"
+      },
+      "StatsOverview": {
+        "properties": {
+          "resourceTotal": {
+            "type": "integer",
+            "title": "Resourcetotal"
+          },
+          "accountTotal": {
+            "type": "integer",
+            "title": "Accounttotal"
+          },
+          "accountUnreachable": {
+            "type": "integer",
+            "title": "Accountunreachable"
+          },
+          "byResourceType": {
+            "items": {
+              "$ref": "#/components/schemas/TypeCount"
+            },
+            "type": "array",
+            "title": "Byresourcetype"
+          },
+          "byAccountType": {
+            "items": {
+              "$ref": "#/components/schemas/AccountTypeCount"
+            },
+            "type": "array",
+            "title": "Byaccounttype"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "resourceTotal",
+          "accountTotal",
+          "accountUnreachable",
+          "byResourceType",
+          "byAccountType",
+          "generatedAt"
+        ],
+        "title": "StatsOverview"
+      },
+      "SweepProgress": {
+        "properties": {
+          "scanRequestId": {
+            "type": "integer",
+            "title": "Scanrequestid"
+          },
+          "accountsDone": {
+            "type": "integer",
+            "title": "Accountsdone"
+          },
+          "accountsTotal": {
+            "type": "integer",
+            "title": "Accountstotal"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Startedat"
+          },
+          "estimatedFinishAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedfinishat"
+          },
+          "behindSchedule": {
+            "type": "boolean",
+            "title": "Behindschedule"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scanRequestId",
+          "accountsDone",
+          "accountsTotal",
+          "startedAt",
+          "estimatedFinishAt",
+          "behindSchedule"
+        ],
+        "title": "SweepProgress"
+      },
+      "Tag": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": ["key", "value"],
+        "title": "Tag"
+      },
+      "TaskLogs": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/LogEvent"
+            },
+            "type": "array",
+            "title": "Events"
+          },
+          "nextToken": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nexttoken"
+          }
+        },
+        "type": "object",
+        "required": ["events", "nextToken"],
+        "title": "TaskLogs"
+      },
+      "TaskOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "scanRequestId": {
+            "type": "integer",
+            "title": "Scanrequestid"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "accountId": {
+            "type": "string",
+            "title": "Accountid"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "resourceType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourcetype"
+          },
+          "resourceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourceid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "attempt": {
+            "type": "integer",
+            "title": "Attempt"
+          },
+          "maxAttempts": {
+            "type": "integer",
+            "title": "Maxattempts"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "errorMessage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errormessage"
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stats"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "scanRequestId",
+          "kind",
+          "source",
+          "accountId",
+          "region",
+          "resourceType",
+          "resourceId",
+          "status",
+          "attempt",
+          "maxAttempts",
+          "errorCode",
+          "errorMessage",
+          "stats",
+          "createdAt",
+          "startedAt",
+          "finishedAt"
+        ],
+        "title": "TaskOut"
+      },
+      "TypeCount": {
+        "properties": {
+          "resourceType": {
+            "type": "string",
+            "title": "Resourcetype"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": ["resourceType", "label", "count"],
+        "title": "TypeCount"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": ["loc", "msg", "type"],
+        "title": "ValidationError"
+      },
+      "WorkerActivity": {
+        "properties": {
+          "activeTasks": {
+            "type": "integer",
+            "title": "Activetasks"
+          },
+          "lastHeartbeatAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastheartbeatat"
+          }
+        },
+        "type": "object",
+        "required": ["activeTasks", "lastHeartbeatAt"],
+        "title": "WorkerActivity"
+      }
+    }
+  }
+}

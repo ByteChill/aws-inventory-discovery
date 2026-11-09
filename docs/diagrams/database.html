@@ -5203,7 +5203,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read"
          data-preset-badge-editorial-plate="ARCHIFY / 图版 04">
-      <svg viewBox="0 0 1007 1502" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="classic" data-quality-profile="standard" data-erd-ui="cards" data-reader-fit="intrinsic-height" data-reader-min-text="7.5">
+      <svg viewBox="0 0 1007 1562" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="classic" data-quality-profile="standard" data-erd-ui="cards" data-reader-fit="intrinsic-height" data-reader-min-text="7.5">
         <title id="archify-diagram-title">数据库结构（t_inv_aws_*）</title>
         <desc id="archify-diagram-description">由 Archify 生成的实体关系图。</desc>
         <!-- Definitions -->
@@ -5307,7 +5307,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <text data-domain-label="" x="384" y="25.6" class="t-muted er-band-label" font-size="9" font-weight="700">资源</text>
         </g>
         <g data-domain-band="扫描" class="er-hue-backend">
-          <rect x="721" y="22" width="274" height="1430" rx="12" class="c-lane er-band" stroke-width="1"/>
+          <rect x="721" y="22" width="274" height="1490" rx="12" class="c-lane er-band" stroke-width="1"/>
           <rect x="729" y="15" width="39" height="15" rx="7.5" class="c-mask"/>
           <rect x="729" y="15" width="39" height="15" rx="7.5" class="er-band-pill"/>
           <text data-domain-label="" x="736" y="25.6" class="t-muted er-band-label" font-size="9" font-weight="700">扫描</text>
@@ -5819,8 +5819,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
         <g id="node-scan_task" data-node-id="scan_task" data-node-label="t_inv_aws_scan_task" tabindex="0" role="button" aria-label="聚焦t_inv_aws_scan_task，实体" aria-pressed="false" data-node-kind="database" data-node-tag="扫描" data-node-context="实体" class="er-hue-backend">
           <title>t_inv_aws_scan_task · 实体 · 扫描</title>
-          <rect x="738" y="594" width="240" height="496" rx="8" class="c-mask"/>
-          <rect x="738" y="594" width="240" height="496" rx="8" class="c-database er-table" data-animate="node" style="--step:4" stroke-width="1.2"/>
+          <rect x="738" y="594" width="240" height="516" rx="8" class="c-mask"/>
+          <rect x="738" y="594" width="240" height="516" rx="8" class="c-database er-table" data-animate="node" style="--step:4" stroke-width="1.2"/>
           <path class="er-table-header" d="M 746 594 H 970 A 8 8 0 0 1 978 602 V 624 H 738 V 602 A 8 8 0 0 1 746 594 Z"/>
           <path class="er-table-cap" d="M 750 595.4 H 966" stroke-width="2.6" stroke-linecap="round" fill="none"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(746 601) scale(0.875)">
@@ -5938,169 +5938,190 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
             <line x1="738" y1="924" x2="978" y2="924" class="c-grid er-row-rule" stroke-width="0.5"/>
             <rect x="742" y="925" width="232" height="18" rx="4" class="er-zebra"/>
 
-            <text data-detail="context" x="780" y="939" class="t-primary" font-size="11">observed_at</text>
-            <text data-detail="context" x="966" y="939" class="er-type" font-size="10.5" text-anchor="end">timestamptz</text>
+            <text data-detail="context" x="780" y="939" class="t-primary" font-size="11">claim_token</text>
+            <text data-detail="context" x="966" y="939" class="er-type" font-size="10.5" text-anchor="end">text</text>
           </g>
           <g data-detail="context" data-er-row="16">
             <line x1="738" y1="944" x2="978" y2="944" class="c-grid er-row-rule" stroke-width="0.5"/>
 
 
-            <text data-detail="context" x="780" y="959" class="t-primary" font-size="11">coalesced_into</text>
-            <text data-detail="context" x="966" y="959" class="er-type" font-size="10.5" text-anchor="end">bigint</text>
+            <text data-detail="context" x="780" y="959" class="t-primary" font-size="11">observed_at</text>
+            <text data-detail="context" x="966" y="959" class="er-type" font-size="10.5" text-anchor="end">timestamptz</text>
           </g>
           <g data-detail="context" data-er-row="17">
             <line x1="738" y1="964" x2="978" y2="964" class="c-grid er-row-rule" stroke-width="0.5"/>
             <rect x="742" y="965" width="232" height="18" rx="4" class="er-zebra"/>
 
-            <text data-detail="context" x="780" y="979" class="t-primary" font-size="11">stats</text>
-            <text data-detail="context" x="966" y="979" class="er-type" font-size="10.5" text-anchor="end">jsonb</text>
+            <text data-detail="context" x="780" y="979" class="t-primary" font-size="11">coalesced_into</text>
+            <text data-detail="context" x="966" y="979" class="er-type" font-size="10.5" text-anchor="end">bigint</text>
           </g>
           <g data-detail="context" data-er-row="18">
             <line x1="738" y1="984" x2="978" y2="984" class="c-grid er-row-rule" stroke-width="0.5"/>
 
 
-            <text data-detail="context" x="780" y="999" class="t-primary" font-size="11">error_code</text>
-            <text data-detail="context" x="966" y="999" class="er-type" font-size="10.5" text-anchor="end">text</text>
+            <text data-detail="context" x="780" y="999" class="t-primary" font-size="11">stats</text>
+            <text data-detail="context" x="966" y="999" class="er-type" font-size="10.5" text-anchor="end">jsonb</text>
           </g>
           <g data-detail="context" data-er-row="19">
             <line x1="738" y1="1004" x2="978" y2="1004" class="c-grid er-row-rule" stroke-width="0.5"/>
             <rect x="742" y="1005" width="232" height="18" rx="4" class="er-zebra"/>
 
-            <text data-detail="context" x="780" y="1019" class="t-primary" font-size="11">error_message</text>
+            <text data-detail="context" x="780" y="1019" class="t-primary" font-size="11">error_code</text>
             <text data-detail="context" x="966" y="1019" class="er-type" font-size="10.5" text-anchor="end">text</text>
           </g>
           <g data-detail="context" data-er-row="20">
             <line x1="738" y1="1024" x2="978" y2="1024" class="c-grid er-row-rule" stroke-width="0.5"/>
 
 
-            <text data-detail="context" x="780" y="1039" class="t-primary" font-size="11">created_at</text>
-            <text data-detail="context" x="966" y="1039" class="er-type" font-size="10.5" text-anchor="end">timestamptz</text>
+            <text data-detail="context" x="780" y="1039" class="t-primary" font-size="11">error_message</text>
+            <text data-detail="context" x="966" y="1039" class="er-type" font-size="10.5" text-anchor="end">text</text>
           </g>
           <g data-detail="context" data-er-row="21">
             <line x1="738" y1="1044" x2="978" y2="1044" class="c-grid er-row-rule" stroke-width="0.5"/>
             <rect x="742" y="1045" width="232" height="18" rx="4" class="er-zebra"/>
 
-            <text data-detail="context" x="780" y="1059" class="t-primary" font-size="11">started_at</text>
+            <text data-detail="context" x="780" y="1059" class="t-primary" font-size="11">created_at</text>
             <text data-detail="context" x="966" y="1059" class="er-type" font-size="10.5" text-anchor="end">timestamptz</text>
           </g>
           <g data-detail="context" data-er-row="22">
             <line x1="738" y1="1064" x2="978" y2="1064" class="c-grid er-row-rule" stroke-width="0.5"/>
 
 
-            <text data-detail="context" x="780" y="1079" class="t-primary" font-size="11">finished_at</text>
+            <text data-detail="context" x="780" y="1079" class="t-primary" font-size="11">started_at</text>
             <text data-detail="context" x="966" y="1079" class="er-type" font-size="10.5" text-anchor="end">timestamptz</text>
+          </g>
+          <g data-detail="context" data-er-row="23">
+            <line x1="738" y1="1084" x2="978" y2="1084" class="c-grid er-row-rule" stroke-width="0.5"/>
+            <rect x="742" y="1085" width="232" height="18" rx="4" class="er-zebra"/>
+
+            <text data-detail="context" x="780" y="1099" class="t-primary" font-size="11">finished_at</text>
+            <text data-detail="context" x="966" y="1099" class="er-type" font-size="10.5" text-anchor="end">timestamptz</text>
           </g>
         </g>
 
         <g id="node-scan_shard" data-node-id="scan_shard" data-node-label="t_inv_aws_scan_shard" tabindex="0" role="button" aria-label="聚焦t_inv_aws_scan_shard，实体" aria-pressed="false" data-node-kind="database" data-node-tag="扫描" data-node-context="实体" class="er-hue-backend">
           <title>t_inv_aws_scan_shard · 实体 · 扫描</title>
-          <rect x="733" y="1128" width="250" height="316" rx="8" class="c-mask"/>
-          <rect x="733" y="1128" width="250" height="316" rx="8" class="c-database er-table" data-animate="node" style="--step:6" stroke-width="1.2"/>
-          <path class="er-table-header" d="M 741 1128 H 975 A 8 8 0 0 1 983 1136 V 1158 H 733 V 1136 A 8 8 0 0 1 741 1128 Z"/>
-          <path class="er-table-cap" d="M 745 1129.4 H 971" stroke-width="2.6" stroke-linecap="round" fill="none"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(741 1135) scale(0.875)">
+          <rect x="733" y="1148" width="250" height="356" rx="8" class="c-mask"/>
+          <rect x="733" y="1148" width="250" height="356" rx="8" class="c-database er-table" data-animate="node" style="--step:6" stroke-width="1.2"/>
+          <path class="er-table-header" d="M 741 1148 H 975 A 8 8 0 0 1 983 1156 V 1178 H 733 V 1156 A 8 8 0 0 1 741 1148 Z"/>
+          <path class="er-table-cap" d="M 745 1149.4 H 971" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(741 1155) scale(0.875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" x="858" y="1147" class="t-primary er-title" font-size="13" font-weight="700" text-anchor="middle">t_inv_aws_scan_shard</text>
-          <line x1="733" y1="1158" x2="983" y2="1158" class="c-grid er-header-rule" stroke-width="1"/>
+          <text data-node-label="" x="858" y="1167" class="t-primary er-title" font-size="13" font-weight="700" text-anchor="middle">t_inv_aws_scan_shard</text>
+          <line x1="733" y1="1178" x2="983" y2="1178" class="c-grid er-header-rule" stroke-width="1"/>
           <g data-detail="context" data-er-row="0">
-            <line x1="733" y1="1158" x2="983" y2="1158" class="c-grid er-row-rule" stroke-width="0.5"/>
+            <line x1="733" y1="1178" x2="983" y2="1178" class="c-grid er-row-rule" stroke-width="0.5"/>
 
-            <rect x="743" y="1163" width="22" height="13" rx="3" class="er-key-badge" data-er-badge="pk"/><text data-detail="context" x="754" y="1173" class="t-database" font-size="9" font-weight="600">PK</text>
-            <text data-detail="context" x="775" y="1173" class="t-primary er-name-pk" font-size="11">account_id</text>
-            <text data-detail="context" x="971" y="1173" class="er-type" font-size="10.5" text-anchor="end">char(12)</text>
+            <rect x="743" y="1183" width="22" height="13" rx="3" class="er-key-badge" data-er-badge="pk"/><text data-detail="context" x="754" y="1193" class="t-database" font-size="9" font-weight="600">PK</text>
+            <text data-detail="context" x="775" y="1193" class="t-primary er-name-pk" font-size="11">account_id</text>
+            <text data-detail="context" x="971" y="1193" class="er-type" font-size="10.5" text-anchor="end">char(12)</text>
           </g>
           <g data-detail="context" data-er-row="1">
-            <line x1="733" y1="1178" x2="983" y2="1178" class="c-grid er-row-rule" stroke-width="0.5"/>
-            <rect x="737" y="1179" width="242" height="18" rx="4" class="er-zebra"/>
-            <rect x="743" y="1183" width="22" height="13" rx="3" class="er-key-badge" data-er-badge="pk"/><text data-detail="context" x="754" y="1193" class="t-database" font-size="9" font-weight="600">PK</text>
-            <text data-detail="context" x="775" y="1193" class="t-primary er-name-pk" font-size="11">region</text>
-            <text data-detail="context" x="971" y="1193" class="er-type" font-size="10.5" text-anchor="end">text</text>
-          </g>
-          <g data-detail="context" data-er-row="2">
             <line x1="733" y1="1198" x2="983" y2="1198" class="c-grid er-row-rule" stroke-width="0.5"/>
-
+            <rect x="737" y="1199" width="242" height="18" rx="4" class="er-zebra"/>
             <rect x="743" y="1203" width="22" height="13" rx="3" class="er-key-badge" data-er-badge="pk"/><text data-detail="context" x="754" y="1213" class="t-database" font-size="9" font-weight="600">PK</text>
-            <text data-detail="context" x="775" y="1213" class="t-primary er-name-pk" font-size="11">resource_type</text>
+            <text data-detail="context" x="775" y="1213" class="t-primary er-name-pk" font-size="11">region</text>
             <text data-detail="context" x="971" y="1213" class="er-type" font-size="10.5" text-anchor="end">text</text>
           </g>
-          <g data-detail="context" data-er-row="3">
+          <g data-detail="context" data-er-row="2">
             <line x1="733" y1="1218" x2="983" y2="1218" class="c-grid er-row-rule" stroke-width="0.5"/>
-            <rect x="737" y="1219" width="242" height="18" rx="4" class="er-zebra"/>
 
-            <text data-detail="context" x="775" y="1233" class="t-primary" font-size="11">lease_task_id</text>
-            <text data-detail="context" x="971" y="1233" class="er-type" font-size="10.5" text-anchor="end">bigint</text>
+            <rect x="743" y="1223" width="22" height="13" rx="3" class="er-key-badge" data-er-badge="pk"/><text data-detail="context" x="754" y="1233" class="t-database" font-size="9" font-weight="600">PK</text>
+            <text data-detail="context" x="775" y="1233" class="t-primary er-name-pk" font-size="11">resource_type</text>
+            <text data-detail="context" x="971" y="1233" class="er-type" font-size="10.5" text-anchor="end">text</text>
+          </g>
+          <g data-detail="context" data-er-row="3">
+            <line x1="733" y1="1238" x2="983" y2="1238" class="c-grid er-row-rule" stroke-width="0.5"/>
+            <rect x="737" y="1239" width="242" height="18" rx="4" class="er-zebra"/>
+
+            <text data-detail="context" x="775" y="1253" class="t-primary" font-size="11">lease_task_id</text>
+            <text data-detail="context" x="971" y="1253" class="er-type" font-size="10.5" text-anchor="end">bigint</text>
           </g>
           <g data-detail="context" data-er-row="4">
-            <line x1="733" y1="1238" x2="983" y2="1238" class="c-grid er-row-rule" stroke-width="0.5"/>
+            <line x1="733" y1="1258" x2="983" y2="1258" class="c-grid er-row-rule" stroke-width="0.5"/>
 
 
-            <text data-detail="context" x="775" y="1253" class="t-primary" font-size="11">lease_expires_at</text>
-            <text data-detail="context" x="971" y="1253" class="er-type" font-size="10.5" text-anchor="end">timestamptz</text>
+            <text data-detail="context" x="775" y="1273" class="t-primary" font-size="11">lease_expires_at</text>
+            <text data-detail="context" x="971" y="1273" class="er-type" font-size="10.5" text-anchor="end">timestamptz</text>
           </g>
           <g data-detail="context" data-er-row="5">
-            <line x1="733" y1="1258" x2="983" y2="1258" class="c-grid er-row-rule" stroke-width="0.5"/>
-            <rect x="737" y="1259" width="242" height="18" rx="4" class="er-zebra"/>
+            <line x1="733" y1="1278" x2="983" y2="1278" class="c-grid er-row-rule" stroke-width="0.5"/>
+            <rect x="737" y="1279" width="242" height="18" rx="4" class="er-zebra"/>
 
-            <text data-detail="context" x="775" y="1273" class="t-primary" font-size="11">pending_task_id</text>
-            <text data-detail="context" x="971" y="1273" class="er-type" font-size="10.5" text-anchor="end">bigint</text>
+            <text data-detail="context" x="775" y="1293" class="t-primary" font-size="11">lease_token</text>
+            <text data-detail="context" x="971" y="1293" class="er-type" font-size="10.5" text-anchor="end">text</text>
           </g>
           <g data-detail="context" data-er-row="6">
-            <line x1="733" y1="1278" x2="983" y2="1278" class="c-grid er-row-rule" stroke-width="0.5"/>
+            <line x1="733" y1="1298" x2="983" y2="1298" class="c-grid er-row-rule" stroke-width="0.5"/>
 
 
-            <text data-detail="context" x="775" y="1293" class="t-primary" font-size="11">last_started_at</text>
-            <text data-detail="context" x="971" y="1293" class="er-type" font-size="10.5" text-anchor="end">timestamptz</text>
+            <text data-detail="context" x="775" y="1313" class="t-primary" font-size="11">pending_task_id</text>
+            <text data-detail="context" x="971" y="1313" class="er-type" font-size="10.5" text-anchor="end">bigint</text>
           </g>
           <g data-detail="context" data-er-row="7">
-            <line x1="733" y1="1298" x2="983" y2="1298" class="c-grid er-row-rule" stroke-width="0.5"/>
-            <rect x="737" y="1299" width="242" height="18" rx="4" class="er-zebra"/>
+            <line x1="733" y1="1318" x2="983" y2="1318" class="c-grid er-row-rule" stroke-width="0.5"/>
+            <rect x="737" y="1319" width="242" height="18" rx="4" class="er-zebra"/>
 
-            <text data-detail="context" x="775" y="1313" class="t-primary" font-size="11">last_succeeded_at</text>
-            <text data-detail="context" x="971" y="1313" class="er-type" font-size="10.5" text-anchor="end">timestamptz</text>
+            <text data-detail="context" x="775" y="1333" class="t-primary" font-size="11">last_started_at</text>
+            <text data-detail="context" x="971" y="1333" class="er-type" font-size="10.5" text-anchor="end">timestamptz</text>
           </g>
           <g data-detail="context" data-er-row="8">
-            <line x1="733" y1="1318" x2="983" y2="1318" class="c-grid er-row-rule" stroke-width="0.5"/>
+            <line x1="733" y1="1338" x2="983" y2="1338" class="c-grid er-row-rule" stroke-width="0.5"/>
 
 
-            <text data-detail="context" x="775" y="1333" class="t-primary" font-size="11">last_task_id</text>
-            <text data-detail="context" x="971" y="1333" class="er-type" font-size="10.5" text-anchor="end">bigint</text>
+            <text data-detail="context" x="775" y="1353" class="t-primary" font-size="11">last_succeeded_at</text>
+            <text data-detail="context" x="971" y="1353" class="er-type" font-size="10.5" text-anchor="end">timestamptz</text>
           </g>
           <g data-detail="context" data-er-row="9">
-            <line x1="733" y1="1338" x2="983" y2="1338" class="c-grid er-row-rule" stroke-width="0.5"/>
-            <rect x="737" y="1339" width="242" height="18" rx="4" class="er-zebra"/>
+            <line x1="733" y1="1358" x2="983" y2="1358" class="c-grid er-row-rule" stroke-width="0.5"/>
+            <rect x="737" y="1359" width="242" height="18" rx="4" class="er-zebra"/>
 
-            <text data-detail="context" x="775" y="1353" class="t-primary" font-size="11">last_error_code</text>
-            <text data-detail="context" x="971" y="1353" class="er-type" font-size="10.5" text-anchor="end">text</text>
+            <text data-detail="context" x="775" y="1373" class="t-primary" font-size="11">last_task_id</text>
+            <text data-detail="context" x="971" y="1373" class="er-type" font-size="10.5" text-anchor="end">bigint</text>
           </g>
           <g data-detail="context" data-er-row="10">
-            <line x1="733" y1="1358" x2="983" y2="1358" class="c-grid er-row-rule" stroke-width="0.5"/>
-
-
-            <text data-detail="context" x="775" y="1373" class="t-primary" font-size="11">consecutive_failures</text>
-            <text data-detail="context" x="971" y="1373" class="er-type" font-size="10.5" text-anchor="end">int</text>
-          </g>
-          <g data-detail="context" data-er-row="11">
             <line x1="733" y1="1378" x2="983" y2="1378" class="c-grid er-row-rule" stroke-width="0.5"/>
-            <rect x="737" y="1379" width="242" height="18" rx="4" class="er-zebra"/>
 
-            <text data-detail="context" x="775" y="1393" class="t-primary" font-size="11">guard_state</text>
+
+            <text data-detail="context" x="775" y="1393" class="t-primary" font-size="11">last_error_code</text>
             <text data-detail="context" x="971" y="1393" class="er-type" font-size="10.5" text-anchor="end">text</text>
           </g>
-          <g data-detail="context" data-er-row="12">
+          <g data-detail="context" data-er-row="11">
             <line x1="733" y1="1398" x2="983" y2="1398" class="c-grid er-row-rule" stroke-width="0.5"/>
+            <rect x="737" y="1399" width="242" height="18" rx="4" class="er-zebra"/>
+
+            <text data-detail="context" x="775" y="1413" class="t-primary" font-size="11">consecutive_failures</text>
+            <text data-detail="context" x="971" y="1413" class="er-type" font-size="10.5" text-anchor="end">int</text>
+          </g>
+          <g data-detail="context" data-er-row="12">
+            <line x1="733" y1="1418" x2="983" y2="1418" class="c-grid er-row-rule" stroke-width="0.5"/>
 
 
-            <text data-detail="context" x="775" y="1413" class="t-primary" font-size="11">guard_detected_at</text>
-            <text data-detail="context" x="971" y="1413" class="er-type" font-size="10.5" text-anchor="end">timestamptz</text>
+            <text data-detail="context" x="775" y="1433" class="t-primary" font-size="11">guard_state</text>
+            <text data-detail="context" x="971" y="1433" class="er-type" font-size="10.5" text-anchor="end">text</text>
           </g>
           <g data-detail="context" data-er-row="13">
-            <line x1="733" y1="1418" x2="983" y2="1418" class="c-grid er-row-rule" stroke-width="0.5"/>
-            <rect x="737" y="1419" width="242" height="18" rx="4" class="er-zebra"/>
+            <line x1="733" y1="1438" x2="983" y2="1438" class="c-grid er-row-rule" stroke-width="0.5"/>
+            <rect x="737" y="1439" width="242" height="18" rx="4" class="er-zebra"/>
 
-            <text data-detail="context" x="775" y="1433" class="t-primary" font-size="11">guard_confirmed_by</text>
-            <text data-detail="context" x="971" y="1433" class="er-type" font-size="10.5" text-anchor="end">text</text>
+            <text data-detail="context" x="775" y="1453" class="t-primary" font-size="11">guard_detected_at</text>
+            <text data-detail="context" x="971" y="1453" class="er-type" font-size="10.5" text-anchor="end">timestamptz</text>
+          </g>
+          <g data-detail="context" data-er-row="14">
+            <line x1="733" y1="1458" x2="983" y2="1458" class="c-grid er-row-rule" stroke-width="0.5"/>
+
+
+            <text data-detail="context" x="775" y="1473" class="t-primary" font-size="11">guard_confirmed_by</text>
+            <text data-detail="context" x="971" y="1473" class="er-type" font-size="10.5" text-anchor="end">text</text>
+          </g>
+          <g data-detail="context" data-er-row="15">
+            <line x1="733" y1="1478" x2="983" y2="1478" class="c-grid er-row-rule" stroke-width="0.5"/>
+            <rect x="737" y="1479" width="242" height="18" rx="4" class="er-zebra"/>
+
+            <text data-detail="context" x="775" y="1493" class="t-primary" font-size="11">candidate_count</text>
+            <text data-detail="context" x="971" y="1493" class="er-type" font-size="10.5" text-anchor="end">int</text>
           </g>
         </g>
 
@@ -6128,30 +6149,30 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
         <!-- Legend -->
         <g data-legend="">
-          <text x="24" y="1466" class="t-primary" font-size="12" font-weight="650">图例</text>
-          <g data-legend-semantic-kind="pk" data-legend-x="24" data-legend-baseline="1486" data-legend-width="65">
-            <rect class="er-legend-hit" tabindex="0" role="img" aria-label="主键" x="18" y="1471" width="77" height="22" rx="11"/><rect x="24" y="1476" width="22" height="13" rx="3" class="er-key-badge" data-er-badge="pk"/><text x="35" y="1486" class="t-database" text-anchor="middle" font-size="9" font-weight="600">PK</text>
-            <text x="54" y="1486" class="t-primary" font-size="12" font-weight="600">主键</text>
+          <text x="24" y="1526" class="t-primary" font-size="12" font-weight="650">图例</text>
+          <g data-legend-semantic-kind="pk" data-legend-x="24" data-legend-baseline="1546" data-legend-width="65">
+            <rect class="er-legend-hit" tabindex="0" role="img" aria-label="主键" x="18" y="1531" width="77" height="22" rx="11"/><rect x="24" y="1536" width="22" height="13" rx="3" class="er-key-badge" data-er-badge="pk"/><text x="35" y="1546" class="t-database" text-anchor="middle" font-size="9" font-weight="600">PK</text>
+            <text x="54" y="1546" class="t-primary" font-size="12" font-weight="600">主键</text>
           </g>
-          <g data-legend-semantic-kind="fk" data-legend-x="111" data-legend-baseline="1486" data-legend-width="65">
-            <rect class="er-legend-hit" tabindex="0" role="img" aria-label="外键" x="105" y="1471" width="77" height="22" rx="11"/><rect x="111" y="1476" width="22" height="13" rx="3" class="er-key-badge" data-er-badge="fk"/><text x="122" y="1486" class="t-messagebus" text-anchor="middle" font-size="9" font-weight="600">FK</text>
-            <text x="141" y="1486" class="t-primary" font-size="12" font-weight="600">外键</text>
+          <g data-legend-semantic-kind="fk" data-legend-x="111" data-legend-baseline="1546" data-legend-width="65">
+            <rect class="er-legend-hit" tabindex="0" role="img" aria-label="外键" x="105" y="1531" width="77" height="22" rx="11"/><rect x="111" y="1536" width="22" height="13" rx="3" class="er-key-badge" data-er-badge="fk"/><text x="122" y="1546" class="t-messagebus" text-anchor="middle" font-size="9" font-weight="600">FK</text>
+            <text x="141" y="1546" class="t-primary" font-size="12" font-weight="600">外键</text>
           </g>
-          <g data-legend-semantic-kind="uk" data-legend-x="198" data-legend-baseline="1486" data-legend-width="83">
-            <rect class="er-legend-hit" tabindex="0" role="img" aria-label="唯一键" x="192" y="1471" width="95" height="22" rx="11"/><rect x="198" y="1476" width="22" height="13" rx="3" class="er-key-badge" data-er-badge="uk"/><text x="209" y="1486" class="t-muted" text-anchor="middle" font-size="9" font-weight="600">UK</text>
-            <text x="228" y="1486" class="t-primary" font-size="12" font-weight="600">唯一键</text>
+          <g data-legend-semantic-kind="uk" data-legend-x="198" data-legend-baseline="1546" data-legend-width="83">
+            <rect class="er-legend-hit" tabindex="0" role="img" aria-label="唯一键" x="192" y="1531" width="95" height="22" rx="11"/><rect x="198" y="1536" width="22" height="13" rx="3" class="er-key-badge" data-er-badge="uk"/><text x="209" y="1546" class="t-muted" text-anchor="middle" font-size="9" font-weight="600">UK</text>
+            <text x="228" y="1546" class="t-primary" font-size="12" font-weight="600">唯一键</text>
           </g>
-          <g data-legend-semantic-kind="one" data-legend-x="303" data-legend-baseline="1486" data-legend-width="66">
-            <line x1="299" y1="1474" x2="299" y2="1490" class="er-legend-divider" stroke-width="1"/><rect class="er-legend-hit" tabindex="0" role="img" aria-label="一" x="307" y="1471" width="68" height="22" rx="11"/><line x1="313" y1="1482" x2="341" y2="1482" class="er-legend-route" stroke-width="1.5"/><line x1="341" y1="1475" x2="341" y2="1489" class="er-legend-edge" stroke-width="2"/><g class="er-legend-glyph" transform="translate(319 1474)" style="stroke: var(--text-muted)" stroke-width="1.75" fill="none"><path d="M 17 1 L 17 15"/></g>
-            <text x="351" y="1486" class="t-primary" font-size="12" font-weight="600">一</text>
+          <g data-legend-semantic-kind="one" data-legend-x="303" data-legend-baseline="1546" data-legend-width="66">
+            <line x1="299" y1="1534" x2="299" y2="1550" class="er-legend-divider" stroke-width="1"/><rect class="er-legend-hit" tabindex="0" role="img" aria-label="一" x="307" y="1531" width="68" height="22" rx="11"/><line x1="313" y1="1542" x2="341" y2="1542" class="er-legend-route" stroke-width="1.5"/><line x1="341" y1="1535" x2="341" y2="1549" class="er-legend-edge" stroke-width="2"/><g class="er-legend-glyph" transform="translate(319 1534)" style="stroke: var(--text-muted)" stroke-width="1.75" fill="none"><path d="M 17 1 L 17 15"/></g>
+            <text x="351" y="1546" class="t-primary" font-size="12" font-weight="600">一</text>
           </g>
-          <g data-legend-semantic-kind="many" data-legend-x="391" data-legend-baseline="1486" data-legend-width="56">
-            <rect class="er-legend-hit" tabindex="0" role="img" aria-label="多" x="385" y="1471" width="68" height="22" rx="11"/><line x1="391" y1="1482" x2="419" y2="1482" class="er-legend-route" stroke-width="1.5"/><line x1="419" y1="1475" x2="419" y2="1489" class="er-legend-edge" stroke-width="2"/><g class="er-legend-glyph" transform="translate(397 1474)" style="stroke: var(--text-muted)" stroke-width="1.75" fill="none"><path d="M 8 8 L 22 1 M 8 8 L 22 8 M 8 8 L 22 15"/></g>
-            <text x="429" y="1486" class="t-primary" font-size="12" font-weight="600">多</text>
+          <g data-legend-semantic-kind="many" data-legend-x="391" data-legend-baseline="1546" data-legend-width="56">
+            <rect class="er-legend-hit" tabindex="0" role="img" aria-label="多" x="385" y="1531" width="68" height="22" rx="11"/><line x1="391" y1="1542" x2="419" y2="1542" class="er-legend-route" stroke-width="1.5"/><line x1="419" y1="1535" x2="419" y2="1549" class="er-legend-edge" stroke-width="2"/><g class="er-legend-glyph" transform="translate(397 1534)" style="stroke: var(--text-muted)" stroke-width="1.75" fill="none"><path d="M 8 8 L 22 1 M 8 8 L 22 8 M 8 8 L 22 15"/></g>
+            <text x="429" y="1546" class="t-primary" font-size="12" font-weight="600">多</text>
           </g>
-          <g data-legend-semantic-kind="optional" data-legend-x="469" data-legend-baseline="1486" data-legend-width="73">
-            <rect class="er-legend-hit" tabindex="0" role="img" aria-label="可选" x="463" y="1471" width="85" height="22" rx="11"/><line x1="469" y1="1482" x2="497" y2="1482" class="er-legend-route" stroke-width="1.5"/><line x1="497" y1="1475" x2="497" y2="1489" class="er-legend-edge" stroke-width="2"/><g class="er-legend-glyph" transform="translate(475 1474)" style="stroke: var(--text-muted)" stroke-width="1.75" fill="none"><circle cx="3.5" cy="8" r="2.6" class="c-mask"/><circle cx="3.5" cy="8" r="2.6"/></g>
-            <text x="507" y="1486" class="t-primary" font-size="12" font-weight="600">可选</text>
+          <g data-legend-semantic-kind="optional" data-legend-x="469" data-legend-baseline="1546" data-legend-width="73">
+            <rect class="er-legend-hit" tabindex="0" role="img" aria-label="可选" x="463" y="1531" width="85" height="22" rx="11"/><line x1="469" y1="1542" x2="497" y2="1542" class="er-legend-route" stroke-width="1.5"/><line x1="497" y1="1535" x2="497" y2="1549" class="er-legend-edge" stroke-width="2"/><g class="er-legend-glyph" transform="translate(475 1534)" style="stroke: var(--text-muted)" stroke-width="1.75" fill="none"><circle cx="3.5" cy="8" r="2.6" class="c-mask"/><circle cx="3.5" cy="8" r="2.6"/></g>
+            <text x="507" y="1546" class="t-primary" font-size="12" font-weight="600">可选</text>
           </g>
         </g>
       </svg>

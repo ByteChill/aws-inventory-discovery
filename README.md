@@ -2,7 +2,7 @@
 
 发现组织内 1000 多个 AWS 账号的资源，获取它们**当前的真实状态**，在 dashboard 上查询，并通过 API 提供给其他服务。
 
-> **当前状态**：MVP 已实现：第一批 12 个资源类型、扫描和写入、API、dashboard、本地环境、部署文件，后端测试全部通过。还没做：第二批类型（Security Group、Target Group、Route 53 Hosted Zone）、前端的 Playwright 测试、CI；账号清单服务 ①、凭证服务 ② 的真实接口格式和真实账号数据的核对要等上线前确认。进度见 [docs/PROGRESS.md](docs/PROGRESS.md)。
+> **当前状态**：MVP 已实现：第一批 12 个资源类型、扫描和写入、API、dashboard、本地环境、部署文件，后端测试和前端 Playwright 测试通过，CI 已配置。还没做：第二批类型（Security Group、Target Group、Route 53 Hosted Zone）；账号清单服务 ①、凭证服务 ② 的真实接口格式和真实账号数据的核对要等上线前确认。进度见 [docs/PROGRESS.md](docs/PROGRESS.md)。
 
 ## 它做什么
 
@@ -151,6 +151,32 @@ cd frontend && npm run generate-client
 ```
 
 其他：`npm run build`（类型检查加构建）、`npm run lint`（Biome）。开发时 Vite 把 `/api` 代理到 `http://localhost:8000`（`API_URL` 可改）。配色用 `?palette=dai-lv|dai-lan|yan-zhi` 切换（黛绿、黛蓝、胭脂），选择记在浏览器本地。
+
+### 浏览器端到端测试
+
+Playwright 测试在 `frontend/e2e/`，针对一套正在运行的环境（FastAPI 在 8000 端口托管构建好的 dashboard 和 `/api`），用中文界面走主要流程：概览、资源筛选和导出链接、资源详情和刷新、发起扫描、账号覆盖表、语言和主题切换。测试前的全局准备会通过 API 发起一次全部账号的扫描并等它成功，所以页面上的数据都是环境自己产生的。
+
+```bash
+podman compose up -d --build
+podman compose run --rm seed
+cd frontend
+npm ci
+npx playwright install chromium
+npm run e2e
+```
+
+`E2E_BASE_URL` 可以指向别的地址（默认 `http://localhost:8000`）。dashboard 代码改了以后要重新构建 api 镜像（`podman compose up -d --build api`），测试跑的是镜像里的构建结果。当前本地数据只有 Cloud Control 来源，没有关联资源，所以资源详情的关联资源只检查「没有关联资源」的文案；测试期间不要同时跑会写同一个 Redis 的后端测试，否则概览缓存会被覆盖。
+
+### CI
+
+`.github/workflows/ci.yml`（GitHub Actions，用 docker）：
+
+| 任务 | 内容 |
+|---|---|
+| `backend` | Python 3.14，postgres:17 和 redis:7，`uv sync`、ruff check、ruff format --check、ty check、pytest |
+| `devtools` | ruff 和 pytest |
+| `frontend` | Node 26，`npm ci`、`npx tsc -b`、`npx biome check .`、`npm run build` |
+| `e2e` | 前三个都通过后：`docker compose up -d --build`、seed、Playwright（chromium）；失败时上传 Playwright 报告 |
 
 ### 加一个资源类型
 

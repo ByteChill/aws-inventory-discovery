@@ -322,7 +322,8 @@ def main() -> None:
     args = parser.parse_args()
 
     wait_for(f"{args.fake_url}/health")
-    wait_for(f"{args.moto_url}/moto-api/data.json")
+    # Not /moto-api/data.json: it serialises every backend (hundreds of MB, several seconds).
+    wait_for(f"{args.moto_url}/moto-api/")
     ids = account_ids()
     if args.reset:
         httpx.post(f"{args.moto_url}/moto-api/reset").raise_for_status()

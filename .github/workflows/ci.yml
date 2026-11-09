@@ -65,7 +65,10 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run ty check
-      - run: uv run pytest
+      - run: uv run pytest --junitxml=test-results/junit.xml
+      - name: Test summary
+        if: ${{ !cancelled() }}
+        run: python3 -I ../.github/scripts/junit_summary.py "Backend tests" test-results/junit.xml >> "$GITHUB_STEP_SUMMARY"
 
   devtools:
     runs-on: ubuntu-latest
@@ -82,7 +85,10 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run pytest
+      - run: uv run pytest --junitxml=test-results/junit.xml
+      - name: Test summary
+        if: ${{ !cancelled() }}
+        run: python3 -I ../.github/scripts/junit_summary.py "Devtools tests" test-results/junit.xml >> "$GITHUB_STEP_SUMMARY"
 
   frontend:
     runs-on: ubuntu-latest
@@ -134,8 +140,12 @@ jobs:
         run: npm run e2e
         env:
           E2E_BASE_URL: http://localhost:8000
+      - name: Test summary
+        if: ${{ !cancelled() }}
+        working-directory: frontend
+        run: python3 -I ../.github/scripts/junit_summary.py "E2E tests (Playwright)" test-results/junit.xml >> "$GITHUB_STEP_SUMMARY"
       - name: Upload the Playwright report
-        if: failure()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7.0.2
         with:
           name: playwright-report

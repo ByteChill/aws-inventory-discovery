@@ -9,7 +9,14 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
+  // In CI: the HTML report is uploaded as an artifact; the JUnit file feeds the run's summary page.
+  reporter: process.env.CI
+    ? [
+        ["list"],
+        ["html", { open: "never" }],
+        ["junit", { outputFile: "test-results/junit.xml" }],
+      ]
+    : "list",
   timeout: 60_000,
   expect: { timeout: 10_000 },
   use: {

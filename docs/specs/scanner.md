@@ -120,6 +120,7 @@ RETURNING *;
 2. **全量扫描的创建用 `pg_advisory_xact_lock`（`full-sweep`）串行化**，调度器和 `POST /scans {all: true}` 共用这把锁；在锁内再确认一次「这一轮是否已经到期」。
 3. 创建一条 `t_inv_aws_scan_request`（`trigger = schedule`，`priority = 1`，`scope = {all: true}`）。
 4. 为每个活跃账号创建 `sweep_account` 任务：`not_before = 本轮开始时间 + 错开偏移`。偏移是账号 ID 的 SHA-256 前 8 字节对错开窗口取模（Python 内置的 `hash()` 每个进程都不同，不能用）。错开窗口 = 扫描间隔 − 30 分钟（默认 5.5 小时），保证最后一个账号在下一轮开始前有时间完成。上一轮的 `sweep_account` 还没结束（`queued` / `running`）的账号，这一轮跳过，数量记在请求 `counts.skippedAccounts`；`counts.accounts` 是实际创建的数量。
+5. **子任务入队去重**：上一轮的 `sweep_account` 已经规划完、但它的子任务还在排队（积压）时，这一轮不再为同一个范围重复入队。定时扫描（`priority = 1`）规划子任务时，如果同一账号已经有排队中的、定时的同类子任务覆盖这个范围，就不创建：`config_group` 按账号 + 区域匹配（`config_group` 运行时才重新算出 Config 负责的类型，所以排队中的那个覆盖整个区域的类型集合）；`shard` 按账号 + 区域 + 类型 + 来源匹配。跳过的数量记在 `sweep_account` 的 `stats.skipped`。按需扫描（`priority = 0`）不去重，必须产生新数据（R2）。检查和插入在同一个事务里，用账号级的 advisory xact lock 串行化（`aws-inventory-discovery:enqueue:<账号>`，不在 shard → task → request 的行锁顺序之内），并用 `t_inv_aws_scan_task` 上按账号的排队中部分索引查找。
 
 账号清单服务调用失败：按退避重试（2、4、8 秒，共 3 次重试）；仍然失败就用库里现有的账号快照继续，**不把任何账号标为不活跃**，并在扫描请求的 `counts` 里记录 `registryError`。
 
@@ -141,7 +142,7 @@ RETURNING *;
    - 按需扫描：每个类型各一个 `shard`，不使用 Config。
    - 重新运行同一个 `sweep_account`（重试）时，已经为这个请求和账号创建过的子任务不会重复创建。
 5. 全局类型（Route 53 Hosted Zone）只在 us-east-1 规划一次，区域记为 `global`：如果 us-east-1 的记录器包含全局资源（`includeGlobal`），由 us-east-1 的 `config_group` 读取；否则创建一个 `shard`，用 us-east-1 的客户端调用 Cloud Control。
-6. 任务的 `stats` 是 `{regions, tasks}`（区域数、新建的子任务数）。
+6. 任务的 `stats` 是 `{regions, tasks, skipped}`（区域数、新建的子任务数、因 5.1 第 5 条去重而跳过的子任务数）。
 
 ### 6.2 `config_group`
 1. 先读一次记录器，重新算出这个区域由 Config 负责的类型（全局类型只在 us-east-1 读取）；没有就直接结束。

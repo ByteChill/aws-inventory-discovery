@@ -59,7 +59,7 @@ flowchart LR
 | 数据生产服务 `aws-inventory-discovery-worker` | **唯一**调用目标账号 AWS API、唯一持有目标账号凭证的服务；负责扫描、写入数据、确认删除、定时调度、定期清理 |
 | 数据消费服务 `aws-inventory-discovery-api` | 提供 REST API，托管 dashboard；读数据，创建扫描请求。**不调用目标账号**，唯一访问的 AWS 服务是 hub 账号自己的 CloudWatch Logs，用来显示任务日志 |
 | Aurora PostgreSQL | 唯一的数据源：资产数据、账号、扫描请求和任务（任务队列）、范围租约 |
-| Redis | 只做缓存：分类计数、概览统计，key 以 `aws-inventory-discovery:` 开头。Redis 不可用时只是变慢，数据不受影响 |
+| Redis | 只做缓存：分类计数、概览统计，key 以 `aws-inventory-discovery:<DATABASE_SCHEMA>:` 开头（共用一个 Redis、schema 不同的部署互不读到对方的缓存）。Redis 不可用时只是变慢，数据不受影响 |
 
 api 和 worker 只通过数据库协作：api 写扫描请求和任务，worker 领取并执行。worker 不接受任何直接调用。
 
@@ -90,7 +90,7 @@ api 和 worker 只通过数据库协作：api 写扫描请求和任务，worker 
 
 ### 4.4 扫描单元与调度
 - **扫描单元（范围）**：账号 + 区域 + 类型。全局资源（Route 53）的区域记为 `global`。
-- **全量扫描**：每 6 小时一次，由调度器创建一轮扫描。每个账号在窗口内有一个固定的开始时间（账号 ID 的 SHA-256 对窗口长度取模），把 1000 个账号错开。窗口 = 扫描间隔 − 30 分钟（默认 5.5 小时），保证最后一个账号在下一轮开始前有时间完成，平均每 20 秒左右开始一个。到点后由一个账号级任务拉起这个账号的所有区域和类型的子任务。
+- **全量扫描**：每 6 小时一次，由调度器创建一轮扫描。每个账号在窗口内有一个固定的开始时间（账号 ID 的 SHA-256 对窗口长度取模），把 1000 个账号错开。窗口 = 扫描间隔 − 30 分钟（默认 5.5 小时），保证最后一个账号在下一轮开始前有时间完成，平均每 20 秒左右开始一个。到点后由一个账号级任务拉起这个账号的所有区域和类型的子任务；定时扫描遇到上一轮还在排队的同范围子任务（积压）时不重复入队，按需扫描不去重。
 - **定时调度**：在 worker 里运行，每分钟一次，用 Postgres advisory lock 保证只有一个实例负责。锁的 key 由 `<名称>:<DATABASE_SCHEMA>` 计算得出（名称是 `aws-inventory-discovery:scheduler`；共用一个数据库、schema 不同的部署互不干扰）。负责的实例还每分钟回收失联的任务，每天 03:00（UTC）清理。可以用环境变量 `SWEEP_ENABLED=false` 停掉定时扫描（回收和清理仍然运行）；本地环境就是这样做的，演示靠按需扫描。
 - **任务种类**：`sweep_account`（账号级）、`config_group`（一个账号区域的一次 Config 查询）、`shard`（一个范围的 Cloud Control 扫描）、`resource`（单个资源刷新）、`confirm_missing`（删除确认）。
 - **领任务**：`SELECT … FOR UPDATE SKIP LOCKED`，按需任务优先。每个 worker 留出一部分线程只处理按需任务。每个账号同时最多跑 4 个任务（可配置，软上限），用来避免被 Config 和 Cloud Control 限流。
@@ -703,7 +703,7 @@ aws-inventory-discovery/
 | VPC endpoint | 为本项目新建的，`Name` 标签用 `aws-inventory-discovery-<服务>`；平台已有的直接复用，不改名 |
 | Route 53 私有托管区 | 域名必须是 AWS 的服务域名，不能加前缀，用注释和标签标明归属 |
 | 所有 AWS 资源的标签 | `Project=aws-inventory-discovery` |
-| Redis key | 以 `aws-inventory-discovery:` 开头 |
+| Redis key | 以 `aws-inventory-discovery:<DATABASE_SCHEMA>:` 开头 |
 | Postgres | 表名 `t_inv_aws_*`，放在已分配的独立 schema 里；advisory lock 的 key 由 `<aws-inventory-discovery:scheduler 或 aws-inventory-discovery:full-sweep>:<DATABASE_SCHEMA>` 计算得出 |
 | 本地容器 | 以 `aws-inventory-discovery-` 开头 |
 

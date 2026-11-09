@@ -46,7 +46,8 @@ def get_logs_client() -> Any:
 
 
 def get_cache() -> Iterator[Cache]:
-    cache = Cache.from_url(get_settings().REDIS_URL)
+    settings = get_settings()
+    cache = Cache.from_url(settings.REDIS_URL, settings.DATABASE_SCHEMA)
     try:
         yield cache
     finally:

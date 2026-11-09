@@ -10,16 +10,23 @@ PREFIX = "aws-inventory-discovery:"
 
 
 class Cache:
-    """A JSON cache in Redis. Redis being down is a miss, never an error (it only costs speed)."""
+    """A JSON cache in Redis. Redis being down is a miss, never an error (it only costs speed).
 
-    def __init__(self, client: redis.Redis | None) -> None:
+    Every key is `aws-inventory-discovery:<DATABASE_SCHEMA>:<name>` (`key()`), so deployments
+    (or a test run and a local stack) that share one Redis never read each other's data."""
+
+    def __init__(self, client: redis.Redis | None, schema: str) -> None:
         self._client = client
+        self.schema = schema
 
     @classmethod
-    def from_url(cls, url: str | None) -> Self:
+    def from_url(cls, url: str | None, schema: str) -> Self:
         if url is None:
-            return cls(None)
-        return cls(redis.Redis.from_url(url, socket_connect_timeout=1, socket_timeout=1))
+            return cls(None, schema)
+        return cls(redis.Redis.from_url(url, socket_connect_timeout=1, socket_timeout=1), schema)
+
+    def key(self, *parts: str) -> str:
+        return f"{PREFIX}{self.schema}:{':'.join(parts)}"
 
     def get(self, key: str) -> Any | None:
         if self._client is None:

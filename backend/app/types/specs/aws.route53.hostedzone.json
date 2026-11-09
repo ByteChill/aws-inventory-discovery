@@ -20,6 +20,7 @@
   },
   "mapping": {
     "keyCase": "pascal",
+    "tagsProperty": "HostedZoneTags",
     "properties": [
       "Id",
       "Name",
@@ -28,7 +29,6 @@
     ],
     "exclude": [
       "HostedZoneConfig",
-      "HostedZoneTags",
       "HostedZoneFeatures",
       "QueryLoggingConfig",
       "DelegationSetId"

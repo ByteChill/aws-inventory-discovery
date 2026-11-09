@@ -29,3 +29,15 @@ def lock_full_sweeps(session: Session, schema: str) -> None:
         text("SELECT pg_advisory_xact_lock(:key)"),
         {"key": advisory_lock_key(FULL_SWEEP_LOCK_NAME, schema)},
     )
+
+
+def lock_child_enqueue(session: Session, schema: str, account_id: str) -> None:
+    """Serialise the planning of one account's scheduled child tasks until the session's
+    transaction ends: "is there already a queued twin?" and the insert must not interleave
+    with another `sweep_account` of the same account. Advisory locks are independent of row
+    locks, so this does not take part in the shard -> task -> request order; take it first
+    and insert (which only creates new rows) in the same transaction."""
+    session.connection().execute(
+        text("SELECT pg_advisory_xact_lock(:key)"),
+        {"key": advisory_lock_key(f"aws-inventory-discovery:enqueue:{account_id}", schema)},
+    )

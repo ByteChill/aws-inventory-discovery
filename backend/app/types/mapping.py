@@ -180,7 +180,7 @@ def convert_configuration(spec: ResourceTypeSpec, properties: dict[str, Any]) ->
         out: dict[str, Any] = {}
         for key, child in value.items():
             child_path = (*path, key)
-            if child_path in excluded or child_path == ("Tags",):
+            if child_path in excluded or child_path == (mapping.tags_property,):
                 continue
             dest = renames.get(child_path)
             if dest is not None:
@@ -218,8 +218,10 @@ def _transform_at(node: Any, segments: list[str], fn: Callable[[Any], Any], labe
         raise MappingError(f"transform of {label} failed: {exc}") from exc
 
 
-def convert_tags(properties: dict[str, Any]) -> list[ConfigTag]:
-    return [ConfigTag(key=tag["Key"], value=tag["Value"]) for tag in properties.get("Tags") or []]
+def convert_tags(spec: ResourceTypeSpec, properties: dict[str, Any]) -> list[ConfigTag]:
+    """The tags of a Cloud Control record, from the type's `mapping.tagsProperty`."""
+    found = properties.get(spec.mapping.tags_property) or []
+    return [ConfigTag(key=tag["Key"], value=tag["Value"]) for tag in found]
 
 
 def partition_of(region: str) -> str:
@@ -253,7 +255,7 @@ def to_config_item(
 ) -> ConfigItem:
     """Map one Cloud Control `Properties` object to a Config-format record (no overlay)."""
     configuration = convert_configuration(spec, properties)
-    tags = convert_tags(properties)
+    tags = convert_tags(spec, properties)
     identity = spec.identity
     resource_id = _text(get_path(configuration, split_path(identity.resource_id_from)))
     if resource_id is None:
@@ -310,7 +312,7 @@ def split_identifier(spec: ResourceTypeSpec, identifier: str) -> dict[str, str]:
 def covered_paths(spec: ResourceTypeSpec) -> frozenset[Path]:
     """Configuration paths the mapping can produce. Overlay and conversion share this."""
     mapping = spec.mapping
-    excluded = {split_path(p) for p in mapping.exclude}
+    excluded = {split_path(p) for p in mapping.exclude} | {(mapping.tags_property,)}
 
     def is_excluded(cc_path: Path) -> bool:
         return any(cc_path[:n] in excluded for n in range(1, len(cc_path) + 1))

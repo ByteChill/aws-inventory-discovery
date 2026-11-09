@@ -46,7 +46,7 @@
 - [x] `devtools/fake_aws`：Cloud Control `ListResources` / `GetResource`；账号清单服务 ①；凭证服务 ②（调用 moto STS `AssumeRole`）；**还有 AWS Config**（moto 的服务器模式预设不了 `SelectResourceConfig`，见 D-21）和 `/_admin` 管理接口
 - [x] Config 预设：记录器状态、`SelectResourceConfig` 结果（由 fake_aws 提供，不是 moto）
 - [x] `devtools/seed.py`：20 个账号 × 4 个区域的演示数据（只改账号、区域、资源 ID），并在 moto 里注册 AMI
-- [~] `podman compose up` 后可以完成一轮完整扫描：用同一套模拟服务的端到端测试通过（定时全量扫描、按需扫描、删除两条证据、刷新、取消、任务日志）；compose 里 api / worker 容器的完整演示没有在这次核对里重新跑过。已知限制：moto 里共享 AMI 跨账号不可见，任务日志本地查不到
+- [x] `podman compose up` 后可以完成一轮完整扫描：2026-11-09 在 compose 的 api / worker 容器上实测，`POST /scans {all: true}` 90 秒完成（20 个账号、740 个任务全部成功、入库 1,082 个资源）；在 fake-aws 里删掉一个 SQS 队列后按需扫描，资源先变为「可能已删除」再确认为「已删除」；`doctor` 16/16 通过，worker `healthcheck` 通过。端到端测试也覆盖了同样的流程。已知限制：moto 里共享 AMI 跨账号不可见，任务日志本地查不到
 
 ## M3 worker 核心
 - [x] 7 张表的 SQLModel 模型和 Alembic 迁移（放在 `DATABASE_SCHEMA`）：0001 初始表，0002 围栏令牌和运行中任务的索引，0003 `candidate_count`

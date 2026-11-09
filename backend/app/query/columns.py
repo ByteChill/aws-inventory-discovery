@@ -115,12 +115,12 @@ COMMON_BY_KEY = {column.key: column for column in COMMON_COLUMNS}
 VALUE_LABELS: dict[str, dict[str, tuple[str, str]]] = {
     "status": {
         "active": ("正常", "Active"),
-        "missing": ("可能已删除", "Possibly deleted"),
+        "missing": ("可能已删除", "May be deleted"),
         "deleted": ("已删除", "Deleted"),
     },
     "accountType": {
         "dev": ("开发", "Dev"),
-        "preprod": ("预生产", "Pre-prod"),
+        "preprod": ("预发布", "Pre-prod"),
         "prod": ("生产", "Prod"),
     },
     "bool": {"true": ("是", "Yes"), "false": ("否", "No")},

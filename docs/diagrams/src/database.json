@@ -399,6 +399,10 @@
           "type": "timestamptz"
         },
         {
+          "name": "claim_token",
+          "type": "text"
+        },
+        {
           "name": "observed_at",
           "type": "timestamptz"
         },
@@ -463,6 +467,10 @@
           "type": "timestamptz"
         },
         {
+          "name": "lease_token",
+          "type": "text"
+        },
+        {
           "name": "pending_task_id",
           "type": "bigint"
         },
@@ -497,6 +505,10 @@
         {
           "name": "guard_confirmed_by",
           "type": "text"
+        },
+        {
+          "name": "candidate_count",
+          "type": "int"
         }
       ],
       "width": 250

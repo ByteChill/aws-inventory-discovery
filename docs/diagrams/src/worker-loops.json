@@ -1,0 +1,48 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "worker 的三个循环",
+    "locale": "zh-CN",
+    "output": ".archify/diagrams/worker-loops.html",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "claim", "label": "领任务循环（每个线程）" },
+    { "id": "beat", "label": "心跳循环（每 30 秒）" },
+    { "id": "sched", "label": "调度循环（每 60 秒，只有持锁者）" },
+    { "id": "db", "label": "Postgres" }
+  ],
+  "mainPath": ["claim_task", "run_task", "finish_task"],
+  "nodes": [
+    { "id": "idle", "lane": "claim", "col": 0, "type": "external", "label": "等约 2 秒", "sublabel": "没领到任务时" },
+    { "id": "claim_task", "lane": "claim", "col": 1, "type": "backend", "label": "领取任务", "sublabel": "not_before 已到" },
+    { "id": "run_task", "lane": "claim", "col": 2, "type": "backend", "label": "执行处理函数", "sublabel": "租约内一页一页读写" },
+    { "id": "finish_task", "lane": "claim", "col": 3, "type": "backend", "label": "结束任务", "sublabel": "成功、重试或失败" },
+    { "id": "heartbeat", "lane": "beat", "col": 2, "type": "security", "label": "心跳并续租", "sublabel": "出示执行令牌" },
+    { "id": "beat_file", "lane": "beat", "col": 3, "type": "external", "label": "更新心跳文件", "sublabel": "容器健康检查用" },
+    { "id": "lock", "lane": "sched", "col": 0, "type": "security", "label": "抢调度锁", "sublabel": "key 含 schema" },
+    { "id": "sweep", "lane": "sched", "col": 1, "type": "backend", "label": "到点开一轮", "sublabel": "上一轮定时 + 6 小时" },
+    { "id": "reap", "lane": "sched", "col": 2, "type": "backend", "label": "回收失联任务", "sublabel": "心跳超过 2 分钟" },
+    { "id": "clean", "lane": "sched", "col": 3, "type": "backend", "label": "每天清理", "sublabel": "03:00 UTC" },
+    { "id": "tasks", "lane": "db", "col": 1, "type": "database", "label": "任务队列", "sublabel": "t_inv_aws_scan_task" },
+    { "id": "shards", "lane": "db", "col": 2, "type": "database", "label": "范围租约", "sublabel": "t_inv_aws_scan_shard" }
+  ],
+  "edges": [
+    { "id": "idle-claim", "from": "idle", "to": "claim_task", "label": "再试" },
+    { "id": "claim-run", "from": "claim_task", "to": "run_task", "variant": "emphasis" },
+    { "id": "run-finish", "from": "run_task", "to": "finish_task", "variant": "emphasis" },
+    { "id": "claim-tasks", "from": "claim_task", "to": "tasks", "label": "SKIP LOCKED", "role": "branch", "variant": "dashed" },
+    { "id": "beat-shards", "from": "heartbeat", "to": "shards", "label": "续租", "role": "branch", "variant": "dashed" },
+    { "id": "beat-file", "from": "heartbeat", "to": "beat_file" },
+    { "id": "lock-sweep", "from": "lock", "to": "sweep", "label": "抢到才做" },
+    { "id": "sweep-reap", "from": "sweep", "to": "reap" },
+    { "id": "reap-clean", "from": "reap", "to": "clean" },
+    { "id": "sweep-tasks", "from": "sweep", "to": "tasks", "label": "排入错开的任务", "role": "branch", "variant": "emphasis" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "没有 cron", "items": ["任务什么时候执行，只看它的 not_before", "定时扫描就是一次性排入很多 not_before 不同的任务", "领任务的线程到点自然领走，不需要定时器去触发"] },
+    { "dot": "amber", "title": "调度只有一个人做", "items": ["每个 worker 每分钟都抢一次 advisory lock", "锁跟数据库连接绑定，持锁者退出后自动释放", "下一分钟别的 worker 抢到并接手"] },
+    { "dot": "emerald", "title": "本地环境", "items": ["SWEEP_ENABLED=false，调度循环只回收和清理", "扫描靠页面上的「扫描」触发，立即执行"] }
+  ]
+}

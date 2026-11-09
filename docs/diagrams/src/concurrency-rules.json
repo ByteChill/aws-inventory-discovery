@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "并发规则：执行令牌与旧数据不覆盖新数据",
+    "locale": "zh-CN",
+    "output": ".archify/diagrams/concurrency-rules.html",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "wa", "type": "backend", "label": "worker A", "sublabel": "先领到任务" },
+    { "id": "wb", "type": "backend", "label": "worker B", "sublabel": "接手任务" },
+    { "id": "rf", "type": "backend", "label": "刷新任务", "sublabel": "单个资源" },
+    { "id": "sched", "type": "security", "label": "调度器", "sublabel": "回收失联任务" },
+    { "id": "db", "type": "database", "label": "Postgres", "sublabel": "任务、租约、资源" },
+    { "id": "aws", "type": "cloud", "label": "AWS", "sublabel": "只读调用" }
+  ],
+  "segments": [
+    { "from": 150, "to": 258, "label": "正常执行" },
+    { "from": 270, "to": 418, "label": "worker A 卡住，任务被回收" },
+    { "from": 430, "to": 578, "label": "执行令牌挡住旧 worker" },
+    { "from": 590, "to": 780, "label": "旧数据不覆盖新数据" }
+  ],
+  "messages": [
+    { "id": "a-claim", "from": "wa", "to": "db", "y": 160, "label": "领取任务（令牌 t1）", "variant": "emphasis" },
+    { "id": "a-lease", "from": "wa", "to": "db", "y": 188, "label": "取得范围租约（t1）" },
+    { "id": "a-read", "from": "wa", "to": "aws", "y": 216, "label": "读取第 1 页" },
+    { "id": "a-write", "from": "wa", "to": "db", "y": 244, "label": "写入第 1 页，心跳（t1）" },
+    { "id": "reap", "from": "sched", "to": "db", "y": 290, "label": "放回队列，作废 t1", "variant": "security", "note": "worker A 超过 2 分钟没有心跳" },
+    { "id": "b-claim", "from": "wb", "to": "db", "y": 344, "label": "重新领取（令牌 t2）", "variant": "emphasis" },
+    { "id": "b-lease", "from": "wb", "to": "db", "y": 372, "label": "取得租约（t2）" },
+    { "id": "b-read", "from": "wb", "to": "aws", "y": 400, "label": "从头读取" },
+    { "id": "a-resume", "from": "wa", "to": "db", "y": 446, "label": "醒来：续租、写入（t1）", "variant": "security", "note": "t1 已经作废" },
+    { "id": "a-rejected", "from": "db", "to": "wa", "y": 500, "label": "拒绝：任务已不属于你", "variant": "return", "note": "worker A 停止，不再写任何东西" },
+    { "id": "b-done", "from": "wb", "to": "db", "y": 556, "label": "写完，释放租约（t2）", "variant": "emphasis" },
+    { "id": "list-old", "from": "wb", "to": "aws", "y": 604, "label": "T0：列表读到 q2" },
+    { "id": "refresh-new", "from": "rf", "to": "aws", "y": 632, "label": "T1：按 ID 读取 q2" },
+    { "id": "refresh-write", "from": "rf", "to": "db", "y": 660, "label": "写入 q2，observed_at = T1", "variant": "emphasis" },
+    { "id": "list-write", "from": "wb", "to": "db", "y": 706, "label": "写入 q2，observed_at = T0", "variant": "security", "note": "T0 早于 T1，条件写入不生效" },
+    { "id": "list-skip", "from": "db", "to": "wb", "y": 760, "label": "跳过 q2", "variant": "return" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "范围租约", "items": ["同一个账号 + 区域 + 类型同时只跑一个任务", "单个资源刷新不取租约，靠观察时间保护"] },
+    { "dot": "amber", "title": "执行令牌", "items": ["每次领取都生成新令牌", "心跳、租约、检查点、结束任务都要出示", "被回收后旧令牌作废，卡住的 worker 醒来也写不进去"] },
+    { "dot": "rose", "title": "旧数据不覆盖新数据", "items": ["每次写入都带观察时间", "只有比库里更新的观察才会写入", "「明确不存在」的观察也会推进观察时间"] }
+  ]
+}

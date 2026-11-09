@@ -59,7 +59,7 @@ export function CoverageGrid({
     }
   }, [cells, typeLabels, locale])
 
-  function describe(cell: CoverageCell | undefined, state: State): string {
+  function describeCell(cell: CoverageCell | undefined, state: State): string {
     const lines = [t(LABEL[state])]
     if (cell?.lastSucceededAt)
       lines.push(
@@ -111,7 +111,7 @@ export function CoverageGrid({
                 {regions.map((region) => {
                   const cell = byKey.get(`${type}|${region}`)
                   const state: State = cell?.state ?? "never"
-                  const text = describe(cell, state)
+                  const text = describeCell(cell, state)
                   return (
                     <td
                       key={region}

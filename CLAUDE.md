@@ -6,7 +6,7 @@ Guidance for AI coding agents working in this repository. `AGENTS.md` is a symli
 
 aws-inventory-discovery discovers the **current real state** of AWS resources across 1,000+ accounts in one AWS Organization, stores it in Aurora PostgreSQL, and serves it through a FastAPI REST API and a React dashboard. Two ECS services share one image: `aws-inventory-discovery-worker` (the only component that calls target-account AWS APIs) and `aws-inventory-discovery-api` (API + dashboard; reads the DB, creates scan requests, never calls target accounts).
 
-Status: MVP implemented (15 resource types (12 first-batch plus Security Group, Target Group, Route 53 Hosted Zone), scan/write pipeline, API, dashboard, local environment, deploy files; backend tests pass). Not done: Playwright tests, CI, and the real formats of services ① and ② and real-account fixture checks. Check `docs/PROGRESS.md` before starting work.
+Status: MVP implemented (15 resource types (12 first-batch plus Security Group, Target Group, Route 53 Hosted Zone), scan/write pipeline, API, dashboard, local environment, deploy files; backend tests pass; Playwright e2e in `frontend/e2e/`; CI in `.github/workflows/ci.yml`, not yet run on GitHub). Not done: the real formats of services ① and ② and real-account fixture checks. Check `docs/PROGRESS.md` before starting work.
 
 ## Source of truth
 

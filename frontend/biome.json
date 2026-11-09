@@ -7,7 +7,9 @@
       "!**/node_modules",
       "!**/src/client",
       "!**/src/routeTree.gen.ts",
-      "!openapi.json"
+      "!openapi.json",
+      "!test-results",
+      "!playwright-report"
     ]
   },
   "linter": {

@@ -42,7 +42,10 @@ CONFIG_SUBSET = {
 }
 RECORDER_TIME = "2026-10-01T08:00:00Z"
 
-_TEAMS = ("payments", "ledger", "risk", "treasury", "markets", "onboarding", "reporting")
+# An EIM is a group of resources owned by one application: its EIM ID, BA ID and app name are
+# each unique, and every account belongs to exactly one EIM. An EIM usually has one account per
+# environment, so consecutive accounts share an EIM as its dev, preprod and prod accounts.
+_EIM_APPS = ("payments", "ledger", "risk", "treasury", "markets", "onboarding", "reporting")
 _ACCOUNT_TYPES = ("dev", "preprod", "prod")
 
 # --- fixture copying -------------------------------------------------------------------------
@@ -109,20 +112,25 @@ def account_ids(count: int = ACCOUNT_COUNT) -> list[str]:
 
 
 def build_registry(ids: list[str]) -> list[dict[str, str]]:
-    """Account registry ① entries (format assumed in DESIGN section 2)."""
+    """Account registry ① entries (format assumed in DESIGN section 2).
+
+    20 accounts make six EIMs with dev, preprod and prod accounts, and a seventh that has only
+    dev and preprod so far.
+    """
     entries = []
     for index, account_id in enumerate(ids):
-        app = index // 2
+        eim, account_type = divmod(index, len(_ACCOUNT_TYPES))
+        app = _EIM_APPS[eim % len(_EIM_APPS)]
+        if eim >= len(_EIM_APPS):  # more accounts than names: keep app names unique
+            app += f"-{eim // len(_EIM_APPS) + 1}"
         entries.append(
             {
                 "account_id": account_id,
-                "account_name": (
-                    f"{_TEAMS[index % len(_TEAMS)]}-{_ACCOUNT_TYPES[index % 3]}-{index + 1:02d}"
-                ),
-                "account_type": _ACCOUNT_TYPES[index % 3],
-                "eim_id": f"{10000000 + app * 111:08d}",
-                "eim_app": f"eim-app-{app + 1:02d}",
-                "ba_id": f"BA{1000 + (index // 4) * 7:04d}",
+                "account_name": f"{app}-{_ACCOUNT_TYPES[account_type]}",
+                "account_type": _ACCOUNT_TYPES[account_type],
+                "eim_id": f"{10809007 + eim * 113:08d}",
+                "eim_app": app,
+                "ba_id": f"BA{2011234 + eim * 1357:07d}",
             }
         )
     return entries

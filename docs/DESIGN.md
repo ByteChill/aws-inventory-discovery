@@ -34,7 +34,7 @@
 | 数据存储 | 已有的 Aurora PostgreSQL（已为本服务分配独立 schema）和 Redis，直接使用 |
 | 目标账号 | 同一个组织内 1000 多个账号，每个账号都有 ADFS-readonly 角色（AWS 托管的 ReadOnlyAccess 策略） |
 | AWS Config | 每个账号都已开启，按账号调用，**没有组织级聚合器** |
-| 账号清单服务 ① | 返回 `account_id、account_name、account_type（dev/preprod/prod）、eim_id（8 位字符串）、eim_app、ba_id（BAxxxx）`。**接口格式暂按假设实现，上线前确认** |
+| 账号清单服务 ① | 返回 `account_id、account_name、account_type（dev/preprod/prod）、eim_id（8 位字符串）、eim_app、ba_id（如 BA2011234）`。EIM 是一个应用的资源集合：EIM ID、BA ID、应用名各自唯一、一一对应；每个账号只属于一个 EIM，一个 EIM 通常有 dev、preprod、prod 各一个账号。**接口格式暂按假设实现，上线前确认** |
 | 凭证服务 ② | 返回目标账号 ADFS-readonly 角色的临时凭证，**自带缓存**。**接口格式暂按 STS 格式假设，上线前确认** |
 
 ## 3. 架构

@@ -10,17 +10,17 @@
 
 | 里程碑 | 状态 |
 |---|---|
-| M0 项目骨架 | 基本完成（缺 CI） |
+| M0 项目骨架 | 完成 |
 | M1 资源类型和样本 | 第一批完成，第二批未做 |
 | M2 本地模拟环境 | 完成（Config 由 fake_aws 提供） |
 | M3 worker 核心 | 完成 |
 | M4 数据源 | 完成（①②的接口格式是假设） |
 | M5 API | 完成 |
-| M6 Dashboard | 基本完成（缺 Playwright 测试） |
+| M6 Dashboard | 完成 |
 | M7 部署 | 完成（待平台创建资源后实际验证） |
 | M8 上线确认 | 未开始 |
 
-**MVP 已实现**：第一批 12 个资源类型、完整的扫描和写入流程、API、dashboard、本地环境和部署文件。后端 281 个测试通过（`cd backend && uv run pytest`，需要 `podman compose up -d postgres redis`）。剩下的是第二批类型、真实环境的确认（见 M1、M8），以及 Playwright 测试和 CI。
+**MVP 已实现**：第一批 12 个资源类型、完整的扫描和写入流程、API、dashboard、本地环境和部署文件。后端 281 个测试通过（`cd backend && uv run pytest`，需要 `podman compose up -d postgres redis`）。剩下的是第二批类型、真实环境的确认（见 M1、M8）。Playwright 测试和 CI 已加（CI 还没有在 GitHub 上实际运行过）。
 
 设计阶段已完成：[DESIGN.md](DESIGN.md)、[DECISIONS.md](DECISIONS.md)、[specs/](specs/)。实现中发现的偏差已经同步到这些文档（DECISIONS D-21 起）。
 
@@ -31,7 +31,7 @@
 - [x] `frontend/`：Vite + React 19 + TanStack + shadcn/ui + Tailwind v4 + Biome，hey-api 客户端生成脚本（`backend/scripts/export_openapi.py` + `npm run generate-client`）
 - [x] `backend/Dockerfile`：多阶段构建，非 root，健康检查
 - [x] `compose.yaml`：postgres、redis、moto、fake-aws、migrate、api、worker、seed
-- [~] 代码检查：Ruff、ty、Biome 都已配置并可以在本地运行；**还没有 CI 配置**（仓库里没有 CI 工作流）
+- [x] 代码检查：Ruff、ty、Biome 都已配置并可以在本地运行；`.github/workflows/ci.yml` 跑后端、devtools、前端检查和 e2e（用 actionlint 和 YAML 解析检查过语法，还没有在 GitHub 上实际运行）
 
 ## M1 资源类型和样本
 - [x] `types/spec.py`：资源类型配置的 Pydantic 模型，格式见 [specs/resource-types.md](specs/resource-types.md)
@@ -82,7 +82,7 @@
 - [x] 数据表格组件：根据列定义生成列和筛选控件，服务端筛选、排序、分页
 - [x] 页面：概览、资源列表、资源详情、账号、扫描（含扫描详情、任务详情），见 [specs/dashboard.md](specs/dashboard.md)
 - [x] 中文和英文；亮色和暗色
-- [ ] Playwright 主要流程测试（前端还没有任何自动化测试，Playwright 也没有接入）
+- [x] Playwright 主要流程测试：`frontend/e2e/`，6 个流程（概览、资源筛选和导出、资源详情和刷新、发起扫描、账号覆盖表、语言和主题），`npm run e2e`；本地数据没有关联资源，关联资源链接只在有数据时才点
 
 ## M7 部署
 - [x] `deploy/ecs/`：api、worker、migrate 的任务定义示例

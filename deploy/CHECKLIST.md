@@ -15,8 +15,10 @@
 ## 2. 镜像和密钥
 
 - [ ] ECR 仓库 `aws-inventory-discovery`（ap-east-1）
-- [ ] Secrets Manager `aws-inventory-discovery/db`：数据库密码
-- [ ] Secrets Manager `aws-inventory-discovery/redis`：Redis auth token
+- [ ] Secrets Manager `aws-inventory-discovery/db`：**JSON 对象**，不是单独的密码。键：`DATABASE_URL`（主库连接串，api、worker、migrate 都用）和 `DATABASE_READ_URL`（只读副本的连接串，api 用；没有只读副本时可以和 `DATABASE_URL` 相同，或者不放这个键并去掉 `api.json` 里对应的 secret）
+- [ ] Secrets Manager `aws-inventory-discovery/redis`：**JSON 对象**，键 `REDIS_URL`（含 auth token 的连接串，api 和 worker 用）
+
+任务定义里用 `arn:aws:secretsmanager:ap-east-1:<hub-account-id>:secret:aws-inventory-discovery/db:DATABASE_URL::` 这种带 JSON 键的 `valueFrom` 引用（见 `deploy/ecs/*.json`），由 ECS 注入成同名的环境变量。
 
 ## 3. 日志组
 
@@ -29,7 +31,7 @@
 ## 4. IAM 角色
 
 ### 4.1 `aws-inventory-discovery-task-execution`（ECS 任务执行角色）
-附加 AWS 托管策略 `AmazonECSTaskExecutionRolePolicy`，再加：
+附加 AWS 托管策略 `AmazonECSTaskExecutionRolePolicy`，再加（ECS 用它读取密钥并把 JSON 里的键注入成环境变量；本服务自己的代码从不读取 secret 的值，也不需要这个权限）：
 
 ```json
 {
@@ -81,7 +83,7 @@
 |---|---|---|
 | `com.amazonaws.ap-east-1.config` | Interface | 扫描 ap-east-1 |
 | `com.amazonaws.ap-east-1.cloudcontrolapi` | Interface | 扫描 ap-east-1 |
-| `com.amazonaws.ap-east-1.ec2` | Interface | 查询每个账号开启的区域；读取 AMI |
+| `com.amazonaws.ap-east-1.ec2` | Interface | 扫描 ap-east-1 时读取 AMI。注意：查询每个账号开启的区域（`ec2:DescribeRegions`）**不在这里**，而是在 `REACHABLE_REGIONS` 里第一个默认开启的区域（默认配置下是 us-east-1，因为 ap-east-1 是 opt-in 区域），见 6.2 |
 | `com.amazonaws.ap-east-1.logs` | Interface | 写日志；API 查询任务日志 |
 | `com.amazonaws.ap-east-1.secretsmanager` | Interface | ECS 注入密钥 |
 | `com.amazonaws.ap-east-1.ecr.api`、`com.amazonaws.ap-east-1.ecr.dkr` | Interface | 拉取镜像 |
@@ -91,7 +93,7 @@
 
 ### 6.2 us-east-1、eu-west-1、eu-west-2（各区域 VPC）
 
-每个区域三个 Interface endpoint：`config`、`cloudcontrolapi`、`ec2`，例如 `com.amazonaws.us-east-1.config`。
+每个区域三个 Interface endpoint：`config`、`cloudcontrolapi`、`ec2`，例如 `com.amazonaws.us-east-1.config`。us-east-1 的 `ec2` endpoint 还承担所有账号的 `DescribeRegions` 调用（`REACHABLE_REGIONS` 里没有默认开启的区域时，扫描会明确失败，要求加一个），所以必不可少。
 
 ### 6.3 endpoint 策略
 
@@ -153,13 +155,14 @@ endpoint 自带的私有 DNS 只在它所在的 VPC 里生效。为了让 ap-eas
 |---|---|
 | 集群 | 平台已有的集群；如果新建，命名为 `aws-inventory-discovery` |
 | 服务 `aws-inventory-discovery-api` | Fargate，1 vCPU / 2 GB，私有子网，挂到 ALB 目标组 `aws-inventory-discovery-api`（健康检查 `/api/v1/health`），按 CPU 和内存自动扩缩，`minimumHealthyPercent` 100% |
-| 服务 `aws-inventory-discovery-worker` | Fargate，2 vCPU / 4 GB，私有子网，`stopTimeout` 120 秒，按 CPU 和内存自动扩缩，`minimumHealthyPercent` 100% |
-| 任务定义 `aws-inventory-discovery-migrate` | Fargate，0.5 vCPU / 1 GB，命令 `alembic upgrade head`，每次发布前运行一次 |
+| 服务 `aws-inventory-discovery-worker` | Fargate，2 vCPU / 4 GB，私有子网，`stopTimeout` 120 秒，按 CPU 和内存自动扩缩，`minimumHealthyPercent` 100%。容器健康检查是 `python -m app.cli healthcheck`（看心跳文件 `WORKER_HEARTBEAT_FILE`，默认 `/tmp/aws-inventory-discovery-worker.heartbeat`，不访问数据库）。**容器里 `/tmp`（或这个变量指向的路径）必须可写**：如果平台把根文件系统设成只读，要给它挂一个可写的卷 |
+| 任务定义 `aws-inventory-discovery-migrate` | Fargate，0.5 vCPU / 1 GB，命令 `alembic upgrade head`，每次发布前运行一次。它是一次性任务，不监听端口，所以镜像自带的 HTTP 健康检查对它没有意义，任务定义里的检查改成 `exit 0` |
 | ALB `aws-inventory-discovery-alb` | 内网（internal），私有子网 |
 
-任务定义示例在 [`deploy/ecs/`](ecs/)（M7 提供），环境变量清单见 [docs/DESIGN.md](../docs/DESIGN.md) 12.3。
+任务定义示例在 [`deploy/ecs/`](ecs/)（`api.json`、`worker.json`、`migrate.json`，`<…>` 要按环境替换），环境变量清单见 [docs/DESIGN.md](../docs/DESIGN.md) 12.3。注意不要设置 `AWS_ENDPOINT_URL`、`AWS_ENDPOINT_URL_CLOUDCONTROL`、`AWS_ENDPOINT_URL_CONFIG_SERVICE`，它们只用于本地环境。
 
 ## 10. 部署后检查
 
-- [ ] 运行 `python -m app.cli doctor`（作为一次性 ECS 任务），确认数据库、Redis、两个内部服务，以及每个区域的 `config`、`cloudcontrolapi`、`ec2` endpoint 都能连通
+- [ ] 运行 `python -m app.cli doctor`（作为一次性 ECS 任务），确认数据库（并且迁移已经到最新）、Redis、两个内部服务，以及 `REACHABLE_REGIONS` 里每个区域的 `config`、`cloudcontrolapi`、`ec2` endpoint 都能连通；任何一项失败，命令退出码是 1
+- [ ] worker 服务的任务显示健康（容器健康检查 `python -m app.cli healthcheck` 通过）
 - [ ] 打开 dashboard，确认第一轮扫描开始、扫描页没有大量 `endpoint_unreachable`

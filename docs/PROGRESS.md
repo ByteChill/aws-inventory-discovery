@@ -4,92 +4,94 @@
 
 完成一项任务后更新这里；里程碑的范围有变化时，先更新 [DESIGN.md](DESIGN.md) 并让人确认。
 
-最后更新：2026-11-08
+最后更新：2026-11-09
 
 ## 总览
 
 | 里程碑 | 状态 |
 |---|---|
-| M0 项目骨架 | 未开始 |
-| M1 资源类型和样本 | 未开始 |
-| M2 本地模拟环境 | 未开始 |
-| M3 worker 核心 | 未开始 |
-| M4 数据源 | 未开始 |
-| M5 API | 未开始 |
-| M6 Dashboard | 未开始 |
-| M7 部署 | 未开始 |
+| M0 项目骨架 | 基本完成（缺 CI） |
+| M1 资源类型和样本 | 第一批完成，第二批未做 |
+| M2 本地模拟环境 | 完成（Config 由 fake_aws 提供） |
+| M3 worker 核心 | 完成 |
+| M4 数据源 | 完成（①②的接口格式是假设） |
+| M5 API | 完成 |
+| M6 Dashboard | 基本完成（缺 Playwright 测试） |
+| M7 部署 | 完成（待平台创建资源后实际验证） |
 | M8 上线确认 | 未开始 |
 
-设计阶段已完成：[DESIGN.md](DESIGN.md)、[DECISIONS.md](DECISIONS.md)、[specs/](specs/)。
+**MVP 已实现**：第一批 12 个资源类型、完整的扫描和写入流程、API、dashboard、本地环境和部署文件。后端 281 个测试通过（`cd backend && uv run pytest`，需要 `podman compose up -d postgres redis`）。剩下的是第二批类型、真实环境的确认（见 M1、M8），以及 Playwright 测试和 CI。
+
+设计阶段已完成：[DESIGN.md](DESIGN.md)、[DECISIONS.md](DECISIONS.md)、[specs/](specs/)。实现中发现的偏差已经同步到这些文档（DECISIONS D-21 起）。
 
 ---
 
 ## M0 项目骨架
-- [ ] `backend/`：pyproject（uv、Ruff、ty、`[tool.fastapi]` entrypoint）、`app/` 目录结构、Settings
-- [ ] `frontend/`：Vite + React 19 + TanStack + shadcn/ui + Tailwind v4 + Biome，hey-api 客户端生成脚本
-- [ ] `backend/Dockerfile`：多阶段构建，非 root，健康检查
-- [ ] `compose.yaml`：postgres、redis、moto、fake-aws、api、worker
-- [ ] 代码检查：Ruff、ty、Biome；在 CI 中运行
+- [x] `backend/`：pyproject（uv、Ruff、ty、`[tool.fastapi]` entrypoint）、`app/` 目录结构、Settings
+- [x] `frontend/`：Vite + React 19 + TanStack + shadcn/ui + Tailwind v4 + Biome，hey-api 客户端生成脚本（`backend/scripts/export_openapi.py` + `npm run generate-client`）
+- [x] `backend/Dockerfile`：多阶段构建，非 root，健康检查
+- [x] `compose.yaml`：postgres、redis、moto、fake-aws、migrate、api、worker、seed
+- [~] 代码检查：Ruff、ty、Biome 都已配置并可以在本地运行；**还没有 CI 配置**（仓库里没有 CI 工作流）
 
 ## M1 资源类型和样本
-- [ ] `types/spec.py`：资源类型配置的 Pydantic 模型，格式见 [specs/resource-types.md](specs/resource-types.md)
-- [ ] `types/registry.py`、`types/mapping.py`、`types/redact.py`、`types/hooks.py`
-- [ ] 第一批类型的配置文件和样本：VPC、Subnet、ALB/NLB、ECS Cluster / Service / Task Definition、EC2、AMI、Lambda、Secret、SNS、SQS
-- [ ] 第二批类型的配置文件和样本：Security Group、Target Group、Route 53 Hosted Zone
-- [ ] 样本包括：Config 配置项、Cloud Control `GetResource` / `ListResources` 响应（AMI 是 EC2 `DescribeImages` 响应），以及 `SOURCE.md`（只用 AWS 官方资料）
-- [ ] 核对每个类型的 Cloud Control Identifier 和 Config 支持情况（[specs/resource-types.md](specs/resource-types.md) 中标为「待核对」的项）
-- [ ] 测试：每个类型的映射、脱敏、列取值
+- [x] `types/spec.py`：资源类型配置的 Pydantic 模型，格式见 [specs/resource-types.md](specs/resource-types.md)
+- [x] `types/registry.py`、`types/mapping.py`、`types/redact.py`、`types/hooks.py`（另有 `types/columns.py`）
+- [x] 第一批类型的配置文件和样本：VPC、Subnet、ALB/NLB、ECS Cluster / Service / Task Definition、EC2、AMI、Lambda、Secret、SNS、SQS（12 个）
+- [ ] 第二批类型的配置文件和样本：Security Group、Target Group、Route 53 Hosted Zone（Identifier 和 Config 支持情况已核对，见 `backend/tests/fixtures/aws/VERIFICATION.md`；配置文件、样本、测试都还没有）
+- [x] 样本包括：Config 配置项、Cloud Control `GetResource` / `ListResources` 响应（AMI 是 EC2 `DescribeImages` 响应），以及 `SOURCE.md`（只用 AWS 官方资料）（第一批）
+- [x] 核对每个类型的 Cloud Control Identifier 和 Config 支持情况：15 个类型都核对过（结果和差异见 `VERIFICATION.md`，已同步到 [specs/resource-types.md](specs/resource-types.md) 第 5 节）
+- [x] 测试：每个类型的映射、脱敏、列取值（第一批）
 
 ## M2 本地模拟环境
-- [ ] `devtools/fake_aws`：Cloud Control `ListResources` / `GetResource`；账号清单服务 ①；凭证服务 ②（调用 moto STS `AssumeRole`）
-- [ ] moto 的 Config 预设：记录器状态、`SelectResourceConfig` 结果
-- [ ] `devtools/seed.py`：20 个账号 × 4 个区域的演示数据（只改账号、区域、资源 ID）
-- [ ] `podman compose up` 后可以完成一轮完整扫描
+- [x] `devtools/fake_aws`：Cloud Control `ListResources` / `GetResource`；账号清单服务 ①；凭证服务 ②（调用 moto STS `AssumeRole`）；**还有 AWS Config**（moto 的服务器模式预设不了 `SelectResourceConfig`，见 D-21）和 `/_admin` 管理接口
+- [x] Config 预设：记录器状态、`SelectResourceConfig` 结果（由 fake_aws 提供，不是 moto）
+- [x] `devtools/seed.py`：20 个账号 × 4 个区域的演示数据（只改账号、区域、资源 ID），并在 moto 里注册 AMI
+- [~] `podman compose up` 后可以完成一轮完整扫描：用同一套模拟服务的端到端测试通过（定时全量扫描、按需扫描、删除两条证据、刷新、取消、任务日志）；compose 里 api / worker 容器的完整演示没有在这次核对里重新跑过。已知限制：moto 里共享 AMI 跨账号不可见，任务日志本地查不到
 
 ## M3 worker 核心
-- [ ] 7 张表的 SQLModel 模型和 Alembic 初始迁移（放在 `DATABASE_SCHEMA`）
-- [ ] 任务队列：领取、心跳、完成、重新排队、取消，见 [specs/scanner.md](specs/scanner.md)
-- [ ] 范围租约、合并、跳过刚扫过的范围（R1–R3）
-- [ ] `ResourceWriter`：加锁 → 叠加 → 脱敏 → 内容哈希 → 有条件写入（R4）→ 关系表
-- [ ] 删除判断：可能已删除、两条证据（`absent_in_scan_at` + 按 ID 读取明确不存在）、整批保护（R5–R6）
-- [ ] `Discovery`：选数据源、产出 `Observation`、标记读取是否完整、区分「不存在」和「出错」；`TYPE_HOOKS` 的默认实现
-- [ ] 调度：一轮扫描的创建、按账号错开、advisory lock 选主
-- [ ] 优雅退出；清理任务
-- [ ] 测试：DESIGN.md 7.1 的 A–H 每种情况
+- [x] 7 张表的 SQLModel 模型和 Alembic 迁移（放在 `DATABASE_SCHEMA`）：0001 初始表，0002 围栏令牌和运行中任务的索引，0003 `candidate_count`
+- [x] 任务队列：领取、心跳、完成、重新排队、取消，见 [specs/scanner.md](specs/scanner.md)（含围栏令牌、共用任务的取消语义）
+- [x] 范围租约、合并、跳过刚扫过的范围（R1–R3）
+- [x] `ResourceWriter`：加锁 → 叠加 → 脱敏 → 内容哈希 → 有条件写入（R4）→ 关系表
+- [x] 删除判断：可能已删除、两条证据（`absent_in_scan_at` + 按 ID 读取明确不存在）、整批保护（R5–R6）
+- [x] `Discovery`：选数据源、产出 `Observation`、标记读取是否完整、区分「不存在」和「出错」；`TYPE_HOOKS` 的默认实现
+- [x] 调度：一轮扫描的创建、按账号错开、advisory lock 选主、全量扫描创建串行化
+- [x] 优雅退出；清理任务
+- [x] 测试：DESIGN.md 7.1 的 A–H 每种情况（另有围栏令牌、取消、优雅退出、访问状态并发）
 
 ## M4 数据源
-- [ ] 凭证提供器（`RefreshableCredentials` + 凭证服务 ②）
-- [ ] 账号清单客户端 ①；账号快照更新、不活跃账号标记
-- [ ] 区域发现（`ec2:DescribeRegions`）和 `REACHABLE_REGIONS`
-- [ ] Config：记录器检测、`SelectResourceConfig` 分页读取
-- [ ] Cloud Control：`ListResources`（含需要上级资源的类型）、`GetResource`
-- [ ] 服务 API 数据源：AMI（`DescribeImages`，自有 + 共享）
-- [ ] 权限状态更新（`access_status`）；错误分类
-- [ ] 测试：扫描 → 写入 → 查询的完整流程
+- [x] 凭证提供器（`RefreshableCredentials` + 凭证服务 ②）
+- [x] 账号清单客户端 ①；账号快照更新、不活跃账号标记
+- [x] 区域发现（`ec2:DescribeRegions`，在第一个默认开启的可达区域调用）和 `REACHABLE_REGIONS`
+- [x] Config：记录器检测、`SelectResourceConfig` 分页读取
+- [x] Cloud Control：`ListResources`、`GetResource`（目前没有类型需要「上级资源」的特殊处理，见 D-24）
+- [x] 服务 API 数据源：AMI（`DescribeImages`，自有 + 共享）
+- [x] 权限状态更新（`access_status`）；错误分类
+- [x] 测试：扫描 → 写入 → 查询的完整流程
 
 ## M5 API
-- [ ] 资源：列表、分类计数、导出（CSV / JSON Lines）、按 ARN 查询、详情、关系、刷新
-- [ ] 列定义、资源类型、概览
-- [ ] 账号：列表、详情、扫描状态格子
-- [ ] 扫描：摘要、发起（含 `Idempotency-Key`）、记录、详情、任务、重试、取消、任务日志、异常范围
-- [ ] 健康检查；统一错误格式；Redis 缓存
-- [ ] 测试：主要接口的行为
+- [x] 资源：列表、分类计数、导出（CSV / JSON Lines）、按 ARN 查询、详情、关系、刷新
+- [x] 列定义、资源类型、概览
+- [x] 账号：列表、详情、扫描状态格子
+- [x] 扫描：摘要、发起（含 `Idempotency-Key`）、记录、详情、任务、重试、取消、任务日志、异常范围
+- [x] 健康检查；统一错误格式；Redis 缓存
+- [x] 测试：主要接口的行为
 
 ## M6 Dashboard
-- [ ] 三套配色方案（中国传统色，暖灰 + 一个主色）供选择
-- [ ] 数据表格组件：根据列定义生成列和筛选控件，服务端筛选、排序、分页
-- [ ] 页面：概览、资源列表、资源详情、账号、扫描，见 [specs/dashboard.md](specs/dashboard.md)
-- [ ] 中文和英文；亮色和暗色
-- [ ] Playwright 主要流程测试
+- [x] 三套配色方案（中国传统色，暖灰 + 一个主色）：黛绿、黛蓝、胭脂，`?palette=` 切换；最终保留哪套还没有定
+- [x] 数据表格组件：根据列定义生成列和筛选控件，服务端筛选、排序、分页
+- [x] 页面：概览、资源列表、资源详情、账号、扫描（含扫描详情、任务详情），见 [specs/dashboard.md](specs/dashboard.md)
+- [x] 中文和英文；亮色和暗色
+- [ ] Playwright 主要流程测试（前端还没有任何自动化测试，Playwright 也没有接入）
 
 ## M7 部署
-- [ ] `deploy/ecs/`：api、worker、migrate 的任务定义示例
-- [ ] [deploy/CHECKLIST.md](../deploy/CHECKLIST.md) 按实现结果更新
-- [ ] `doctor` 命令：检查数据库、Redis、两个内部服务和各区域 endpoint 的连通性
+- [x] `deploy/ecs/`：api、worker、migrate 的任务定义示例
+- [x] [deploy/CHECKLIST.md](../deploy/CHECKLIST.md) 按实现结果更新（密钥是 JSON 对象、worker 健康检查、`/tmp` 可写、`DescribeRegions` 的区域）
+- [x] `doctor` 命令：检查数据库（含迁移版本）、Redis、两个内部服务和各区域 endpoint 的连通性；另有 `healthcheck` 命令给 worker 容器用
 
 ## M8 上线确认
-- [ ] 账号清单服务 ① 的真实接口格式，调整客户端
-- [ ] 凭证服务 ② 的真实接口格式，调整客户端
-- [ ] 用一个真实账号抓取每个类型的数据，修正样本和映射
+- [ ] 账号清单服务 ① 的真实接口格式，调整客户端（现在是假设的 JSON 数组，见 `aws/account_registry.py` 的 `RegistryAccount`）
+- [ ] 凭证服务 ② 的真实接口格式，调整客户端（现在假设返回 STS 格式的 JSON，见 `aws/credentials.py`）
+- [ ] 用一个真实账号抓取每个类型的数据，修正样本和映射（现在的样本都来自 AWS 官方文档）
 - [ ] 平台按部署清单创建资源，`doctor` 检查通过
 - [ ] 必填标签列表（如果使用「缺少某个标签」的快捷筛选）

@@ -2,7 +2,7 @@
 
 发现组织内 1000 多个 AWS 账号的资源，获取它们**当前的真实状态**，在 dashboard 上查询，并通过 API 提供给其他服务。
 
-> **当前状态**：设计已完成，代码尚未开始。进度见 [docs/PROGRESS.md](docs/PROGRESS.md)。下文的命令在 M0（项目骨架）完成后可用。
+> **当前状态**：MVP 已实现：第一批 12 个资源类型、扫描和写入、API、dashboard、本地环境、部署文件，后端测试全部通过。还没做：第二批类型（Security Group、Target Group、Route 53 Hosted Zone）、前端的 Playwright 测试、CI；账号清单服务 ①、凭证服务 ② 的真实接口格式和真实账号数据的核对要等上线前确认。进度见 [docs/PROGRESS.md](docs/PROGRESS.md)。
 
 ## 它做什么
 
@@ -50,7 +50,7 @@ aws-inventory-discovery/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py          # FastAPI 应用入口
-│   │   ├── cli.py           # worker、doctor 命令
+│   │   ├── cli.py           # worker、doctor、healthcheck 命令
 │   │   ├── core/            # 配置、数据库、日志
 │   │   ├── models/          # 数据库表和 API 模型
 │   │   ├── api/             # 路由和依赖
@@ -58,11 +58,12 @@ aws-inventory-discovery/
 │   │   ├── types/           # 资源类型：注册表、映射、脱敏、每个类型的 JSON 配置、特殊处理（TYPE_HOOKS）
 │   │   ├── aws/             # 与 AWS 和内部服务通信
 │   │   └── worker/          # 任务队列、租约、Discovery（读取）、Writer（写入和删除判断）、调度、清理
+│   ├── scripts/             # export_openapi.py：导出 OpenAPI，给前端生成客户端
 │   ├── tests/               # 测试和样本数据（样本只来自 AWS 官方资料）
 │   └── Dockerfile
 ├── frontend/                # Dashboard
-├── devtools/                # 本地模拟服务和演示数据
-├── deploy/                  # ECS 任务定义示例、部署清单
+├── devtools/                # 本地模拟服务（fake_aws）和演示数据（seed.py）
+├── deploy/                  # ECS 任务定义示例（ecs/）、部署清单（CHECKLIST.md）
 ├── docs/                    # 设计、规格、决策、进度、架构图
 └── compose.yaml
 ```
@@ -79,18 +80,22 @@ podman compose up -d
 podman compose run --rm seed
 ```
 
-然后打开 http://localhost:8000 。
+然后打开 http://localhost:8000 ，在「扫描」页选择全部账号，点「扫描」开始一轮扫描（本地关闭了定时扫描：`SWEEP_ENABLED=false`，因为定时扫描把账号错开在约 5.5 小时里；按需扫描立即执行）。
 
 本地环境里：
 
-| 服务 | 作用 |
-|---|---|
-| postgres、redis | 数据库和缓存 |
-| moto | 模拟 AWS Config、EC2、STS、CloudWatch Logs |
-| fake-aws | 模拟 Cloud Control（moto 不支持）、账号清单服务、凭证服务 |
-| api、worker | 本项目 |
+| 服务 | 作用 | 宿主机端口 |
+|---|---|---|
+| postgres、redis | 数据库和缓存 | 55432、56379 |
+| moto | 模拟 EC2（`DescribeRegions`、`DescribeImages`）、STS、CloudWatch Logs | 5001（macOS 的 AirPlay 占着 5000） |
+| fake-aws | 模拟 Cloud Control、AWS Config（moto 的服务器模式预设不了 `SelectResourceConfig` 的结果）、账号清单服务 ①、凭证服务 ② | 4567 |
+| migrate | 一次性，`alembic upgrade head` | — |
+| api、worker | 本项目；api 同时托管 dashboard | 8000 |
+| seed | 一次性，灌入演示数据 | — |
 
-程序通过 `AWS_ENDPOINT_URL` 和 `AWS_ENDPOINT_URL_CLOUDCONTROL` 环境变量连接到模拟服务，代码里没有只在本地生效的逻辑。演示数据是 20 个账号 × 4 个区域，由 AWS 官方资料整理的样本复制而来。
+程序通过 boto3 原生的环境变量连接模拟服务：`AWS_ENDPOINT_URL`（EC2、STS、Logs → moto）、`AWS_ENDPOINT_URL_CLOUDCONTROL` 和 `AWS_ENDPOINT_URL_CONFIG_SERVICE`（→ fake-aws），代码里没有只在本地生效的逻辑。演示数据是 20 个账号 × 4 个区域，由 AWS 官方资料整理的样本复制而来。
+
+已知限制：moto 的 AMI 按账号隔离，共享 AMI 在别的账号里看不到；moto 里没有 worker 的日志组，任务详情页的日志显示「日志暂时无法查看」。模拟服务的接口和管理接口见 [devtools/README.md](devtools/README.md)。
 
 ## 开发指导
 
@@ -105,13 +110,27 @@ uv sync
 uv run ruff check . && uv run ruff format --check . && uv run ty check
 ```
 
+测试需要真实的 Postgres 和 Redis（默认连 `localhost:55432`，可以用 `TEST_DATABASE_URL` 改）：
+
 ```bash
+podman compose up -d postgres redis
 uv run pytest
 ```
 
 ```bash
 uv run alembic revision --autogenerate -m "describe the change"
 ```
+
+模拟服务自己的测试：`cd devtools && uv run pytest -q`。
+
+部署后检查连通性（作为一次性任务运行）和 worker 的容器健康检查：
+
+```bash
+python -m app.cli doctor
+python -m app.cli healthcheck
+```
+
+`doctor` 检查数据库（含迁移版本）、Redis、两个内部服务和每个可达区域的 `config`、`cloudcontrolapi`、`ec2` endpoint，任何一项失败退出码是 1；`healthcheck` 只看 worker 的心跳文件，不访问数据库。
 
 - 写法参考 Frost Ming 的 [友好的 Python：面向对象接口](https://frostming.com/posts/2022/friendly-python-oop/) 和 [封装和复用](https://frostming.com/posts/2024/friendly-python-reuse/)，以及 FastAPI 自带的 skill 和 [full-stack-fastapi-template](https://github.com/fastapi/full-stack-fastapi-template)。
 - 测试数据只来自样本文件或 API 返回，不在测试代码里构造数据；只写功能测试。
@@ -124,11 +143,14 @@ npm install
 npm run dev
 ```
 
-后端接口有变化时重新生成 API 客户端（不要手改 `src/client/`）：
+后端接口有变化时重新生成 API 客户端（不要手改 `src/client/`）：先导出 OpenAPI，再生成：
 
 ```bash
-npm run generate-client
+cd backend && DATABASE_URL=postgresql+psycopg://inventory:inventory@localhost:55432/inventory DATABASE_SCHEMA=inventory uv run python scripts/export_openapi.py
+cd frontend && npm run generate-client
 ```
+
+其他：`npm run build`（类型检查加构建）、`npm run lint`（Biome）。开发时 Vite 把 `/api` 代理到 `http://localhost:8000`（`API_URL` 可改）。配色用 `?palette=dai-lv|dai-lan|yan-zhi` 切换（黛绿、黛蓝、胭脂），选择记在浏览器本地。
 
 ### 加一个资源类型
 
@@ -140,8 +162,8 @@ npm run generate-client
 ## 部署
 
 - 一个镜像（`backend/Dockerfile`），api 和 worker 用不同的启动命令。
-- 每次发布：构建镜像 → 推送到 ECR `aws-inventory-discovery` → 运行一次性任务 `aws-inventory-discovery-migrate` → 滚动更新两个服务。
-- 平台需要创建的资源（endpoint、私有托管区、IAM、安全组等）见 [deploy/CHECKLIST.md](deploy/CHECKLIST.md)。
+- 每次发布：构建镜像 → 推送到 ECR `aws-inventory-discovery` → 运行一次性任务 `aws-inventory-discovery-migrate` → 滚动更新两个服务。任务定义示例在 [deploy/ecs/](deploy/ecs/)。
+- 平台需要创建的资源（endpoint、私有托管区、IAM、安全组等）见 [deploy/CHECKLIST.md](deploy/CHECKLIST.md)。Secrets Manager 里的密钥是 JSON 对象（`DATABASE_URL`、`DATABASE_READ_URL`、`REDIS_URL` 几个键），worker 容器里 `/tmp` 要可写（心跳文件）。
 - 环境变量见 [docs/DESIGN.md](docs/DESIGN.md) 12.3。
 
 ## 文档
@@ -157,4 +179,6 @@ npm run generate-client
 | [docs/specs/dashboard.md](docs/specs/dashboard.md) | Dashboard 规格 |
 | [docs/diagrams/](docs/diagrams/) | 架构图（部署架构、扫描流程、资源状态、数据库） |
 | [deploy/CHECKLIST.md](deploy/CHECKLIST.md) | 部署清单 |
+| [devtools/README.md](devtools/README.md) | 本地模拟服务的接口和管理接口 |
+| [backend/tests/fixtures/aws/VERIFICATION.md](backend/tests/fixtures/aws/VERIFICATION.md) | 资源类型 Identifier 和 Config 支持情况对照官方资料的核对结果 |
 | [CLAUDE.md](CLAUDE.md) | 给 AI 编程助手的项目说明（`AGENTS.md` 是它的软链接） |

@@ -43,6 +43,7 @@ from app.types.registry import TypeRegistry, validate_hooks
 from app.worker import leases, queue, requests
 from app.worker.discovery import AWS_ERRORS, Discovery, Observation, Source, plan_sources
 from app.worker.errors import TaskCancelled, TaskError, TaskLost, TaskStopped
+from app.worker.locks import lock_child_enqueue
 from app.worker.writer import ACCESS_TASK_KINDS, ResourceWriter
 
 logger = logging.getLogger(__name__)
@@ -255,8 +256,8 @@ class Scanner:
                 planned.append(
                     requests.NewTask("config_group", task.account_id, region, None, None, "config")
                 )
-        created = self._add_children(ctx, task, planned)
-        return {"regions": len(scannable), "tasks": created}
+        created, skipped = self._add_children(ctx, task, planned)
+        return {"regions": len(scannable), "tasks": created, "skipped": skipped}
 
     def _save_regions(self, account_id: str, described: dict[str, str], now: datetime) -> None:
         rows = [
@@ -301,9 +302,24 @@ class Scanner:
 
     def _add_children(
         self, ctx: TaskContext, task: ScanTask, planned: list[requests.NewTask]
-    ) -> int:
-        """Add the planned tasks, minus those an earlier run of this task already added."""
+    ) -> tuple[int, int]:
+        """Add the planned tasks; returns `(created, skipped)`.
+
+        Dropped: those an earlier run of this task already added and, for a scheduled sweep
+        (priority 1), those whose scope already has a queued scheduled child of the same kind
+        from an earlier sweep, so a sustained backlog does not pile up duplicates. A queued
+        `config_group` of the account and region covers the group (it works out the Config
+        types when it runs); a queued `shard` covers the same account, region, type and
+        source. On-demand tasks are never deduplicated: they must read fresh data (R2).
+
+        Race safety: the check and the insert share one transaction under an advisory lock
+        per account (`lock_child_enqueue`; it sits outside the shard -> task -> request row
+        lock order), so two sweeps of one account cannot both miss each other's children. The
+        lookup uses the partial index on queued tasks per account."""
         with ctx.new_session() as session:
+            scheduled = not leases.is_on_demand(task)
+            if scheduled:
+                lock_child_enqueue(session, self.settings.DATABASE_SCHEMA, task.account_id)
             existing = {
                 (t.kind, t.region, t.resource_type)
                 for t in session.exec(
@@ -315,9 +331,28 @@ class Scanner:
                 )
             }
             fresh = [p for p in planned if (p.kind, p.region, p.resource_type) not in existing]
+            skipped = 0
+            if scheduled and fresh:
+                twins = {
+                    (t.kind, t.region, t.resource_type, t.source)
+                    for t in session.exec(
+                        select(ScanTask).where(
+                            ScanTask.account_id == task.account_id,
+                            ScanTask.status == "queued",
+                            ScanTask.priority == 1,
+                            col(ScanTask.kind).in_(("config_group", "shard")),
+                        )
+                    )
+                }
+                kept = [
+                    p for p in fresh if (p.kind, p.region, p.resource_type, p.source) not in twins
+                ]
+                skipped, fresh = len(fresh) - len(kept), kept
             if fresh:
                 requests.add_tasks(session, task.scan_request_id, fresh)
-        return len(fresh)
+            else:
+                session.commit()  # ends the transaction, and with it the lock
+        return len(fresh), skipped
 
     # -- config_group (§6.2) -----------------------------------------------------------------
 

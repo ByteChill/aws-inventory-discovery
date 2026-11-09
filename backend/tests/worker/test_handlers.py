@@ -13,13 +13,13 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 import pytest
 import seed  # ty: ignore[import-not-found]
 from sqlalchemy import Engine, text
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.aws import cloudcontrol_source, config_source
 from app.core.config import Settings
@@ -28,7 +28,7 @@ from app.models.scan import utcnow
 from app.types.registry import TypeRegistry
 from app.worker import queue, requests
 from app.worker.discovery import Discovery, Observation
-from app.worker.handlers import Scanner
+from app.worker.handlers import Scanner, TaskContext
 from app.worker.main import Worker
 from app.worker.writer import ResourceWriter
 from tests.conftest import AWS_REGIONS, AwsEnv
@@ -428,3 +428,78 @@ def test_the_access_status_waits_for_a_concurrent_update_of_the_same_account(
     thread.join(timeout=5)
     session.expire_all()
     assert session.get_one(Account, account_id).access_status == "ok"
+
+
+# --- enqueue-time dedupe of scheduled children (scanner.md §5.1) -----------------------------
+
+
+def run_sweep_account(
+    engine: Engine, session: Session, scanner: Scanner, now: datetime
+) -> ScanTask:
+    """Claim the next sweep_account (the children of earlier sweeps are not due yet) and run
+    its handler to completion, the way the worker would."""
+    task = queue.claim_task(session, "worker-1", per_account_concurrency=1000, now=now)
+    assert task is not None and task.kind == "sweep_account"
+    context = TaskContext(
+        lambda: Session(engine, expire_on_commit=False), "worker-1", threading.Event()
+    )
+    stats = scanner.sweep_account(task, context)
+    assert task.id is not None
+    assert queue.complete_task(session, task.id, task.claim_token or "", stats=stats, now=now)
+    return state(session, task)
+
+
+def sweep_request(session: Session, account: str, priority: int, now: datetime) -> ScanRequest:
+    request = requests.create_sweep_request(
+        session,
+        [account],
+        trigger="schedule" if priority else "api",
+        priority=priority,
+        scope={"all": bool(priority)},
+        now=now,
+    )
+    session.commit()
+    return request
+
+
+def queued_children(session: Session, priority: int) -> list[ScanTask]:
+    session.expire_all()
+    return list(
+        session.exec(
+            select(ScanTask).where(
+                col(ScanTask.kind).in_(("config_group", "shard")),
+                ScanTask.status == "queued",
+                ScanTask.priority == priority,
+            )
+        )
+    )
+
+
+def test_a_second_scheduled_sweep_does_not_duplicate_children_still_queued_but_on_demand_does(
+    engine: Engine, session: Session, scanner: Scanner, account_id: str
+) -> None:
+    long_ago = utcnow() - timedelta(days=2)  # before the children's own not_before
+    first = sweep_request(session, account_id, 1, long_ago)
+    second = sweep_request(session, account_id, 1, long_ago + timedelta(minutes=1))
+
+    # Nobody runs the children: they pile up as a backlog.
+    planned = run_sweep_account(engine, session, scanner, long_ago + timedelta(hours=1))
+    backlog = queued_children(session, 1)
+    assert planned.scan_request_id == first.id and (planned.stats or {})["tasks"] == len(backlog)
+    assert len(backlog) > 0
+
+    replanned = run_sweep_account(engine, session, scanner, long_ago + timedelta(hours=2))
+
+    assert replanned.scan_request_id == second.id
+    assert (replanned.stats or {})["tasks"] == 0
+    assert (replanned.stats or {})["skipped"] == len(backlog)
+    scopes = [(t.kind, t.region, t.resource_type, t.source) for t in queued_children(session, 1)]
+    assert len(scopes) == len(backlog) == len(set(scopes))
+
+    on_demand = sweep_request(session, account_id, 0, long_ago + timedelta(hours=2, minutes=30))
+    fresh = run_sweep_account(engine, session, scanner, long_ago + timedelta(hours=3))
+
+    assert fresh.scan_request_id == on_demand.id
+    assert (fresh.stats or {})["tasks"] > 0
+    assert len(queued_children(session, 0)) == (fresh.stats or {})["tasks"]
+    assert len(queued_children(session, 1)) == len(backlog)  # the scheduled ones are untouched

@@ -63,6 +63,12 @@ class ScanTask(SQLModel, table=True):
             "account_id",
             postgresql_where=text("status = 'running'"),
         ),
+        # The enqueue-time dedupe of scheduled children looks for queued twins of one account.
+        Index(
+            "ix_t_inv_aws_scan_task_queued_account",
+            "account_id",
+            postgresql_where=text("status = 'queued'"),
+        ),
         # De-duplicates single-resource refreshes.
         Index(
             "uq_t_inv_aws_scan_task_resource_inflight",

@@ -462,9 +462,7 @@ def test_cancel_stops_a_queued_scan(stack: Stack, engine: Engine) -> None:
     assert stack.get("/accounts", pageSize=1)["total"] == len(stack.accounts)
 
 
-def test_task_logs_come_from_cloudwatch_and_carry_the_task_id(
-    stack: Stack, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_task_logs_come_from_cloudwatch_and_carry_the_task_id(stack: Stack) -> None:
     lines: list[str] = []
 
     class Collect(logging.Handler):
@@ -474,7 +472,10 @@ def test_task_logs_come_from_cloudwatch_and_carry_the_task_id(
     handler = Collect()
     handler.setFormatter(JsonFormatter())
     root = logging.getLogger()
-    monkeypatch.setattr(root, "level", logging.INFO)
+    previous_level = root.level
+    # setLevel (not assigning .level) clears every logger's cached isEnabledFor() answers;
+    # an earlier in-process Alembic run leaves root at WARNING with those caches filled.
+    root.setLevel(logging.INFO)
     root.addHandler(handler)
     try:
         scan = stack.scan(
@@ -486,6 +487,7 @@ def test_task_logs_come_from_cloudwatch_and_carry_the_task_id(
         )
     finally:
         root.removeHandler(handler)
+        root.setLevel(previous_level)
     shard = next(t for t in stack.tasks(scan["id"]) if t["kind"] == "shard")
     sweep = next(t for t in stack.tasks(scan["id"]) if t["kind"] == "sweep_account")
 

@@ -1,3 +1,4 @@
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
@@ -56,6 +57,9 @@ class Settings(BaseSettings):
 
     # Where the built dashboard lives; unset means "look in the usual places".
     FRONTEND_DIST: Path | None = None
+    # Path prefix everything is served under, e.g. "/aws-inventory" behind the shared ALB; empty
+    # means the root. The image sets it from the same build argument the dashboard is built with.
+    BASE_PATH: str = ""
 
     @field_validator("REACHABLE_REGIONS", mode="before")
     @classmethod
@@ -70,6 +74,15 @@ class Settings(BaseSettings):
         # The schema goes into search_path, so keep it a plain identifier.
         if not value.replace("_", "").isalnum():
             raise ValueError("DATABASE_SCHEMA must be a plain identifier")
+        return value
+
+    @field_validator("BASE_PATH")
+    @classmethod
+    def check_base_path(cls, value: str) -> str:
+        # It becomes part of every route and of the dashboard's URLs: plain path segments only.
+        value = value.rstrip("/")
+        if value and not re.fullmatch(r"(/[A-Za-z0-9_-]+)+", value):
+            raise ValueError('BASE_PATH must look like "/aws-inventory"')
         return value
 
     @property

@@ -4,7 +4,7 @@
 
 ## 1. 通用约定
 
-- 前缀 `/api/v1`；JSON 字段用 camelCase；时间是 ISO 8601 UTC 字符串。
+- 前缀 `/api/v1`（部署时在 `BASE_PATH` 之下，生产是 `/aws-inventory/api/v1`）；JSON 字段用 camelCase；时间是 ISO 8601 UTC 字符串。
 - 分页参数：`page`（从 1 开始，默认 1）、`pageSize`（默认 50，最大 200）。
 - 排序参数：`sort`，多个字段用逗号分隔，前面加 `-` 表示倒序。只允许对列定义里 `sortable = true` 的列排序：通用列写列的 `key`（如 `-lastChangedAt`），类型专属列写 `attr.<key>`（只在指定了单一 `resourceType` 时可用）；NULL 总是排在最后；最后再按资源 ID 排序，翻页稳定。
 - 请求头：`X-Caller-Id`（可选，记录到扫描请求的 `callerId`，也是确认异常范围时的 `guardConfirmedBy`，dashboard 传 `dashboard`）；`Idempotency-Key`（只用于 `POST /scans`）；`Accept-Language`（`zh*` 或 `en*`，决定列名、类型名、分类标签的语言，默认中文）。

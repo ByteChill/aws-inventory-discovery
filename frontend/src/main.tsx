@@ -6,6 +6,7 @@ import ReactDOM from "react-dom/client"
 import "./index.css"
 import { setupApiClient } from "./api/client"
 import { I18nProvider } from "./i18n"
+import { basePath } from "./lib/base-path"
 import { initPreferences } from "./lib/preferences"
 import { routeTree } from "./routeTree.gen"
 
@@ -23,7 +24,7 @@ const queryClient = new QueryClient({
     },
   },
 })
-const router = createRouter({ routeTree })
+const router = createRouter({ routeTree, basepath: basePath || "/" })
 
 declare module "@tanstack/react-router" {
   interface Register {

@@ -99,6 +99,6 @@ cd backend && uv run python -m app.cli doctor         # connectivity checks (exi
 cd backend && uv run python -m app.cli healthcheck    # worker heartbeat-file check (the container health check)
 cd backend && uv run python scripts/export_openapi.py # writes frontend/openapi.json (needs DATABASE_URL, DATABASE_SCHEMA)
 cd frontend && npm run generate-client                # regenerate src/client from frontend/openapi.json
-cd frontend && npm run dev                            # Vite, proxies /api to localhost:8000
+cd frontend && npm run dev                            # Vite at /aws-inventory/, proxies /aws-inventory/api to localhost:8000
 cd frontend && npm run build && npm run lint
 ```

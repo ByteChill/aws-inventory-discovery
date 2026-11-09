@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
+import { BASE_PATH } from "./base-url"
 import { messages, t } from "./i18n"
 
 // All expected numbers and names come from the stack's own API; the copy comes from the locale files.
@@ -22,7 +23,7 @@ const ENUM_COLUMN = "availabilityZone"
 const TAG_KEY = "Owner"
 
 async function api<T>(page: Page, path: string): Promise<T> {
-  const res = await page.request.get(`/api/v1${path}`)
+  const res = await page.request.get(`api/v1${path}`)
   expect(res.ok(), `${path}: ${res.status()}`).toBeTruthy()
   return (await res.json()) as T
 }
@@ -46,7 +47,7 @@ test("概览：总数和分布链接打开筛选后的资源列表", async ({ pa
     await api<{ typeName: string; label: string }[]>(page, "/resource-types")
   ).find((x) => x.typeName === TYPE)?.label as string
 
-  await page.goto("/")
+  await page.goto("./")
   await expect(
     page.getByRole("link", {
       name: t("unit.resources", { count: resources.total }),
@@ -80,7 +81,7 @@ test("资源：类型专属列、列筛选、标签缺少和导出链接", async
     `/resources?pageSize=1&resourceType=${encodeURIComponent(TYPE)}`,
   )
 
-  await page.goto("/resources")
+  await page.goto("resources")
   await expect(page.getByText(totalText(everything.total))).toBeVisible()
   // The type-specific column is not offered until exactly one type is chosen.
   await expect(
@@ -129,7 +130,7 @@ test("资源：类型专属列、列筛选、标签缺少和导出链接", async
   for (const name of [t("action.exportCsv"), t("action.exportJsonl")]) {
     const href = await page.getByRole("menuitem", { name }).getAttribute("href")
     const url = new URL(href as string, "http://x")
-    expect(url.pathname).toBe("/api/v1/resources/export")
+    expect(url.pathname).toBe(`${BASE_PATH}/api/v1/resources/export`)
     expect(url.searchParams.get("resourceType")).toBe(TYPE)
     expect(url.searchParams.get("tagMissing")).toBe(TAG_KEY)
     expect(url.searchParams.get(`attr.${ENUM_COLUMN}`)).toBe(bucket.value)
@@ -150,7 +151,7 @@ test("资源详情：基本信息、关联资源、刷新更新时间", async ({
     await api<{ typeName: string; label: string }[]>(page, "/resource-types")
   ).find((x) => x.typeName === r.resourceType)?.label as string
 
-  await page.goto(`/resources/${r.id}`)
+  await page.goto(`resources/${r.id}`)
   await expect(
     page.getByRole("heading", { name: r.resourceName ?? r.resourceId }),
   ).toBeVisible()
@@ -167,10 +168,10 @@ test("资源详情：基本信息、关联资源、刷新更新时间", async ({
   const connected = related.items.find((x) => x.relationshipCount > 0)
   const relations = section(page, t("detail.relationships"))
   if (connected) {
-    await page.goto(`/resources/${connected.id}`)
+    await page.goto(`resources/${connected.id}`)
     await relations.getByRole("link").first().click()
     await expect(page).toHaveURL(/\/resources\/\d+/)
-    await page.goto(`/resources/${r.id}`)
+    await page.goto(`resources/${r.id}`)
   } else {
     await expect(relations.getByText(t("detail.noRelationships"))).toBeVisible()
   }
@@ -197,7 +198,7 @@ test("扫描：从表单发起单个账号的扫描，进入详情并成功，�
   const accounts = await api<Page_<Account>>(page, "/accounts?pageSize=1")
   const account = accounts.items[0]
 
-  await page.goto("/scans")
+  await page.goto("scans")
   await page
     .getByRole("button", { name: t("action.scan"), exact: true })
     .click()
@@ -238,7 +239,7 @@ test("扫描：从表单发起单个账号的扫描，进入详情并成功，�
 test("账号：详情显示区域 × 类型覆盖表", async ({ page }) => {
   const account = (await api<Page_<Account>>(page, "/accounts?pageSize=1"))
     .items[0]
-  await page.goto(`/accounts/${account.accountId}`)
+  await page.goto(`accounts/${account.accountId}`)
   await expect(
     page.getByRole("heading", { name: account.accountName }),
   ).toBeVisible()
@@ -251,7 +252,7 @@ test("账号：详情显示区域 × 类型覆盖表", async ({ page }) => {
 
 test("语言切换到 English、主题切换到暗色后页面仍可用", async ({ page }) => {
   const en = messages("en")
-  await page.goto("/resources")
+  await page.goto("resources")
   await page.getByRole("button", { name: t("lang.label") }).click()
   await page.getByRole("menuitemradio", { name: t("lang.en") }).click()
   await expect(page.locator("html")).toHaveAttribute("lang", "en")

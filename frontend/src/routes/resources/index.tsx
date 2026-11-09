@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { TagFilter } from "@/features/tag-filter"
 import { type MessageKey, useI18n } from "@/i18n"
+import { basePath } from "@/lib/base-path"
 import { errorText } from "@/lib/errors"
 import {
   resourceParams,
@@ -168,7 +169,7 @@ function Resources() {
   }
 
   const exportHref = (format: "csv" | "jsonl") =>
-    `/api/v1/resources/export?${toSearchParams({
+    `${basePath}/api/v1/resources/export?${toSearchParams({
       ...params,
       format,
       lang: locale,

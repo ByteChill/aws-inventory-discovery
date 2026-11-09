@@ -17,7 +17,7 @@
 
 ```mermaid
 flowchart LR
-  U[Dashboard 用户 / 内部服务] --> ALB[Internal ALB]
+  U[Dashboard 用户 / 内部服务] --> ALB[已有的内网 ALB<br/>/aws-inventory]
   ALB --> API[aws-inventory-discovery-api<br/>FastAPI + Dashboard]
   API --> PG[(Aurora PostgreSQL)]
   API --> R[(Redis 缓存)]
@@ -80,7 +80,7 @@ podman compose up -d
 podman compose run --rm seed
 ```
 
-然后打开 http://localhost:8000 ，在「扫描」页选择全部账号，点「扫描」开始一轮扫描（本地关闭了定时扫描：`SWEEP_ENABLED=false`，因为定时扫描把账号错开在约 5.5 小时里；按需扫描立即执行）。
+然后打开 http://localhost:8000/aws-inventory/ ，在「扫描」页选择全部账号，点「扫描」开始一轮扫描（本地关闭了定时扫描：`SWEEP_ENABLED=false`，因为定时扫描把账号错开在约 5.5 小时里；按需扫描立即执行）。
 
 本地环境里：
 
@@ -150,11 +150,11 @@ cd backend && DATABASE_URL=postgresql+psycopg://inventory:inventory@localhost:55
 cd frontend && npm run generate-client
 ```
 
-其他：`npm run build`（类型检查加构建）、`npm run lint`（Biome）。开发时 Vite 把 `/api` 代理到 `http://localhost:8000`（`API_URL` 可改）。配色用 `?palette=dai-lv|dai-lan|yan-zhi` 切换（黛绿、黛蓝、胭脂），选择记在浏览器本地。
+其他：`npm run build`（类型检查加构建）、`npm run lint`（Biome）。开发时页面在 http://localhost:5173/aws-inventory/ ，Vite 把 `/aws-inventory/api` 代理到 `http://localhost:8000`（`API_URL` 可改）。配色用 `?palette=dai-lv|dai-lan|yan-zhi` 切换（黛绿、黛蓝、胭脂），选择记在浏览器本地。
 
 ### 浏览器端到端测试
 
-Playwright 测试在 `frontend/e2e/`，针对一套正在运行的环境（FastAPI 在 8000 端口托管构建好的 dashboard 和 `/api`），用中文界面走主要流程：概览、资源筛选和导出链接、资源详情和刷新、发起扫描、账号覆盖表、语言和主题切换。测试前的全局准备会通过 API 发起一次全部账号的扫描并等它成功，所以页面上的数据都是环境自己产生的。
+Playwright 测试在 `frontend/e2e/`，针对一套正在运行的环境（FastAPI 在 `http://localhost:8000/aws-inventory/` 托管构建好的 dashboard 和 API），用中文界面走主要流程：概览、资源筛选和导出链接、资源详情和刷新、发起扫描、账号覆盖表、语言和主题切换。测试前的全局准备会通过 API 发起一次全部账号的扫描并等它成功，所以页面上的数据都是环境自己产生的。
 
 ```bash
 podman compose up -d --build
@@ -165,7 +165,7 @@ npx playwright install chromium
 npm run e2e
 ```
 
-`E2E_BASE_URL` 可以指向别的地址（默认 `http://localhost:8000`）。dashboard 代码改了以后要重新构建 api 镜像（`podman compose up -d --build api`），测试跑的是镜像里的构建结果。当前本地数据只有 Cloud Control 来源，没有关联资源，所以资源详情的关联资源只检查「没有关联资源」的文案；测试期间不要同时跑会写同一个 Redis 的后端测试，否则概览缓存会被覆盖。
+`E2E_BASE_URL` 可以指向别的地址（默认 `http://localhost:8000/aws-inventory/`，必须以 `/` 结尾，测试里的地址都相对它）。dashboard 代码改了以后要重新构建 api 镜像（`podman compose up -d --build api`），测试跑的是镜像里的构建结果。当前本地数据只有 Cloud Control 来源，没有关联资源，所以资源详情的关联资源只检查「没有关联资源」的文案；测试期间不要同时跑会写同一个 Redis 的后端测试，否则概览缓存会被覆盖。
 
 ### CI
 

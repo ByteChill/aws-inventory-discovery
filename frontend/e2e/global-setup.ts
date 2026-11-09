@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { request } from "@playwright/test"
+import { BASE_URL } from "./base-url"
 
-const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:8000"
 const TIMEOUT_MS = 10 * 60_000
 
 /**
@@ -10,19 +10,19 @@ const TIMEOUT_MS = 10 * 60_000
  */
 export default async function globalSetup() {
   const api = await request.newContext({ baseURL: BASE_URL })
-  const created = await api.post("/api/v1/scans", {
+  const created = await api.post("api/v1/scans", {
     headers: { "idempotency-key": randomUUID() },
     data: { all: true },
   })
   if (!created.ok())
     throw new Error(
-      `POST /api/v1/scans failed: ${created.status()} ${await created.text()}`,
+      `POST api/v1/scans failed: ${created.status()} ${await created.text()}`,
     )
   const { id } = (await created.json()) as { id: number }
 
   const deadline = Date.now() + TIMEOUT_MS
   for (;;) {
-    const scan = (await (await api.get(`/api/v1/scans/${id}`)).json()) as {
+    const scan = (await (await api.get(`api/v1/scans/${id}`)).json()) as {
       status: string
     }
     if (scan.status === "succeeded") break

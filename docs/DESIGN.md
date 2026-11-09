@@ -41,7 +41,7 @@
 
 ```mermaid
 flowchart LR
-  U[Dashboard 用户] --> ALB[Internal ALB]
+  U[Dashboard 用户] --> ALB[已有的内网 ALB<br/>/aws-inventory]
   S[内部服务] --> ALB
   ALB --> API[aws-inventory-discovery-api<br/>ECS · FastAPI + Dashboard]
   API --> PG[(Aurora PostgreSQL<br/>任务队列 + 资产数据)]
@@ -386,7 +386,7 @@ T2  定时扫描写入 q1、q2，observed_at = T0
 
 | 项目 | 约定 |
 |---|---|
-| 前缀 | `/api/v1`，OpenAPI 文档在 `/api/v1/openapi.json`，前端客户端由 hey-api 根据它自动生成 |
+| 前缀 | `/api/v1`，OpenAPI 文档在 `/api/v1/openapi.json`，前端客户端由 hey-api 根据它自动生成。部署时整体挂在 `BASE_PATH` 下，生产是 `/aws-inventory/api/v1` |
 | 字段命名 | camelCase，和 Config 格式一致；Python 代码里是 snake_case，用 Pydantic 别名转换 |
 | 时间 | ISO 8601，UTC |
 | 资源在路径里的标识 | 数据库 ID：`/resources/{id}`；按 ARN 查询用 `/resources/lookup?arn=`，返回列表（共享 AMI 的同一个 ARN 会出现在多个账号下，自有的排在前面） |
@@ -608,7 +608,7 @@ aws-inventory-discovery/
 - podman 会把宿主机的 `HTTP(S)_PROXY` 带进容器，所以 compose 里给容器间的调用设了 `NO_PROXY`（moto、fake-aws、postgres、redis）。
 - 本地设了 `SWEEP_ENABLED=false`：定时扫描把账号错开在约 5.5 小时里，生产需要，演示不行；本地靠按需扫描（dashboard 的「扫描」按钮选全部账号，或 `POST /api/v1/scans {"all": true}`）立即开始。
 - `devtools/seed.py` 把样本复制到 20 个账号 × 4 个区域，**只改账号、区域和资源 ID**，字段结构和内容保持样本原样，然后通过 fake-aws 的管理接口灌入 fake-aws，并在 moto 里用 EC2 API 注册 AMI（moto 自己分配 AMI ID）。这个脚本只用于本地演示。
-- 前端开发时在本机跑 Vite，把 `/api` 代理到 api 容器。
+- 前端开发时在本机跑 Vite，把 `/aws-inventory/api` 代理到 api 容器。
 - **本地环境的已知限制**：moto 的 AMI 按账号隔离，共享给其他账号的 AMI 只有所有者账号看得到，所以本地看不到「共享」的 AMI；moto 里没有 `/aws-inventory-discovery/worker` 日志组，任务日志本地查不到，dashboard 显示一行「日志暂时无法查看」。
 
 ### 11.2 样本数据
@@ -634,16 +634,17 @@ aws-inventory-discovery/
 - 第一阶段：用 Node 构建前端。
 - 第二阶段：Python 3.14 slim + uv，复制后端代码和前端的 `dist`。
 - 用非 root 用户运行，带健康检查。
+- 服务的路径前缀由构建参数 `BASE_PATH`（默认 `/aws-inventory`）决定，只在 Dockerfile 里设置：前端按它构建（Vite `base`），运行时阶段把它写成环境变量给后端。换路径要重新构建镜像。
 
 ### 12.2 ECS（Fargate，ap-east-1 私有子网）
 
 | | api | worker | migrate |
 |---|---|---|---|
 | 服务或任务 | `aws-inventory-discovery-api` | `aws-inventory-discovery-worker` | `aws-inventory-discovery-migrate`（一次性任务） |
-| 命令 | `fastapi run` | `python -m app.cli worker` | `alembic upgrade head` |
+| 命令 | `fastapi run --forwarded-allow-ips '*'` | `python -m app.cli worker` | `alembic upgrade head` |
 | 规格 | 1 vCPU / 2 GB | 2 vCPU / 4 GB，16 个线程，其中 4 个只处理按需任务 | 0.5 vCPU / 1 GB |
 | 扩缩 | 按 CPU、内存自动扩缩，由平台配置 | 按 CPU、内存自动扩缩，由平台配置 | — |
-| 健康检查 | ALB 访问 `/api/v1/health`；容器也用同一个地址检查 | 容器内运行 `python -m app.cli healthcheck`：心跳线程每 30 秒刷新文件 `WORKER_HEARTBEAT_FILE`（默认 `/tmp/aws-inventory-discovery-worker.heartbeat`），文件超过 60 秒没更新就不健康；检查不访问数据库。**容器里 `/tmp`（或这个变量指向的路径）必须可写** | 镜像自带的 HTTP 检查在一次性任务里没有意义，任务定义里改成 `exit 0` |
+| 健康检查 | ALB 目标组和容器都访问 `<BASE_PATH>/api/v1/health`（生产是 `/aws-inventory/api/v1/health`） | 容器内运行 `python -m app.cli healthcheck`：心跳线程每 30 秒刷新文件 `WORKER_HEARTBEAT_FILE`（默认 `/tmp/aws-inventory-discovery-worker.heartbeat`），文件超过 60 秒没更新就不健康；检查不访问数据库。**容器里 `/tmp`（或这个变量指向的路径）必须可写** | 镜像自带的 HTTP 检查在一次性任务里没有意义，任务定义里改成 `exit 0` |
 | 停止 | 默认 | `stopTimeout` 120 秒：收到 SIGTERM 后不再领新任务，处理完当前这一页，释放租约，没做完的任务放回队列 | — |
 
 **发布流程**：构建镜像 → 推送到 ECR `aws-inventory-discovery` → 运行 migrate 任务 → 滚动更新 api 和 worker（`minimumHealthyPercent` 100%）。任务定义示例在 `deploy/ecs/`（`api.json`、`worker.json`、`migrate.json`），`<…>` 是要按环境替换的值。
@@ -669,6 +670,7 @@ aws-inventory-discovery/
 | `WORKER_LOG_GROUP` | `/aws-inventory-discovery/worker` |
 | `WORKER_HEARTBEAT_FILE` | `/tmp/aws-inventory-discovery-worker.heartbeat` |
 | `FRONTEND_DIST` | 不设置：用镜像里的 `/app/frontend/dist`，本地用 `frontend/dist` |
+| `BASE_PATH` | 镜像里由构建参数写入，默认 `/aws-inventory`。API（`<BASE_PATH>/api/v1`）、文档（`<BASE_PATH>/docs`）和 dashboard 都挂在它下面，前缀以外不提供服务。不要在任务定义里另外设置：前端在构建时已经按这个值生成 |
 | `AWS_ENDPOINT_URL`、`AWS_ENDPOINT_URL_CLOUDCONTROL`、`AWS_ENDPOINT_URL_CONFIG_SERVICE` | 不设置，**只在本地设置**（boto3 原生读取；前两个也在 Settings 里列出，第三个只由 boto3 读取） |
 
 ### 12.4 网络（详细清单在 `deploy/CHECKLIST.md`）
@@ -678,6 +680,7 @@ aws-inventory-discovery/
 - **endpoint 策略**：允许组织内的所有账号（条件 `aws:PrincipalOrgID`），只放行只读操作（包括 AMI 用的 `ec2:DescribeImages`），因为调用时用的是目标账号的凭证。
 - **安全组和路由**：远端 endpoint 的安全组放行来自 ap-east-1 VPC 网段的 443 端口；peering 两边都要配置路由。
 - 不需要 Route 53 的 endpoint：Route 53 的数据来自 Config（记录在 us-east-1），或由 Cloud Control 在 AWS 内部调用。
+- **入口**：挂在平台已有的内网 ALB 上，不新建 ALB。监听器规则：路径 `/aws-inventory`、`/aws-inventory/*` → 目标组 `aws-inventory-discovery-api`（HTTP 8000，目标类型 ip），健康检查 `/aws-inventory/api/v1/health`。**规则上不要配 URL 重写**：ALB 原样转发路径，应用自己带前缀。api 安全组的 8000 端口只放行这个 ALB 的安全组，所以 `--forwarded-allow-ips '*'` 是安全的。
 
 ### 12.5 IAM
 
@@ -698,7 +701,7 @@ aws-inventory-discovery/
 | CloudWatch 日志组 | `/aws-inventory-discovery/api`、`/aws-inventory-discovery/worker`、`/aws-inventory-discovery/migrate` |
 | IAM 角色 | `aws-inventory-discovery-api-task`、`aws-inventory-discovery-worker-task`、`aws-inventory-discovery-task-execution` |
 | Secrets Manager | `aws-inventory-discovery/db`、`aws-inventory-discovery/redis` |
-| ALB / 目标组 | `aws-inventory-discovery-alb`、`aws-inventory-discovery-api`（名称上限 32 个字符） |
+| 目标组 | `aws-inventory-discovery-api`（名称上限 32 个字符）；ALB 用平台已有的，不新建 |
 | 安全组 | `aws-inventory-discovery-api`、`aws-inventory-discovery-worker`、`aws-inventory-discovery-endpoints` |
 | VPC endpoint | 为本项目新建的，`Name` 标签用 `aws-inventory-discovery-<服务>`；平台已有的直接复用，不改名 |
 | Route 53 私有托管区 | 域名必须是 AWS 的服务域名，不能加前缀，用注释和标签标明归属 |

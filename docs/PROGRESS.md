@@ -20,7 +20,7 @@
 | M7 部署 | 完成（待平台创建资源后实际验证） |
 | M8 上线确认 | 未开始 |
 
-**MVP 已实现**：两批共 15 个资源类型、完整的扫描和写入流程、API、dashboard、本地环境和部署文件。后端 315 个测试通过（`cd backend && uv run pytest`，需要 `podman compose up -d postgres redis`），Playwright 端到端测试 6 个通过（`cd frontend && npm run e2e`，需要本地栈），CI 工作流（`.github/workflows/ci.yml`）已在 GitHub 上通过。剩下的是真实环境的确认（见 M1、M8）。
+**MVP 已实现**：两批共 15 个资源类型、完整的扫描和写入流程、API、dashboard、本地环境和部署文件。后端 325 个测试通过（`cd backend && uv run pytest`，需要 `podman compose up -d postgres redis`），Playwright 端到端测试 6 个通过（`cd frontend && npm run e2e`，需要本地栈），CI 工作流（`.github/workflows/ci.yml`）已在 GitHub 上通过。剩下的是真实环境的确认（见 M1、M8）。
 
 设计阶段已完成：[DESIGN.md](DESIGN.md)、[DECISIONS.md](DECISIONS.md)、[specs/](specs/)。实现中发现的偏差已经同步到这些文档（DECISIONS D-21 起）。
 
@@ -88,6 +88,7 @@
 - [x] `deploy/ecs/`：api、worker、migrate 的任务定义示例
 - [x] [deploy/CHECKLIST.md](../deploy/CHECKLIST.md) 按实现结果更新（密钥是 JSON 对象、worker 健康检查、`/tmp` 可写、`DescribeRegions` 的区域）
 - [x] `doctor` 命令：检查数据库（含迁移版本）、Redis、两个内部服务和各区域 endpoint 的连通性；另有 `healthcheck` 命令给 worker 容器用
+- [x] 挂在已有 ALB 的 `/aws-inventory` 下：路径由 Dockerfile 的构建参数 `BASE_PATH` 决定，前后端共用
 
 ## M8 上线确认
 - [ ] 账号清单服务 ① 的真实接口格式，调整客户端（现在是假设的 JSON 数组，见 `aws/account_registry.py` 的 `RegistryAccount`）

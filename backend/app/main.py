@@ -21,13 +21,26 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     yield
 
 
-app = FastAPI(
-    title="aws-inventory-discovery", openapi_url="/api/v1/openapi.json", lifespan=lifespan
-)
-register_error_handlers(app)
-app.include_router(api_router, prefix="/api/v1")
+def create_app() -> FastAPI:
+    settings = get_settings()
+    # Everything is served under BASE_PATH (e.g. "/aws-inventory" behind the shared ALB, which
+    # forwards the path unchanged); empty means the root. The dashboard is built with the same
+    # prefix (Vite `base`, see backend/Dockerfile).
+    prefix = settings.BASE_PATH
+    app = FastAPI(
+        title="aws-inventory-discovery",
+        openapi_url=f"{prefix}/api/v1/openapi.json",
+        docs_url=f"{prefix}/docs",
+        redoc_url=f"{prefix}/redoc",
+        swagger_ui_oauth2_redirect_url=f"{prefix}/docs/oauth2-redirect",
+        lifespan=lifespan,
+    )
+    register_error_handlers(app)
+    app.include_router(api_router, prefix=f"{prefix}/api/v1")
+    # Registered last so the API routes win; the dashboard is absent in plain dev runs.
+    if settings.frontend_dist.is_dir():
+        app.frontend(prefix or "/", directory=settings.frontend_dist, fallback="index.html")
+    return app
 
-# Registered last so the API routes win; the dashboard is absent in plain dev runs.
-frontend_dist = get_settings().frontend_dist
-if frontend_dist.is_dir():
-    app.frontend("/", directory=frontend_dist)
+
+app = create_app()

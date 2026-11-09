@@ -4,10 +4,13 @@ DATABASE_URL=... DATABASE_SCHEMA=... uv run python scripts/export_openapi.py
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# The client's paths stay "/api/v1/..."; it adds the deployment prefix at run time (baseUrl).
+os.environ["BASE_PATH"] = ""
 
 from app.main import app  # noqa: E402
 

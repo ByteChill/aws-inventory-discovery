@@ -90,9 +90,9 @@ def make_client(
         for key, value in env.items():
             monkeypatch.setenv(key, value)
         clear_caches()
-        from app.main import app
+        from app.main import create_app
 
-        return TestClient(app)
+        return TestClient(create_app())
 
     yield build
     clear_caches()

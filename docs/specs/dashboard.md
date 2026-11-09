@@ -5,8 +5,8 @@
 ## 1. 技术与结构
 
 - React 19、Vite、TypeScript、TanStack Router（文件路由）、TanStack Query、TanStack Table、shadcn/ui（Radix，用到 dropdown-menu、popover、dialog 等几个组件，源码在 `src/components/ui/`）、Tailwind v4、zod（校验 URL 查询字符串）、Biome。表单（扫描表单、筛选）都是简单的受控组件，没有用 react-hook-form；Playwright 还没有接入。
-- API 客户端由 `@hey-api/openapi-ts` 根据后端导出的 OpenAPI 生成到 `src/client/`，不手改。接口有变化时：`cd backend && uv run python scripts/export_openapi.py`（写出 `frontend/openapi.json`，需要设置 `DATABASE_URL` 和 `DATABASE_SCHEMA`），再 `cd frontend && npm run generate-client`；也可以设置 `OPENAPI_INPUT=http://localhost:8000/api/v1/openapi.json` 直接读运行中的 API。导出时把 FastAPI 生成的 operationId 缩短成函数名。
-- 构建产物由后端的 `app.frontend("/", directory=…)` 托管（目录由 `FRONTEND_DIST` 指定，默认是镜像里的 `/app/frontend/dist`，本地是 `frontend/dist`）；开发时 Vite 把 `/api` 代理到后端（`API_URL`，默认 `http://localhost:8000`）。
+- API 客户端由 `@hey-api/openapi-ts` 根据后端导出的 OpenAPI 生成到 `src/client/`，不手改。接口有变化时：`cd backend && uv run python scripts/export_openapi.py`（写出 `frontend/openapi.json`，需要设置 `DATABASE_URL` 和 `DATABASE_SCHEMA`），再 `cd frontend && npm run generate-client`。导出时把 FastAPI 生成的 operationId 缩短成函数名。
+- 构建产物由后端的 `app.frontend(<BASE_PATH>, directory=…, fallback="index.html")` 托管（目录由 `FRONTEND_DIST` 指定，默认是镜像里的 `/app/frontend/dist`，本地是 `frontend/dist`）。路径前缀在构建时由 `BASE_PATH` 决定（Vite `base`，默认 `/aws-inventory`），路由和 API 客户端都用 `import.meta.env.BASE_URL`；开发时 Vite 把 `/aws-inventory/api` 代理到后端（`API_URL`，默认 `http://localhost:8000`）。
 
 ### 1.1 路由
 

@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test"
+import { BASE_URL } from "./e2e/base-url"
 
 // The tests run against a running stack (README: 本地运行): FastAPI serves the built dashboard and /api.
 export default defineConfig({
@@ -20,7 +21,7 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 10_000 },
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:8000",
+    baseURL: BASE_URL,
     locale: "zh-CN",
     trace: "retain-on-failure",
   },

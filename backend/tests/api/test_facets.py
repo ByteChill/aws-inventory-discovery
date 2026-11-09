@@ -57,7 +57,8 @@ def test_a_field_ignores_its_own_filter_but_not_the_others(
 
     # Only dev has resources in eu-west-1; only prod is selected: each sees the other's filter.
     assert {b["value"] for b in body["accountType"]} == {"dev"}
-    assert {b["value"] for b in body["awsRegion"]} == {"us-east-1"}
+    # (prod's Route 53 zones are global, filed under the region `global`)
+    assert {b["value"] for b in body["awsRegion"]} == {"us-east-1", "global"}
 
 
 def test_status_facet_counts_every_status_unless_narrowed_by_others(

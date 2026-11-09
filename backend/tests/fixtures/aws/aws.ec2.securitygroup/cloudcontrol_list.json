@@ -1,0 +1,13 @@
+{
+  "ResourceDescriptions": [
+    {
+      "Identifier": "sg-5943793c",
+      "Properties": "{\"Id\":\"sg-5943793c\",\"GroupId\":\"sg-5943793c\",\"GroupName\":\"SSHAccess\",\"GroupDescription\":\"Security group for SSH access\",\"VpcId\":\"vpc-0ee975135dEXAMPLE\",\"SecurityGroupIngress\":[{\"IpProtocol\":\"tcp\",\"FromPort\":22,\"ToPort\":22,\"CidrIp\":\"0.0.0.0/0\"},{\"IpProtocol\":\"tcp\",\"FromPort\":22,\"ToPort\":22,\"CidrIpv6\":\"::/0\"}],\"SecurityGroupEgress\":[{\"IpProtocol\":\"-1\",\"CidrIp\":\"0.0.0.0/0\"},{\"IpProtocol\":\"-1\",\"CidrIpv6\":\"::/0\"}]}"
+    },
+    {
+      "Identifier": "sg-e4076980",
+      "Properties": "{\"Id\":\"sg-e4076980\",\"GroupId\":\"sg-e4076980\",\"GroupName\":\"default\",\"GroupDescription\":\"default VPC security group\",\"VpcId\":\"vpc-0ee975135dEXAMPLE\",\"SecurityGroupIngress\":[{\"IpProtocol\":\"-1\",\"SourceSecurityGroupId\":\"sg-e4076980\",\"SourceSecurityGroupOwnerId\":\"111122223333\"},{\"IpProtocol\":\"tcp\",\"FromPort\":3389,\"ToPort\":3389,\"CidrIp\":\"203.0.113.0/24\",\"Description\":\"RDP access from B network\"}],\"SecurityGroupEgress\":[{\"IpProtocol\":\"-1\",\"CidrIp\":\"0.0.0.0/0\"}]}"
+    }
+  ],
+  "TypeName": "AWS::EC2::SecurityGroup"
+}

@@ -31,6 +31,7 @@ from tests.conftest import AWS_REGIONS, TEST_DATABASE_URL, AwsEnv
 REGION, OTHER_REGION = AWS_REGIONS
 QUEUE = "AWS::SQS::Queue"
 VPC = "AWS::EC2::VPC"
+HOSTED_ZONE = "AWS::Route53::HostedZone"
 TERMINAL = {"succeeded", "partial", "failed", "cancelled"}
 
 
@@ -176,8 +177,9 @@ def test_scheduled_sweep_lands_every_account_and_region_and_rolls_up(stack: Stac
     assert sweep["counts"]["tasks"]["succeeded"] == len(tasks)
 
     on_account, off_account = stack.accounts
-    # Config recording: what Config holds is what lands
-    for type_name in {i["resourceType"] for i in stack.aws.dataset["config_items"]}:
+    # Config recording: what Config holds is what lands (global types: see the test below)
+    regional = [i for i in stack.aws.dataset["config_items"] if i["awsRegion"] != "global"]
+    for type_name in {i["resourceType"] for i in regional}:
         found = stack.resources(accountId=on_account, awsRegion=REGION, resourceType=type_name)
         assert len(found) == len(stack.config_items(on_account, REGION, type_name)), type_name
         assert {r["configurationItemCaptureTime"] is not None for r in found} == {True}
@@ -198,6 +200,62 @@ def test_scheduled_sweep_lands_every_account_and_region_and_rolls_up(stack: Stac
     summary = stack.get("/scans/summary")
     assert summary["sweep"] is None and summary["failures24h"] == []
     assert summary["missingCount"] == 0 and summary["workers"]["activeTasks"] == 0
+
+
+def test_a_global_type_is_read_once_per_account_and_filed_under_global(stack: Stack) -> None:
+    sweep = full_sweep(stack)
+
+    assert sweep["status"] == "succeeded"
+    zones = stack.resources(resourceType=HOSTED_ZONE)
+    for account in stack.accounts:
+        recorded = stack.config_items(account, "global", HOSTED_ZONE)
+        mine = [z for z in zones if z["accountId"] == account]
+        assert len(mine) == len(recorded) > 0
+        assert {z["awsRegion"] for z in mine} == {"global"}
+        assert {z["resourceId"] for z in mine} == {i["resourceId"] for i in recorded}
+        # only us-east-1 serves (and records) the global type
+        assert stack.cc_resources(account, OTHER_REGION, HOSTED_ZONE) == []
+        assert stack.get(f"/resources/{mine[0]['id']}")["observedSource"] == "config"
+    for region in (REGION, OTHER_REGION):
+        assert stack.resources(resourceType=HOSTED_ZONE, awsRegion=region) == []
+    # no task of the sweep is planned for the global scope outside us-east-1
+    assert Counter(t["kind"] for t in stack.tasks(sweep["id"]))["config_group"] == 3
+
+
+def test_a_global_scope_is_planned_once_and_detects_deletion(stack: Stack, engine: Engine) -> None:
+    account = stack.accounts[0]
+    body = {"accountIds": [account], "resourceTypes": [HOSTED_ZONE]}  # both regions are scannable
+
+    first = stack.scan(body)
+
+    shards = [t for t in stack.tasks(first["id"]) if t["kind"] == "shard"]
+    assert [(t["region"], t["source"]) for t in shards] == [("global", "cloudcontrol")]
+    zones = stack.resources(accountId=account, resourceType=HOSTED_ZONE)
+    served = stack.cc_resources(account, REGION, HOSTED_ZONE)
+    assert len(zones) == len(served) > 1 and {z["awsRegion"] for z in zones} == {"global"}
+    assert first["counts"]["resources"]["new"] == len(zones)
+    with engine.begin() as connection:
+        shard_rows = connection.execute(
+            text("SELECT region FROM t_inv_aws_scan_shard WHERE resource_type = :t"),
+            {"t": HOSTED_ZONE},
+        ).all()
+    assert [row.region for row in shard_rows] == ["global"]
+
+    victim = zones[0]
+    stack.delete_in_aws(account, REGION, HOSTED_ZONE, victim["resourceId"])
+    with engine.begin() as connection:  # scanned moments ago (R3): age the scope
+        connection.execute(
+            text("UPDATE t_inv_aws_scan_shard SET last_succeeded_at = now() - interval '2 hours'")
+        )
+    second = stack.scan(body)
+
+    # absent from the complete listing, and GetResource (read from us-east-1) agrees
+    assert second["counts"]["resources"]["missing"] == 1
+    assert second["counts"]["resources"]["deleted"] == 1
+    gone = stack.get(f"/resources/{victim['id']}")
+    assert gone["status"] == "deleted" and gone["awsRegion"] == "global"
+    remaining = stack.resources(accountId=account, resourceType=HOSTED_ZONE)
+    assert len(remaining) == len(zones) - 1 and victim["id"] not in {z["id"] for z in remaining}
 
 
 def test_on_demand_scan_uses_live_sources_and_honours_its_scope(stack: Stack) -> None:

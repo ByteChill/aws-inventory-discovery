@@ -187,7 +187,7 @@ TYPE_HOOKS: dict[str, Hooks] = {
 
 所有 Identifier、ARN 规则和 Config 支持情况都在 M1 对照 CloudFormation 资源类型 schema（`primaryIdentifier`、`handlers`）、`awslabs/aws-config-resource-schema` 和 Config 支持的资源类型列表核对过，逐项结果和差异在 `backend/tests/fixtures/aws/VERIFICATION.md`，每个类型的样本出处在样本目录的 `SOURCE.md`。下表的「核对」一栏：**已核对**表示这一行的 Identifier、ARN 规则和 Config 支持情况与官方资料一致，或已按核对结果改正；官方资料里没有的内容在「备注」里写明。「配置文件」一栏表示 `backend/app/types/specs/` 里有没有这个类型。
 
-共 15 个类型，分两批完成：第一批 12 个类型的配置文件和样本都已完成；第二批 3 个类型核对完成，配置文件和样本还没有做。另外，每个账号开启的区域存在 `t_inv_aws_account_region`，不是资源类型，随第一批一起完成。
+共 15 个类型，分两批完成：两批共 15 个类型的配置文件和样本都已完成。另外，每个账号开启的区域存在 `t_inv_aws_account_region`，不是资源类型，随第一批一起完成。
 
 **第一批（重点）**
 
@@ -208,11 +208,11 @@ TYPE_HOOKS: dict[str, Hooks] = {
 
 **第二批**
 
-| 类型 | Config | Cloud Control Identifier | ARN | 名称 | 特殊处理 | 配置文件 | 核对 |
-|---|---|---|---|---|---|---|---|
-| `AWS::EC2::SecurityGroup` | 支持 | `Id`（GroupId） | 模板 `…:security-group/{id}` | `groupName` | — | 未实现 | 已核对 |
-| `AWS::ElasticLoadBalancingV2::TargetGroup` | Config 支持列表里有这个类型，但**没有 Config 资源 schema，`SelectResourceConfig` 查不到它**：实现时应按 Cloud Control 读取，不走 Config 的批量查询（M1 核对结论） | `TargetGroupArn` | 取自 Identifier | `targetGroupName` | — | 未实现 | 已核对（原来的「Config 待核对」已改正） |
-| `AWS::Route53::HostedZone` | 支持（全局，Config schema 的键是 PascalCase；「记录在 us-east-1」官方页面没有明说） | `Id` | 模板 `arn:{partition}:route53:::hostedzone/{id}` | `name` | 全局资源 | 未实现 | 已核对 |
+| 类型 | Config | Cloud Control Identifier | `resourceId` | ARN | 名称 | 键风格 | 特殊处理 | 配置文件 | 核对 |
+|---|---|---|---|---|---|---|---|---|---|
+| `AWS::EC2::SecurityGroup` | 支持 | `Id`（VPC 里的安全组就是 GroupId；配置里用 `groupId`） | `groupId` | 模板 `…:security-group/{id}` | `groupName` | camel | 规则（Config 的 `ipPermissions` 和 CFN 的 `SecurityGroupIngress` 结构不同，无法互相转换）不参与映射，只留在 `live_raw`；`GroupDescription` 改名为 `description` | 已实现 | 已核对 |
+| `AWS::ElasticLoadBalancingV2::TargetGroup` | Config 支持列表里有这个类型，但**没有 Config 资源 schema，`SelectResourceConfig` 查不到它**：`sources.config = false`，只按 Cloud Control 读取，没有 Config 样本 | `TargetGroupArn` | `targetGroupArn` | 取自 `targetGroupArn`（就是 Identifier） | `targetGroupName` | camel | `Targets`（随注册变化）和 `TargetGroupAttributes` 不参与映射，只留在 `live_raw` | 已实现 | 已核对（原来的「Config 待核对」已改正） |
+| `AWS::Route53::HostedZone` | 支持（全局，Config schema 的键是 PascalCase；Config 报告的 `awsRegion` 和记录所在区域，官方资料没有明说，按设计记为 `global`、在 us-east-1 读取） | `Id`（不带 `/hostedzone/` 前缀的区域 ID） | `Id` | 模板 `arn:{partition}:route53:::hostedzone/{id}` | `Name` | pascal | `global: true`，每个账号只规划一次，区域记为 `global`（scanner.md 6.1）；`HostedZoneConfig`、`QueryLoggingConfig`、`HostedZoneFeatures`、`DelegationSetId` 不参与映射；Cloud Control 的标签属性叫 `HostedZoneTags`，通用的标签转换只读 `Tags`，所以这个类型从 Cloud Control 读到的数据没有标签（待用户确认是否加规则） | 已实现 | 已核对 |
 
 `AWS::EC2::Image` 不是 CloudFormation 的资源类型名，这里沿用同样的命名风格，作为本系统内部的类型名。
 
@@ -234,6 +234,8 @@ TYPE_HOOKS: dict[str, Hooks] = {
 | SNS Topic | 是否 FIFO（`fifo` ← `FifoTopic`，bool） | 是否加密（暂未定义） |
 | SQS Queue | 是否加密（`sseEnabled` ← `SqsManagedSseEnabled`，bool）、可见性超时（`visibilityTimeout`）、死信队列（`deadLetterTarget` ← `RedrivePolicy.deadLetterTargetArn`，只有 Cloud Control 来源有值，Config 没有 `RedrivePolicy`） | 是否 FIFO（暂未定义） |
 | Secret | 是否开启轮换（`rotationEnabled`，只有 Config 来源有值）、轮换天数（`rotationDays` ← `RotationRules.AutomaticallyAfterDays`） | 最近轮换时间、最近访问时间（Config 和 CFN 都没有） |
-| Security Group、Target Group、Route 53 Hosted Zone | 第二批，还没有定义 | Route 53 的「是否私有、记录数」在 Config 和 CFN 里都没有 |
+| Security Group | VPC（`vpcId`）、描述（`description` ← CFN 的 `GroupDescription`） | 入站 / 出站规则数（Config 和 CFN 的规则结构不同，Cloud Control 来源没有） |
+| Target Group | 协议（`protocol`，enum）、端口（`port`，number）、目标类型（`targetType`，enum）、VPC（`vpcId`）、负载均衡器数（`loadBalancerCount` ← `loadBalancerArns` 数组长度） | 健康状态、已注册目标数（Cloud Control 的 `Targets` 随注册变化，不入库；官方资料也没有示例值） |
+| Route 53 Hosted Zone | 关联 VPC 数（`vpcCount` ← `VPCs` 数组长度，0 表示公有区域） | 是否私有、记录数（Config 和 CFN 里都没有；是否私有可由「关联 VPC 数」推出）、备注（只有 Cloud Control 有） |
 
 某一列的值在当前这条记录的数据来源里没有时，列显示为空（`null`）。一个列的 `key` 和通用列重名时（ECS Task Definition 的 `status`），查询参数里类型专属列一律加 `attr.` 前缀，见 [api.md](api.md)。

@@ -11,7 +11,7 @@
 | 里程碑 | 状态 |
 |---|---|
 | M0 项目骨架 | 基本完成（缺 CI） |
-| M1 资源类型和样本 | 第一批完成，第二批未做 |
+| M1 资源类型和样本 | 完成（两批共 15 个类型） |
 | M2 本地模拟环境 | 完成（Config 由 fake_aws 提供） |
 | M3 worker 核心 | 完成 |
 | M4 数据源 | 完成（①②的接口格式是假设） |
@@ -20,7 +20,7 @@
 | M7 部署 | 完成（待平台创建资源后实际验证） |
 | M8 上线确认 | 未开始 |
 
-**MVP 已实现**：第一批 12 个资源类型、完整的扫描和写入流程、API、dashboard、本地环境和部署文件。后端 281 个测试通过（`cd backend && uv run pytest`，需要 `podman compose up -d postgres redis`）。剩下的是第二批类型、真实环境的确认（见 M1、M8），以及 Playwright 测试和 CI。
+**MVP 已实现**：两批共 15 个资源类型、完整的扫描和写入流程、API、dashboard、本地环境和部署文件。后端 297 个测试通过（`cd backend && uv run pytest`，需要 `podman compose up -d postgres redis`）。剩下的是真实环境的确认（见 M1、M8），以及 Playwright 测试和 CI。
 
 设计阶段已完成：[DESIGN.md](DESIGN.md)、[DECISIONS.md](DECISIONS.md)、[specs/](specs/)。实现中发现的偏差已经同步到这些文档（DECISIONS D-21 起）。
 
@@ -37,7 +37,7 @@
 - [x] `types/spec.py`：资源类型配置的 Pydantic 模型，格式见 [specs/resource-types.md](specs/resource-types.md)
 - [x] `types/registry.py`、`types/mapping.py`、`types/redact.py`、`types/hooks.py`（另有 `types/columns.py`）
 - [x] 第一批类型的配置文件和样本：VPC、Subnet、ALB/NLB、ECS Cluster / Service / Task Definition、EC2、AMI、Lambda、Secret、SNS、SQS（12 个）
-- [ ] 第二批类型的配置文件和样本：Security Group、Target Group、Route 53 Hosted Zone（Identifier 和 Config 支持情况已核对，见 `backend/tests/fixtures/aws/VERIFICATION.md`；配置文件、样本、测试都还没有）
+- [x] 第二批类型的配置文件和样本：Security Group、Target Group（Config 查不到，只走 Cloud Control，没有 Config 样本）、Route 53 Hosted Zone（全局类型，区域记为 `global`，在 us-east-1 读取；端到端测试覆盖了定时扫描和按需扫描下的写入与删除判断）。核对结果见 `backend/tests/fixtures/aws/VERIFICATION.md` 第 14–16 条
 - [x] 样本包括：Config 配置项、Cloud Control `GetResource` / `ListResources` 响应（AMI 是 EC2 `DescribeImages` 响应），以及 `SOURCE.md`（只用 AWS 官方资料）（第一批）
 - [x] 核对每个类型的 Cloud Control Identifier 和 Config 支持情况：15 个类型都核对过（结果和差异见 `VERIFICATION.md`，已同步到 [specs/resource-types.md](specs/resource-types.md) 第 5 节）
 - [x] 测试：每个类型的映射、脱敏、列取值（第一批）

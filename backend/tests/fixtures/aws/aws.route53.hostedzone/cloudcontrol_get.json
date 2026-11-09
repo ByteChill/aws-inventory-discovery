@@ -1,0 +1,7 @@
+{
+  "ResourceDescription": {
+    "Identifier": "Z1PA6795UKMFR9",
+    "Properties": "{\"Id\":\"Z1PA6795UKMFR9\",\"Name\":\"example.com.\",\"NameServers\":[\"ns-2048.awsdns-64.com\",\"ns-2049.awsdns-65.net\",\"ns-2050.awsdns-66.org\",\"ns-2051.awsdns-67.co.uk\"],\"HostedZoneConfig\":{\"Comment\":\"This is my first hosted zone.\"}}"
+  },
+  "TypeName": "AWS::Route53::HostedZone"
+}

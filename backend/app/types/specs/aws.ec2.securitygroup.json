@@ -1,0 +1,56 @@
+{
+  "typeName": "AWS::EC2::SecurityGroup",
+  "label": {
+    "zh-CN": "安全组",
+    "en": "Security group"
+  },
+  "identity": {
+    "identifier": "groupId",
+    "resourceIdFrom": "groupId",
+    "arnTemplate": "arn:{partition}:ec2:{region}:{account}:security-group/{id}",
+    "nameFrom": "groupName"
+  },
+  "sources": {
+    "config": true,
+    "cloudControl": {
+      "read": true,
+      "list": true
+    }
+  },
+  "mapping": {
+    "properties": [
+      "GroupId",
+      "GroupName",
+      "VpcId"
+    ],
+    "rename": {
+      "GroupDescription": "description"
+    },
+    "exclude": [
+      "Id",
+      "SecurityGroupIngress",
+      "SecurityGroupEgress"
+    ]
+  },
+  "columns": [
+    {
+      "key": "vpcId",
+      "label": {
+        "zh-CN": "VPC",
+        "en": "VPC"
+      },
+      "type": "text",
+      "path": "vpcId",
+      "mono": true
+    },
+    {
+      "key": "description",
+      "label": {
+        "zh-CN": "描述",
+        "en": "Description"
+      },
+      "type": "text",
+      "path": "description"
+    }
+  ]
+}

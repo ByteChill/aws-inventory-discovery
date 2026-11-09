@@ -1,0 +1,7 @@
+{
+  "ResourceDescription": {
+    "Identifier": "arn:aws:elasticloadbalancing:us-east-1:111122223333:targetgroup/my-targets/73e2d6bc24d8a067",
+    "Properties": "{\"TargetGroupArn\":\"arn:aws:elasticloadbalancing:us-east-1:111122223333:targetgroup/my-targets/73e2d6bc24d8a067\",\"TargetGroupName\":\"my-targets\",\"Name\":\"my-targets\",\"TargetGroupFullName\":\"targetgroup/my-targets/73e2d6bc24d8a067\",\"Protocol\":\"HTTP\",\"Port\":80,\"VpcId\":\"vpc-0ee975135dEXAMPLE\",\"TargetType\":\"instance\",\"IpAddressType\":\"ipv4\",\"LoadBalancerArns\":[\"arn:aws:elasticloadbalancing:us-east-1:111122223333:loadbalancer/app/my-load-balancer/50dc6c495c0c9188\"],\"HealthCheckEnabled\":true,\"HealthCheckProtocol\":\"HTTP\",\"HealthCheckPort\":\"traffic-port\",\"HealthCheckPath\":\"/\",\"HealthCheckIntervalSeconds\":30,\"HealthCheckTimeoutSeconds\":5,\"HealthyThresholdCount\":5,\"UnhealthyThresholdCount\":2,\"Matcher\":{\"HttpCode\":\"200\"}}"
+  },
+  "TypeName": "AWS::ElasticLoadBalancingV2::TargetGroup"
+}

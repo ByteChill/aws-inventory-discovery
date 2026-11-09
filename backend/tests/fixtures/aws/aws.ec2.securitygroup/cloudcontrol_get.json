@@ -1,0 +1,7 @@
+{
+  "ResourceDescription": {
+    "Identifier": "sg-5943793c",
+    "Properties": "{\"Id\":\"sg-5943793c\",\"GroupId\":\"sg-5943793c\",\"GroupName\":\"SSHAccess\",\"GroupDescription\":\"Security group for SSH access\",\"VpcId\":\"vpc-0ee975135dEXAMPLE\",\"SecurityGroupIngress\":[{\"IpProtocol\":\"tcp\",\"FromPort\":22,\"ToPort\":22,\"CidrIp\":\"0.0.0.0/0\"},{\"IpProtocol\":\"tcp\",\"FromPort\":22,\"ToPort\":22,\"CidrIpv6\":\"::/0\"}],\"SecurityGroupEgress\":[{\"IpProtocol\":\"-1\",\"CidrIp\":\"0.0.0.0/0\"},{\"IpProtocol\":\"-1\",\"CidrIpv6\":\"::/0\"}]}"
+  },
+  "TypeName": "AWS::EC2::SecurityGroup"
+}

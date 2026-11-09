@@ -14,6 +14,11 @@ REGISTRY_FIELDS = ("account_id", "account_name", "account_type", "eim_id", "eim_
 
 Scope = tuple[str, str]  # (account_id, region)
 
+# Config items of global resources carry `awsRegion: "global"` but are recorded and served by
+# the home region's recorder, which is where the inventory reads them (scanner.md 6.1 step 5).
+GLOBAL_REGION = "global"
+GLOBAL_HOME = "us-east-1"
+
 # The injectable errors, per service: (code, HTTP status).
 INJECTABLE = ("AccessDenied", "Throttling", "ResourceNotFound")
 CLOUDCONTROL_ERRORS = {
@@ -89,7 +94,8 @@ class Store:
                 )
 
     def put_config_item(self, item: dict[str, Any]) -> None:
-        scope = (item["accountId"], item["awsRegion"])
+        region = GLOBAL_HOME if item["awsRegion"] == GLOBAL_REGION else item["awsRegion"]
+        scope = (item["accountId"], region)
         with self.lock:
             self.config_items.setdefault(scope, {})[(item["resourceType"], item["resourceId"])] = (
                 copy.deepcopy(item)

@@ -62,7 +62,7 @@ def filter_cases(seeded: Seeded) -> list[Any]:
             lambda r, a: r["account_id"] in ("111122223333", "444455556666"),
         ),
         ("eim", "eimId=10000001", lambda r, a: a["eim_id"] == "10000001"),
-        ("ba", "baId=BA0002", lambda r, a: a["ba_id"] == "BA0002"),
+        ("ba", "baId=BA2010002", lambda r, a: a["ba_id"] == "BA2010002"),
         ("account type", "accountType=dev", lambda r, a: a["account_type"] == "dev"),
         ("region", "awsRegion=eu-west-1", lambda r, a: r["aws_region"] == "eu-west-1"),
         (
@@ -175,7 +175,7 @@ def test_list_item_shape(get_json: Callable[..., Any], seeded: Seeded) -> None:
         "accountType": "prod",
         "eimId": "10000001",
         "eimApp": "payments",
-        "baId": "BA0001",
+        "baId": "BA2010001",
     }
     assert item["tags"] == row["tags"]
     assert item["relationshipCount"] == len(row["relationships"])

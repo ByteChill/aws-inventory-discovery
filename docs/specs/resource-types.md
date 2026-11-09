@@ -23,6 +23,7 @@
 | `sources.cloudControl.listReturnsFullProperties` | bool | 否，默认 `false` | `ListResources` 返回的属性是否完整；不完整时会对每个资源再调用 `GetResource`。官方资料没有列出哪些类型会返回不完整的属性（M1 核对第 11 条），所以现有的类型都保持默认 `false` |
 | `sources.native` | bool | 否，默认 `false` | Config 和 Cloud Control 都不支持，由这个类型的 `Hooks` 提供 `list_live` 和 `get_live`（见第 4 节）。启动时校验：为 `true` 时 `TYPE_HOOKS` 里必须有这两个函数，并且 `config`、`cloudControl.read`、`cloudControl.list` 都必须为 `false`；`TYPE_HOOKS` 里登记了不存在的类型也会启动失败。至少要有一个数据源 |
 | `mapping.keyCase` | `camel`（默认）或 `pascal` | 否 | Cloud Control 属性转成 Config 格式时键的大小写。**Config 的键风格因类型而异**（M1 核对）：VPC、Subnet、ELBv2 LoadBalancer、EC2 Instance、Lambda 用 lowerCamelCase，默认规则即可；ECS（Cluster / Service / Task Definition）、Secret、SNS、SQS、Route 53 HostedZone 的 Config 保留 CloudFormation 的 PascalCase 键，要写 `pascal`，转换时键保持原样。AMI（服务 API）用默认的 `camel` |
+| `mapping.tagsProperty` | string | 否，默认 `Tags` | 保存标签的 Cloud Control 属性（`[{Key, Value}]`）。大多数类型叫 `Tags`；Route 53 HostedZone 叫 `HostedZoneTags`。这个属性转成 `tags`，不进入 `configuration`，也不算作覆盖的字段 |
 | `mapping.properties` | CloudControl 路径[] | 否 | 这个映射覆盖的 Cloud Control（或服务 API）属性：顶层属性名，或点号路径。没有 schema 就无法知道 Cloud Control「本来会返回哪些字段」，而叠加时必须靠它清掉被删除的字段（返回里没有就视为被清空），所以由配置文件列出。被 `rename` 改名的属性通过 `rename` 算入，不用重复写；被 `exclude` 的属性不算 |
 | `mapping.rename` | `{ CloudControl 路径: Config 路径 }` | 否 | 默认规则对不上的字段。不能改名数组里面的字段 |
 | `mapping.exclude` | CloudControl 路径[] | 否 | 不参与转换的字段（Config 格式里没有，或结构差异太大） |
@@ -94,7 +95,7 @@
 | `resourceId` | `identity.resourceIdFrom` |
 | `arn` | `identity.arnFrom` 或 `identity.arnTemplate` |
 | `resourceName` | `identity.nameFrom` |
-| `tags` | Cloud Control 的 `Tags: [{Key, Value}]` 转为 `[{key, value}]`；所有类型通用，`Tags` 不进入 `configuration` |
+| `tags` | Cloud Control 的标签属性（默认 `Tags`，由 `mapping.tagsProperty` 指定）`[{Key, Value}]` 转为 `[{key, value}]`；所有类型通用，标签属性不进入 `configuration` |
 | `relationships` | Cloud Control 没有，保留库里现有的值（新资源为空） |
 | `configurationItemCaptureTime` | 不修改；Cloud Control 的观察时间另存 `live_observed_at` |
 
@@ -212,7 +213,7 @@ TYPE_HOOKS: dict[str, Hooks] = {
 |---|---|---|---|---|---|---|---|---|---|
 | `AWS::EC2::SecurityGroup` | 支持 | `Id`（VPC 里的安全组就是 GroupId；配置里用 `groupId`） | `groupId` | 模板 `…:security-group/{id}` | `groupName` | camel | 规则（Config 的 `ipPermissions` 和 CFN 的 `SecurityGroupIngress` 结构不同，无法互相转换）不参与映射，只留在 `live_raw`；`GroupDescription` 改名为 `description` | 已实现 | 已核对 |
 | `AWS::ElasticLoadBalancingV2::TargetGroup` | Config 支持列表里有这个类型，但**没有 Config 资源 schema，`SelectResourceConfig` 查不到它**：`sources.config = false`，只按 Cloud Control 读取，没有 Config 样本 | `TargetGroupArn` | `targetGroupArn` | 取自 `targetGroupArn`（就是 Identifier） | `targetGroupName` | camel | `Targets`（随注册变化）和 `TargetGroupAttributes` 不参与映射，只留在 `live_raw` | 已实现 | 已核对（原来的「Config 待核对」已改正） |
-| `AWS::Route53::HostedZone` | 支持（全局，Config schema 的键是 PascalCase；Config 报告的 `awsRegion` 和记录所在区域，官方资料没有明说，按设计记为 `global`、在 us-east-1 读取） | `Id`（不带 `/hostedzone/` 前缀的区域 ID） | `Id` | 模板 `arn:{partition}:route53:::hostedzone/{id}` | `Name` | pascal | `global: true`，每个账号只规划一次，区域记为 `global`（scanner.md 6.1）；`HostedZoneConfig`、`QueryLoggingConfig`、`HostedZoneFeatures`、`DelegationSetId` 不参与映射；Cloud Control 的标签属性叫 `HostedZoneTags`，通用的标签转换只读 `Tags`，所以这个类型从 Cloud Control 读到的数据没有标签（待用户确认是否加规则） | 已实现 | 已核对 |
+| `AWS::Route53::HostedZone` | 支持（全局，Config schema 的键是 PascalCase；Config 报告的 `awsRegion` 和记录所在区域，官方资料没有明说，按设计记为 `global`、在 us-east-1 读取） | `Id`（不带 `/hostedzone/` 前缀的区域 ID） | `Id` | 模板 `arn:{partition}:route53:::hostedzone/{id}` | `Name` | pascal | `global: true`，每个账号只规划一次，区域记为 `global`（scanner.md 6.1）；`HostedZoneConfig`、`QueryLoggingConfig`、`HostedZoneFeatures`、`DelegationSetId` 不参与映射；Cloud Control 的标签属性叫 `HostedZoneTags`，用 `mapping.tagsProperty = "HostedZoneTags"` 读取，所以从 Cloud Control 读到的数据也有标签（官方样例没有标签，测试用其他类型官方样例里的 `{Key, Value}` 标签验证） | 已实现 | 已核对 |
 
 `AWS::EC2::Image` 不是 CloudFormation 的资源类型名，这里沿用同样的命名风格，作为本系统内部的类型名。
 

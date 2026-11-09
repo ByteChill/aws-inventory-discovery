@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import time
+import uuid
 from collections.abc import Callable, Iterator
 from typing import Any
 
+import psycopg
 import pytest
 import redis
+from alembic import command
+from alembic.config import Config
 from fastapi.testclient import TestClient
+from psycopg import sql
 
 from tests.api.conftest import TEST_REDIS_URL
+from tests.conftest import BACKEND_DIR, TEST_DATABASE_URL, clear_caches, libpq_url
 
 COMMON_FIELDS = ["accountId", "eimId", "baId", "accountType", "awsRegion", "resourceType", "status"]
 FILTER_PARAM = {field: field for field in COMMON_FIELDS}
@@ -128,13 +134,16 @@ def redis_client() -> Iterator[redis.Redis]:
 
 @pytest.mark.usefixtures("seeded")
 def test_facets_and_overview_are_cached_in_redis_for_60_seconds(
-    make_client: Callable[..., TestClient], redis_client: redis.Redis
+    make_client: Callable[..., TestClient], redis_client: redis.Redis, schema_name: str
 ) -> None:
     client = make_client(REDIS_URL=TEST_REDIS_URL)
     url = "/api/v1/resources/facets?field=awsRegion"
 
     first = client.get(url).json()
-    keys = [k.decode() for k in redis_client.scan_iter("aws-inventory-discovery:facets:*")]
+    keys = [
+        k.decode()
+        for k in redis_client.scan_iter(f"aws-inventory-discovery:{schema_name}:facets:*")
+    ]
     second = client.get(url).json()
 
     assert len(keys) == 1
@@ -143,4 +152,35 @@ def test_facets_and_overview_are_cached_in_redis_for_60_seconds(
     stamp = client.get("/api/v1/stats/overview").json()["generatedAt"]
     time.sleep(0.01)
     assert client.get("/api/v1/stats/overview").json()["generatedAt"] == stamp
-    assert redis_client.ttl("aws-inventory-discovery:stats:overview:zh-CN") > 0
+    assert redis_client.ttl(f"aws-inventory-discovery:{schema_name}:stats:overview:zh-CN") > 0
+
+
+@pytest.fixture
+def empty_schema(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
+    """A second migrated schema with no data: another deployment on the same database."""
+    schema = f"test_other_{uuid.uuid4().hex[:8]}"
+    admin = psycopg.connect(libpq_url(TEST_DATABASE_URL), autocommit=True)
+    admin.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+    monkeypatch.setenv("DATABASE_URL", TEST_DATABASE_URL)
+    monkeypatch.setenv("DATABASE_SCHEMA", schema)
+    clear_caches()
+    command.upgrade(Config(str(BACKEND_DIR / "alembic.ini")), "head")
+    try:
+        yield schema
+    finally:
+        clear_caches()
+        admin.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
+        admin.close()
+
+
+@pytest.mark.usefixtures("seeded")
+def test_two_schemas_sharing_one_redis_do_not_share_cached_totals(
+    make_client: Callable[..., TestClient], redis_client: redis.Redis, empty_schema: str
+) -> None:
+    seeded_total = make_client(REDIS_URL=TEST_REDIS_URL).get("/api/v1/stats/overview").json()
+    other = make_client(REDIS_URL=TEST_REDIS_URL, DATABASE_SCHEMA=empty_schema)
+
+    other_total = other.get("/api/v1/stats/overview").json()
+
+    assert seeded_total["resourceTotal"] > 0
+    assert other_total["resourceTotal"] == 0

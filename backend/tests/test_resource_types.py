@@ -207,8 +207,45 @@ def test_cloud_control_identifier_can_be_derived_from_the_resource_id_alone(case
 @pytest.mark.parametrize("case", CASES)
 def test_every_fixture_property_is_accounted_for(case: Case) -> None:
     mapping = case.spec.mapping
-    known = {*mapping.properties, *mapping.rename, *mapping.exclude, "Tags"}
+    known = {*mapping.properties, *mapping.rename, *mapping.exclude, mapping.tags_property}
     assert set(case.properties) <= known
+
+
+def cloudcontrol_properties(folder: str, file_name: str) -> dict[str, Any]:
+    description = load(FIXTURES / folder / file_name)["ResourceDescription"]
+    return json.loads(description["Properties"])
+
+
+def test_hosted_zone_tags_are_read_from_the_hostedzonetags_property() -> None:
+    """Cloud Control names the tags of a hosted zone `HostedZoneTags`. The official zone
+    fixture carries none, so the tags of the official VPC fixture (the same `{Key, Value}`
+    shape) are put under that property."""
+    spec = REGISTRY.get("AWS::Route53::HostedZone")
+    properties = cloudcontrol_properties("aws.route53.hostedzone", "cloudcontrol_get.json")
+    tags = cloudcontrol_properties("aws.ec2.vpc", "cloudcontrol_get.json")["Tags"]
+    assert tags
+
+    item = to_config_item(
+        spec, {**properties, "HostedZoneTags": tags}, account_id="111122223333", region="us-east-1"
+    )
+
+    assert [(tag.key, tag.value) for tag in item.tags] == [(t["Key"], t["Value"]) for t in tags]
+    assert "HostedZoneTags" not in item.configuration
+    assert all(path[0] != "HostedZoneTags" for path in covered_paths(spec))
+
+
+@pytest.mark.parametrize("spec", list(REGISTRY), ids=lambda spec: spec.type_name)
+def test_the_only_tag_property_in_the_cloud_control_fixtures_is_the_specs_tags_property(
+    spec: ResourceTypeSpec,
+) -> None:
+    folder = FIXTURES / spec.file_name.removesuffix(".json")
+    found: set[str] = set()
+    for path in folder.glob("cloudcontrol_*.json"):
+        data = load(path)
+        descriptions = data.get("ResourceDescriptions") or [data["ResourceDescription"]]
+        for description in descriptions:
+            found |= {k for k in json.loads(description["Properties"]) if "tag" in k.lower()}
+    assert found <= {spec.mapping.tags_property}
 
 
 @pytest.mark.parametrize("case", CASES)
@@ -396,7 +433,12 @@ def test_target_group_maps_from_cloud_control_alone(
     spec: ResourceTypeSpec, properties: dict[str, Any], identifier: str
 ) -> None:
     mapping = spec.mapping
-    assert set(properties) <= {*mapping.properties, *mapping.rename, *mapping.exclude, "Tags"}
+    assert set(properties) <= {
+        *mapping.properties,
+        *mapping.rename,
+        *mapping.exclude,
+        mapping.tags_property,
+    }
     item = to_config_item(spec, properties, account_id=main_account(), region="us-east-1")
 
     assert item.resource_id == identifier == cloudcontrol_identifier(spec, item.configuration)
@@ -435,7 +477,12 @@ def test_ami_maps_with_ownership(image_file: str, ownership: str) -> None:
 def test_every_ami_field_is_accounted_for(image_file: str) -> None:
     image = load(FIXTURES / "aws.ec2.image" / image_file)["Images"][0]
     mapping = REGISTRY.get("AWS::EC2::Image").mapping
-    assert set(image) <= {*mapping.properties, *mapping.rename, *mapping.exclude, "Tags"}
+    assert set(image) <= {
+        *mapping.properties,
+        *mapping.rename,
+        *mapping.exclude,
+        mapping.tags_property,
+    }
 
 
 def test_ami_overlay_clears_a_field_that_disappeared_from_describe_images() -> None:

@@ -76,3 +76,6 @@ Config items exist only for what the fixtures contain, so a Config region and a 
 can differ (for example two VPCs in Cloud Control, one in Config).
 AMIs are registered in moto through its EC2 API (moto assigns the image ids). moto keeps AMIs per
 account, so launch permissions are visible to the owning account only.
+Route 53 hosted zones are global: one copy per account, filed under the region `global` and served
+through the us-east-1 endpoints (Config items carry `awsRegion: "global"`, and only the us-east-1
+recorder includes global resource types).

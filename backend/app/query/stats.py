@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.cache import PREFIX, Cache
+from app.core.cache import Cache
 from app.query.columns import Language, label_of, value_label
 from app.query.tables import ACCOUNT, RESOURCE, A, R
 from app.schemas.resources import AccountTypeCount, StatsOverview, TypeCount
@@ -69,7 +69,7 @@ def compute(session: Session, registry: TypeRegistry, language: Language) -> Sta
 def overview(
     session: Session, registry: TypeRegistry, cache: Cache, language: Language
 ) -> StatsOverview:
-    key = f"{PREFIX}stats:overview:{language}"
+    key = cache.key("stats", "overview", language)
     cached = cache.get(key)
     if cached is not None:
         return StatsOverview.model_validate(cached)

@@ -10,7 +10,7 @@ from pydantic import TypeAdapter
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.orm import Session
 
-from app.core.cache import PREFIX, Cache
+from app.core.cache import Cache
 from app.query.columns import Language, attr_expr, label_of, value_label
 from app.query.filters import ResourceFilter, invalid_filter, single_spec, where
 from app.query.tables import ACCOUNT, RESOURCE, A, R
@@ -38,12 +38,12 @@ class FacetParams(ResourceFilter):
     field: list[str] = []
 
 
-def cache_key(params: FacetParams, language: Language) -> str:
+def cache_key(cache: Cache, params: FacetParams, language: Language) -> str:
     body = params.model_dump(mode="json", by_alias=True)
     digest = hashlib.sha256(
         json.dumps({"filter": body, "language": language}, sort_keys=True).encode()
     ).hexdigest()
-    return f"{PREFIX}facets:{digest}"
+    return cache.key("facets", digest)
 
 
 def _bucket_label(
@@ -121,7 +121,7 @@ def facets(
     params: FacetParams,
     language: Language,
 ) -> dict[str, list[FacetBucket]]:
-    key = cache_key(params, language)
+    key = cache_key(cache, params, language)
     cached = cache.get(key)
     if cached is not None:
         return _BUCKETS.validate_python(cached)

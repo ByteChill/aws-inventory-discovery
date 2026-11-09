@@ -66,6 +66,10 @@ class Sources(SpecModel):
 class Mapping(SpecModel):
     # camel: lowerCamelCase every key. pascal: keep Cloud Control's PascalCase keys.
     key_case: Literal["camel", "pascal"] = "camel"
+    # The Cloud Control property that holds the tags as `[{Key, Value}]`; almost always `Tags`,
+    # but e.g. Route 53 hosted zones use `HostedZoneTags`. It becomes `tags`, never part of
+    # `configuration`.
+    tags_property: str = "Tags"
     # Cloud Control properties this mapping covers (top-level or dotted paths). Without the
     # schema the overlay cannot know which fields Cloud Control would have returned, so the
     # spec lists them. Renamed properties are covered through `rename`.

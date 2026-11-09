@@ -28,3 +28,8 @@ frontend/playwright-report/
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+# Personal Claude Code settings and agent worktrees
+.claude/settings.local.json
+.claude/worktrees/
+.claude/scheduled_tasks.lock

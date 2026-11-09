@@ -2,7 +2,7 @@
 
 发现组织内 1000 多个 AWS 账号的资源，获取它们**当前的真实状态**，在 dashboard 上查询，并通过 API 提供给其他服务。
 
-> **当前状态**：MVP 已实现：两批共 15 个资源类型（含全局类型 Route 53 Hosted Zone）、扫描和写入、API、dashboard、本地环境、部署文件，后端测试和前端 Playwright 测试通过，CI 已配置（还没有在 GitHub 上实际运行过）。账号清单服务 ①、凭证服务 ② 的真实接口格式和真实账号数据的核对要等上线前确认。进度见 [docs/PROGRESS.md](docs/PROGRESS.md)。
+> **当前状态**：MVP 已实现：两批共 15 个资源类型（含全局类型 Route 53 Hosted Zone）、扫描和写入、API、dashboard、本地环境、部署文件，后端测试和前端 Playwright 测试通过，CI 已在 GitHub 上通过。账号清单服务 ①、凭证服务 ② 的真实接口格式和真实账号数据的核对要等上线前确认。进度见 [docs/PROGRESS.md](docs/PROGRESS.md)。
 
 ## 它做什么
 

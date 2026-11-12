@@ -50,7 +50,7 @@ import {
   type TableState,
 } from "./types"
 
-export type Entity = "resources" | "accounts" | "scans" | "tasks"
+export type Entity = "resources" | "accounts" | "apps" | "scans" | "tasks"
 
 export type DataTableProps<Row extends object> = {
   /** Namespaces the remembered column visibility and widths. */
@@ -85,6 +85,12 @@ export type DataTableProps<Row extends object> = {
   stickyFirst?: boolean
   /** Per-header filter buttons; off when the page has its own filter row. */
   filterPopovers?: boolean
+  /** Row click / Enter / Space; ignored when the event starts on a link or button. */
+  onRowActivate?: (row: Row) => void
+  /** Accessible name of the row, usually "Preview <name>". */
+  rowLabel?: (row: Row) => string
+  /** Filters that define the page itself (a service's types) and stay on clear. */
+  preservedFilters?: string[]
 }
 
 const DEFAULT_WIDTH: Record<Column["type"], number> = {
@@ -130,6 +136,9 @@ export function DataTable<Row extends object>({
   toolbarEnd,
   stickyFirst = false,
   filterPopovers = true,
+  onRowActivate,
+  rowLabel,
+  preservedFilters,
 }: DataTableProps<Row>) {
   const { t, locale } = useI18n()
   const [visibility, setVisibility] = useLocalStorage<VisibilityState>(
@@ -198,7 +207,9 @@ export function DataTable<Row extends object>({
   }, [columns.length, rows.length])
 
   const showSkeleton = useDelayedFlag(isLoading && rows.length === 0)
-  const hasFilters = Object.keys(state.filters).length > 0 || !!state.q
+  const preserved = new Set(preservedFilters ?? [])
+  const hasFilters =
+    Object.keys(state.filters).some((key) => !preserved.has(key)) || !!state.q
   const pages = Math.max(1, Math.ceil(total / state.pageSize))
 
   function update(patch: Partial<TableState>) {
@@ -238,7 +249,17 @@ export function DataTable<Row extends object>({
           hasFilters ? (
             <Button
               variant="outline"
-              onClick={() => update({ filters: {}, q: undefined, page: 1 })}
+              onClick={() =>
+                update({
+                  filters: Object.fromEntries(
+                    Object.entries(state.filters).filter(([key]) =>
+                      preserved.has(key),
+                    ),
+                  ),
+                  q: undefined,
+                  page: 1,
+                })
+              }
             >
               {t("action.clearFilters")}
             </Button>
@@ -432,7 +453,42 @@ export function DataTable<Row extends object>({
                   table.getRowModel().rows.map((row) => {
                     const flags = getRowFlags?.(row.original) ?? []
                     return (
-                      <tr key={row.id} className="group hover:bg-subtle">
+                      <tr
+                        key={row.id}
+                        tabIndex={onRowActivate ? 0 : undefined}
+                        aria-label={
+                          onRowActivate ? rowLabel?.(row.original) : undefined
+                        }
+                        onClick={
+                          onRowActivate
+                            ? (e) => {
+                                const target = e.target as HTMLElement
+                                if (
+                                  target.closest(
+                                    "a,button,input,select,textarea,[role='menu']",
+                                  )
+                                )
+                                  return
+                                e.currentTarget.focus()
+                                onRowActivate(row.original)
+                              }
+                            : undefined
+                        }
+                        onKeyDown={
+                          onRowActivate
+                            ? (e) => {
+                                if (e.key !== "Enter" && e.key !== " ") return
+                                e.preventDefault()
+                                onRowActivate(row.original)
+                              }
+                            : undefined
+                        }
+                        className={cn(
+                          "group hover:bg-subtle",
+                          onRowActivate &&
+                            "cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary",
+                        )}
+                      >
                         {row.getVisibleCells().map((cell, i) => {
                           const col = cell.column.columnDef.meta as Column
                           const pinned = stickyFirst && i === 0

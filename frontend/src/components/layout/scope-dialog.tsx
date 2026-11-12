@@ -36,7 +36,7 @@ export function ScopeDialog({
       title={t("scope.title")}
       className="w-[min(660px,calc(100vw-2rem))]"
     >
-      <div className="flex items-center gap-2 rounded-md border border-input bg-surface px-3 text-muted-foreground focus-within:outline-2 focus-within:outline-primary focus-within:outline-offset-1">
+      <div className="flex items-center gap-2 rounded-md border border-input bg-card px-3 text-muted-foreground focus-within:outline-2 focus-within:outline-primary focus-within:outline-offset-1">
         <Search aria-hidden="true" className="size-4 shrink-0" />
         <Input
           autoFocus

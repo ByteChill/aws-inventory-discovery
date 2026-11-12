@@ -32,6 +32,8 @@ export const tableSearchSchema = z.object({
   f: z.record(z.string(), filterValue).optional().catch(undefined),
   /** Resource browsing scope (`app:<EIM>` / `acct:<id>`); see lib/scope.ts. */
   s: scopeParam,
+  /** Show the inventory inside one scan's scope instead of everything. */
+  scanRequestId: z.number().int().positive().optional().catch(undefined),
 })
 
 export type TableSearch = z.infer<typeof tableSearchSchema>

@@ -30,11 +30,18 @@ export function scopeParams(scope: Scope | null): Record<string, string[]> {
     : { accountId: [scope.id] }
 }
 
+/** The resource-list search shape the scope helpers build. */
+export type ScopeSearch = {
+  s?: string
+  q?: string
+  f?: Record<string, string[]>
+}
+
 /** Carry the scope into a link's search object, leaving defaults out. */
 export function withScope(
   scope: Scope | null,
-  search: Record<string, unknown> = {},
-): Record<string, unknown> {
+  search: Omit<ScopeSearch, "s"> = {},
+): ScopeSearch {
   const value = scopeValue(scope)
   return value ? { ...search, s: value } : search
 }

@@ -27,7 +27,7 @@ import type { Scope } from "@/lib/scope"
 import { cn } from "@/lib/utils"
 
 const selectClass =
-  "h-9 max-w-[180px] flex-1 rounded-md border border-input bg-surface px-2 text-foreground min-[801px]:flex-none"
+  "h-9 max-w-[180px] flex-1 rounded-md border border-input bg-card px-2 text-foreground min-[801px]:flex-none"
 const selectActive = "border-primary bg-primary-soft font-semibold text-primary"
 
 const ALL_STATUSES = ["active", "missing", "deleted"]
@@ -44,6 +44,7 @@ export function ResourceFilters({
   columns,
   scope,
   total,
+  hideType,
   exportHref,
 }: {
   state: TableState
@@ -52,6 +53,8 @@ export function ResourceFilters({
   columns: Column[]
   scope: Scope | null
   total: number
+  /** Service and group pages switch types with their own tabs. */
+  hideType?: boolean
   exportHref: (format: "csv" | "jsonl") => string
 }) {
   const { t } = useI18n()
@@ -115,11 +118,26 @@ export function ResourceFilters({
   const moreCount = moreKeys.filter(
     (key) => state.filters[key] !== undefined,
   ).length
-  const hasFilters = Object.keys(state.filters).length > 0 || !!state.q
+  const hasFilters =
+    !!state.q ||
+    Object.keys(state.filters).some(
+      (key) => !(hideType && key === "resourceType"),
+    )
 
   function clearAll() {
     setDraft("")
-    onStateChange({ ...state, filters: {}, q: undefined, page: 1 })
+    onStateChange({
+      ...state,
+      filters: hideType
+        ? Object.fromEntries(
+            Object.entries(state.filters).filter(
+              ([key]) => key === "resourceType",
+            ),
+          )
+        : {},
+      q: undefined,
+      page: 1,
+    })
   }
 
   return (
@@ -127,7 +145,7 @@ export function ResourceFilters({
       className="flex flex-wrap items-center gap-2"
       aria-label={t("resources.filter.searchLabel")}
     >
-      <label className="flex h-9 min-w-[200px] flex-1 basis-[220px] items-center gap-2 rounded-md border border-input bg-surface px-2.5 text-muted-foreground focus-within:outline-2 focus-within:outline-primary focus-within:outline-offset-1 sm:max-w-[320px]">
+      <label className="flex h-9 min-w-[200px] flex-1 basis-[220px] items-center gap-2 rounded-md border border-input bg-card px-2.5 text-muted-foreground focus-within:outline-2 focus-within:outline-primary focus-within:outline-offset-1 sm:max-w-[320px]">
         <Search aria-hidden="true" className="size-4 shrink-0" />
         <input
           type="search"
@@ -186,23 +204,25 @@ export function ResourceFilters({
         ))}
       </select>
 
-      <select
-        value={selectedType}
-        onChange={(e) =>
-          setFilters({
-            resourceType: e.target.value ? [e.target.value] : undefined,
-          })
-        }
-        aria-label={t("resources.group.resourceType")}
-        className={cn(selectClass, selectedType && selectActive)}
-      >
-        <option value="">{t("resources.group.resourceType")}</option>
-        {(facets.resourceType ?? []).map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      {!hideType && (
+        <select
+          value={selectedType}
+          onChange={(e) =>
+            setFilters({
+              resourceType: e.target.value ? [e.target.value] : undefined,
+            })
+          }
+          aria-label={t("resources.group.resourceType")}
+          className={cn(selectClass, selectedType && selectActive)}
+        >
+          <option value="">{t("resources.group.resourceType")}</option>
+          {(facets.resourceType ?? []).map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      )}
 
       <select
         value={status}

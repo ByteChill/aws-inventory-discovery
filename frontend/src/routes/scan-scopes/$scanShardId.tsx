@@ -165,7 +165,7 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
                 page: 1,
               })
           }}
-          className="h-9 w-[min(380px,100%)] rounded-md border border-input bg-surface px-2.5 placeholder:text-muted-foreground"
+          className="h-9 w-[min(380px,100%)] rounded-md border border-input bg-card px-2.5 placeholder:text-muted-foreground"
         />
         {state.q && (
           <Button

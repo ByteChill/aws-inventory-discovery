@@ -154,6 +154,7 @@ export function useOverview() {
 export function useAccounts(
   params: Record<string, string | string[] | boolean>,
   paging: { page: number; pageSize: number; sort: string | undefined },
+  enabled = true,
 ) {
   return useQuery({
     queryKey: ["accounts", params, paging],
@@ -170,6 +171,7 @@ export function useAccounts(
         })
       ).data,
     placeholderData: keepPreviousData,
+    enabled,
   })
 }
 

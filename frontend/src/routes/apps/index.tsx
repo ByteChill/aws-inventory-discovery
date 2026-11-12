@@ -1,16 +1,19 @@
-import { createFileRoute, Link } from "@tanstack/react-router"
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight } from "lucide-react"
-import { type ReactNode, useState } from "react"
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
+import { Search } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import { useApplications } from "@/api/hooks"
 import type { Application } from "@/client"
-import { tableSearchSchema, useTableUrlState } from "@/components/data-table"
-import { EmptyState, InlineError } from "@/components/inline-state"
+import {
+  type Column,
+  DataTable,
+  type Option,
+  tableSearchSchema,
+  useTableUrlState,
+} from "@/components/data-table"
 import { Page, PageHeader } from "@/components/layout/page"
 import { Button } from "@/components/ui/button"
 import { useI18n } from "@/i18n"
-import { errorText } from "@/lib/errors"
-import { formatNumber } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 export const Route = createFileRoute("/apps/")({
@@ -19,261 +22,237 @@ export const Route = createFileRoute("/apps/")({
 })
 
 const ENVIRONMENTS = ["dev", "preprod", "prod"] as const
-type SortKey = "eimApp" | "accountCount" | "resourceCount"
+const DEFAULT_SORT = "-resourceCount"
+
+const selectClass =
+  "h-9 max-w-[180px] flex-1 rounded-md border border-input bg-card px-2 text-foreground min-[801px]:flex-none"
+const selectActive = "border-primary bg-primary-soft font-semibold text-primary"
 
 function Apps() {
   const { t } = useI18n()
   const { state, setState } = useTableUrlState(Route.useSearch())
-  const [q, setQ] = useState(state.q ?? "")
-  const env = first(state.filters.env)
+  const navigate = useNavigate()
+  const env = single(state.filters.environments)
   const apps = useApplications(
     { q: state.q, accountType: env },
     {
       page: state.page,
       pageSize: state.pageSize,
-      sort: state.sort ?? "eimApp",
+      sort: state.sort ?? DEFAULT_SORT,
     },
   )
   const total = apps.data?.total ?? 0
-  const pages = Math.max(1, Math.ceil(total / state.pageSize))
+
+  const [draft, setDraft] = useState(state.q ?? "")
+  const first = useRef(true)
+  useEffect(() => {
+    if (first.current) {
+      first.current = false
+      return
+    }
+    const id = setTimeout(() => {
+      if ((state.q ?? "") === draft.trim()) return
+      setState({ ...state, q: draft.trim() || undefined, page: 1 })
+    }, 350)
+    return () => clearTimeout(id)
+  }, [draft, state, setState])
+  useEffect(() => {
+    setDraft(state.q ?? "")
+  }, [state.q])
+
+  const envOptions = useMemo<Option[]>(
+    () => ENVIRONMENTS.map((value) => ({ value, label: t(`env.${value}`) })),
+    [t],
+  )
+
+  const columns = useMemo<Column[]>(
+    () => [
+      {
+        key: "eimApp",
+        label: t("apps.column.app"),
+        type: "text",
+        mono: false,
+        sortable: true,
+        filterable: false,
+        scope: "common",
+      },
+      {
+        key: "eimId",
+        label: t("apps.column.eim"),
+        type: "text",
+        mono: true,
+        sortable: false,
+        filterable: false,
+        scope: "common",
+      },
+      {
+        key: "baId",
+        label: t("apps.column.ba"),
+        type: "text",
+        mono: true,
+        sortable: false,
+        filterable: false,
+        scope: "common",
+      },
+      {
+        key: "accountCount",
+        label: t("apps.column.accounts"),
+        type: "number",
+        mono: false,
+        sortable: true,
+        filterable: false,
+        scope: "common",
+      },
+      {
+        key: "environments",
+        label: t("apps.column.environments"),
+        type: "text",
+        mono: false,
+        sortable: false,
+        filterable: false,
+        scope: "common",
+      },
+      {
+        key: "resourceCount",
+        label: t("apps.column.resources"),
+        type: "number",
+        mono: false,
+        sortable: true,
+        filterable: false,
+        scope: "common",
+      },
+    ],
+    [t],
+  )
+
+  function open(app: Application) {
+    navigate({ to: "/", search: { s: `app:${app.eimId}` } })
+  }
+
   const hasFilters = !!state.q || !!env
-  const sort = state.sort ?? "eimApp"
-  const sortKey = sort.replace(/^-/, "")
-  const descending = sort.startsWith("-")
-
-  function setEnv(value: string) {
-    const filters = { ...state.filters }
-    if (value) filters.env = [value]
-    else delete filters.env
-    setState({ ...state, filters, page: 1 })
-  }
-
-  function toggleSort(key: SortKey) {
-    const next = sortKey === key ? (descending ? key : `-${key}`) : key
-    setState({ ...state, sort: next, page: 1 })
-  }
-
-  function renderSort(key: SortKey) {
-    return sortKey === key ? (
-      descending ? (
-        <ArrowDown className="size-3.5" />
-      ) : (
-        <ArrowUp className="size-3.5" />
-      )
-    ) : null
-  }
 
   return (
-    <Page className="gap-4">
+    <Page className="min-h-0 gap-4">
       <PageHeader
         title={t("apps.title")}
         description={t("apps.subtitle", { count: total })}
       />
 
-      <search className="flex flex-wrap items-center gap-2">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            setState({ ...state, q: q.trim() || undefined, page: 1 })
-          }}
-          className="w-[min(380px,100%)]"
-        >
-          <input
-            type="search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder={t("apps.searchPlaceholder")}
-            aria-label={t("apps.searchPlaceholder")}
-            className="h-9 w-full rounded-md border border-input bg-surface px-2.5 placeholder:text-muted-foreground"
-          />
-        </form>
-        <select
-          value={env ?? ""}
-          onChange={(e) => setEnv(e.target.value)}
-          aria-label={t("apps.filterEnv")}
-          className={cn(
-            "h-9 rounded-md border border-input bg-surface px-2.5",
-            env && "border-primary bg-primary-soft font-semibold text-primary",
-          )}
-        >
-          <option value="">{t("apps.filterEnv")}</option>
-          {ENVIRONMENTS.map((e) => (
-            <option key={e} value={e}>
-              {t(`env.${e}`)}
-            </option>
-          ))}
-        </select>
-        {(state.q || env) && (
-          <Button
-            variant="link"
-            onClick={() => {
-              setQ("")
-              setState({ ...state, q: undefined, filters: {}, page: 1 })
-            }}
-          >
-            {t("action.clearFilters")}
-          </Button>
-        )}
-      </search>
-
-      {apps.error ? (
-        <InlineError
-          message={errorText(t, apps.error)}
+      <div className="min-h-0 flex-1">
+        <DataTable<Application>
+          tableId="apps"
+          entity="apps"
+          columns={columns}
+          rows={apps.data?.items ?? []}
+          total={total}
+          state={{ ...state, sort: state.sort ?? DEFAULT_SORT }}
+          onStateChange={setState}
+          facets={{ environments: envOptions }}
+          isLoading={apps.isLoading}
+          error={apps.error}
           onRetry={() => apps.refetch()}
-        />
-      ) : !apps.isLoading && total === 0 ? (
-        <EmptyState
-          message={
-            hasFilters ? t("apps.empty") : t("table.emptyUnfiltered.apps")
-          }
-          action={
-            hasFilters ? (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setQ("")
-                  setState({ ...state, q: undefined, filters: {}, page: 1 })
+          getRowId={(app) => app.eimId}
+          columnWidths={{
+            eimApp: 260,
+            eimId: 140,
+            baId: 140,
+            accountCount: 110,
+            environments: 170,
+            resourceCount: 110,
+          }}
+          filterPopovers={false}
+          onRowActivate={open}
+          rowLabel={(app) => t("apps.openRow", { name: app.eimApp })}
+          renderCell={(column, app) => {
+            if (column.key === "eimApp")
+              return (
+                <Link
+                  to="/"
+                  search={{ s: `app:${app.eimId}` }}
+                  title={app.eimApp}
+                  className="block truncate font-semibold text-primary hover:underline"
+                >
+                  {app.eimApp}
+                </Link>
+              )
+            if (column.key === "environments")
+              return (
+                <span className="block truncate">
+                  {app.environments
+                    .map((e) => t(`env.${e}`))
+                    .join(t("common.separator"))}
+                </span>
+              )
+            return undefined
+          }}
+          toolbar={
+            <search
+              className="flex flex-wrap items-center gap-2"
+              aria-label={t("apps.searchPlaceholder")}
+            >
+              <label className="flex h-9 min-w-[200px] flex-1 basis-[220px] items-center gap-2 rounded-md border border-input bg-card px-2.5 text-muted-foreground focus-within:outline-2 focus-within:outline-primary focus-within:outline-offset-1 sm:max-w-[380px]">
+                <Search aria-hidden="true" className="size-4 shrink-0" />
+                <input
+                  type="search"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return
+                    e.preventDefault()
+                    setState({
+                      ...state,
+                      q: draft.trim() || undefined,
+                      page: 1,
+                    })
+                  }}
+                  placeholder={t("apps.searchPlaceholder")}
+                  aria-label={t("apps.searchPlaceholder")}
+                  className="h-full min-w-0 flex-1 bg-transparent text-foreground placeholder:text-muted-foreground focus-visible:outline-0"
+                />
+              </label>
+              <select
+                value={env ?? ""}
+                onChange={(e) => {
+                  const filters = { ...state.filters }
+                  if (e.target.value) filters.environments = [e.target.value]
+                  else delete filters.environments
+                  setState({ ...state, filters, page: 1 })
                 }}
+                aria-label={t("env.label")}
+                className={cn(selectClass, env && selectActive)}
               >
-                {t("action.clearFilters")}
-              </Button>
-            ) : undefined
+                <option value="">{t("env.label")}</option>
+                {ENVIRONMENTS.map((e) => (
+                  <option key={e} value={e}>
+                    {t(`env.${e}`)}
+                  </option>
+                ))}
+              </select>
+              {hasFilters && (
+                <Button
+                  variant="link"
+                  onClick={() => {
+                    setDraft("")
+                    setState({
+                      ...state,
+                      q: undefined,
+                      filters: {},
+                      page: 1,
+                    })
+                  }}
+                >
+                  {t("action.clearFilters")}
+                </Button>
+              )}
+            </search>
           }
         />
-      ) : (
-        <>
-          <div className="overflow-auto rounded-lg border bg-card">
-            <table className="w-full border-collapse text-left">
-              <thead>
-                <tr className="border-b bg-subtle text-xs text-muted-foreground">
-                  <Header>
-                    <SortButton onClick={() => toggleSort("eimApp")}>
-                      {t("apps.column.app")}
-                      {renderSort("eimApp")}
-                    </SortButton>
-                  </Header>
-                  <Header>{t("apps.column.eim")}</Header>
-                  <Header>{t("apps.column.ba")}</Header>
-                  <Header className="text-right">
-                    <SortButton onClick={() => toggleSort("accountCount")}>
-                      {t("apps.column.accounts")}
-                      {renderSort("accountCount")}
-                    </SortButton>
-                  </Header>
-                  <Header>{t("apps.column.environments")}</Header>
-                  <Header className="text-right">
-                    <SortButton onClick={() => toggleSort("resourceCount")}>
-                      {t("apps.column.resources")}
-                      {renderSort("resourceCount")}
-                    </SortButton>
-                  </Header>
-                </tr>
-              </thead>
-              <tbody>
-                {apps.data?.items.map((app) => (
-                  <Row key={app.eimId} app={app} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-            <span>
-              {t("table.total.apps", {
-                count: total,
-              })}
-            </span>
-            <div className="flex items-center gap-2">
-              <span>{t("table.page", { page: state.page, pages })}</span>
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label={t("table.prev")}
-                disabled={state.page <= 1}
-                onClick={() => setState({ ...state, page: state.page - 1 })}
-              >
-                <ChevronLeft />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label={t("table.next")}
-                disabled={state.page >= pages}
-                onClick={() => setState({ ...state, page: state.page + 1 })}
-              >
-                <ChevronRight />
-              </Button>
-            </div>
-          </div>
-        </>
-      )}
+      </div>
     </Page>
   )
 }
 
-function Row({ app }: { app: Application }) {
-  const { t, locale } = useI18n()
-  return (
-    <tr className="border-b last:border-b-0 hover:bg-subtle">
-      <td className="px-3.5 py-2.5">
-        <Link
-          to="/"
-          search={{ s: `app:${app.eimId}` }}
-          className="font-semibold text-primary hover:underline"
-        >
-          {app.eimApp}
-        </Link>
-      </td>
-      <td className="px-3.5 py-2.5 font-mono text-xs text-muted-foreground">
-        {app.eimId}
-      </td>
-      <td className="px-3.5 py-2.5 font-mono text-xs text-muted-foreground">
-        {app.baId ?? ""}
-      </td>
-      <td className="px-3.5 py-2.5 text-right">{app.accountCount}</td>
-      <td className="px-3.5 py-2.5 text-muted-foreground">
-        {app.environments.map((e) => t(`env.${e}`)).join(t("common.separator"))}
-      </td>
-      <td className="px-3.5 py-2.5 text-right">
-        {formatNumber(app.resourceCount, locale)}
-      </td>
-    </tr>
-  )
-}
-
-function Header({
-  children,
-  className,
-}: {
-  children: ReactNode
-  className?: string
-}) {
-  return (
-    <th scope="col" className={cn("px-3.5 py-2 font-medium", className)}>
-      {children}
-    </th>
-  )
-}
-
-function SortButton({
-  children,
-  onClick,
-}: {
-  children: ReactNode
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center gap-1 hover:text-foreground"
-    >
-      {children}
-    </button>
-  )
-}
-
-function first(value: unknown): string | undefined {
+function single(value: unknown): string | undefined {
   if (Array.isArray(value)) return value.length ? String(value[0]) : undefined
   return typeof value === "string" && value ? value : undefined
 }

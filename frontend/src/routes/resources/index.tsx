@@ -1,7 +1,12 @@
-import { createFileRoute, Link } from "@tanstack/react-router"
-import { useMemo } from "react"
+import { createFileRoute, Link, useLocation } from "@tanstack/react-router"
+import { useMemo, useState } from "react"
 
-import { useColumns, useFacets, useResources } from "@/api/hooks"
+import {
+  useColumns,
+  useFacets,
+  useResources,
+  useResourceTypes,
+} from "@/api/hooks"
 import type { Column as ApiColumn, ResourceItem } from "@/client"
 import { CopyButton } from "@/components/copy-button"
 import {
@@ -9,14 +14,22 @@ import {
   DataTable,
   type Option,
   type RowFlag,
+  stateToSearch,
   type TableState,
   tableSearchSchema,
   useTableUrlState,
 } from "@/components/data-table"
 import { Badge } from "@/components/ui/badge"
+import {
+  NAV_GROUPS,
+  type NavGroup,
+  type NavService,
+} from "@/features/inventory-nav"
 import { ResourceFilters } from "@/features/resource-filters"
+import { ResourcePreview } from "@/features/resource-preview"
 import { useI18n } from "@/i18n"
 import { basePath } from "@/lib/base-path"
+import { formatNumber } from "@/lib/format"
 import {
   resourceParams,
   singleType,
@@ -76,9 +89,12 @@ function cellValue(row: ResourceItem, key: string): unknown {
 function Resources() {
   const { t, locale } = useI18n()
   const search = Route.useSearch()
+  const location = useLocation()
   const { state, setState } = useTableUrlState(search)
   const scope = parseScope(search.s)
   const type = singleType(state)
+  const types = useResourceTypes()
+  const [preview, setPreview] = useState<ResourceItem | null>(null)
   const columnsQuery = useColumns(type)
   const apiColumns = columnsQuery.data
   const ready = !!apiColumns && !columnsQuery.isPlaceholderData
@@ -88,7 +104,28 @@ function Resources() {
     [apiColumns, type, scope, t],
   )
 
-  const params = resourceParams(state, apiColumns ?? [], scopeParams(scope))
+  // The menu's service and group links preset `resourceType`; those pages get
+  // type tabs and a strip instead of the type filter.
+  const selectedTypes = useMemo(
+    () => asList(state.filters.resourceType),
+    [state.filters.resourceType],
+  )
+  const service = useMemo(() => findService(selectedTypes), [selectedTypes])
+  const group = useMemo(
+    () => (service ? undefined : findGroup(selectedTypes)),
+    [selectedTypes, service],
+  )
+  const tabTypes = service
+    ? service.types
+    : (group?.services.flatMap((s) => s.types) ?? [])
+
+  const params = resourceParams(
+    state,
+    apiColumns ?? [],
+    search.scanRequestId
+      ? { ...scopeParams(scope), scanRequestId: [String(search.scanRequestId)] }
+      : scopeParams(scope),
+  )
   const list = useResources(
     params,
     { page: state.page, pageSize: state.pageSize, sort: state.sort },
@@ -122,17 +159,41 @@ function Resources() {
   }, [facetQuery.data])
 
   // Type columns exist only while exactly one type is chosen; their filters go with it.
-  function changeState(next: TableState) {
-    if (singleType(next) !== type) {
-      const typeKeys = new Set(
-        (apiColumns ?? []).filter((c) => c.scope === "type").map((c) => c.key),
-      )
-      const filters = Object.fromEntries(
+  function stripTypeFilters(next: TableState): TableState {
+    if (singleType(next) === type) return next
+    const typeKeys = new Set(
+      (apiColumns ?? []).filter((c) => c.scope === "type").map((c) => c.key),
+    )
+    return {
+      ...next,
+      filters: Object.fromEntries(
         Object.entries(next.filters).filter(([k]) => !typeKeys.has(k)),
-      )
-      next = { ...next, filters }
+      ),
     }
-    setState(next)
+  }
+  function changeState(next: TableState) {
+    setState(stripTypeFilters(next))
+  }
+
+  function typeTabSearch(nextType: string) {
+    const next = stripTypeFilters({
+      ...state,
+      filters: { ...state.filters, resourceType: [nextType] },
+      page: 1,
+    })
+    return {
+      ...stateToSearch(next),
+      s: search.s,
+      scanRequestId: search.scanRequestId,
+    }
+  }
+
+  function toggleStripFilter(key: "accountType" | "awsRegion", value: string) {
+    const active = asList(state.filters[key])[0] === value
+    const filters = { ...state.filters }
+    if (active) delete filters[key]
+    else filters[key] = [value]
+    changeState({ ...state, filters, page: 1 })
   }
 
   const exportHref = (format: "csv" | "jsonl") =>
@@ -144,6 +205,14 @@ function Resources() {
     })}`
 
   const total = list.data?.total ?? 0
+  const typeColumns = (apiColumns ?? []).filter((c) => c.scope === "type")
+  const previewTypeLabel = preview
+    ? (types.data?.find((x) => x.typeName === preview.resourceType)?.label ??
+      preview.resourceType)
+    : ""
+  const back = `${location.pathname}${location.searchStr}${
+    location.hash ? `#${location.hash}` : ""
+  }`
   const columnWidths = useMemo(
     () => ({
       ...COLUMN_WIDTHS,
@@ -156,9 +225,95 @@ function Resources() {
     [apiColumns],
   )
 
+  const scanId = search.scanRequestId
+  const typePage = !scanId && (service !== undefined || group !== undefined)
+  const typeCounts = new Map(
+    (facets.resourceType ?? []).map((option) => [option.value, option.count]),
+  )
+  const typeLabel = (name: string) =>
+    facets.resourceType?.find((option) => option.value === name)?.label ??
+    types.data?.find((item) => item.typeName === name)?.label ??
+    name
+  const title = scanId
+    ? t("resources.scanTitle", { id: scanId })
+    : service
+      ? service.label
+      : group
+        ? t(`nav.group.${group.key}`)
+        : t("resources.title")
+
   return (
     <div className="flex h-full flex-col gap-4 px-8 py-6 max-[1180px]:px-5 max-[800px]:px-4">
-      <h1>{t("resources.title")}</h1>
+      <div className="flex flex-col gap-1">
+        <h1>{title}</h1>
+        {typePage && (
+          <p className="text-muted-foreground">
+            {service
+              ? service.types.map(typeLabel).join(t("common.separator"))
+              : group?.services
+                  .map((item) => item.label)
+                  .join(t("common.separator"))}
+          </p>
+        )}
+        {scanId && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
+            <span>{t("resources.scanNote")}</span>
+            <Link
+              to="/scans/$id"
+              params={{ id: String(scanId) }}
+              className="text-primary hover:underline"
+            >
+              {t("resources.backToScan", { id: scanId })}
+            </Link>
+          </div>
+        )}
+      </div>
+
+      {typePage && tabTypes.length > 1 && (
+        <nav
+          aria-label={t("resources.group.resourceType")}
+          className="flex flex-wrap gap-1 overflow-x-auto border-b"
+        >
+          {tabTypes.map((typeName) => {
+            const active =
+              selectedTypes.length === 1 && selectedTypes[0] === typeName
+            return (
+              <Link
+                key={typeName}
+                to="/resources"
+                search={typeTabSearch(typeName)}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "-mb-px flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-sm whitespace-nowrap",
+                  active
+                    ? "border-primary font-semibold text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {typeLabel(typeName)}
+                {typeCounts.has(typeName) && (
+                  <span className="text-xs tabular-nums">
+                    {formatNumber(typeCounts.get(typeName) as number, locale)}
+                  </span>
+                )}
+              </Link>
+            )
+          })}
+        </nav>
+      )}
+
+      {typePage && (
+        <TypeStrip
+          total={total}
+          envs={facets.accountType ?? []}
+          regions={facets.awsRegion ?? []}
+          envActive={asList(state.filters.accountType)[0]}
+          regionActive={asList(state.filters.awsRegion)[0]}
+          showEnv={scope?.kind !== "acct"}
+          onToggle={toggleStripFilter}
+        />
+      )}
+
       <div className="min-h-0 flex-1">
         <DataTable<ResourceItem>
           tableId={type ? "resources-type" : "resources"}
@@ -178,11 +333,16 @@ function Resources() {
           }}
           getRowId={(row) => String(row.id)}
           getCellValue={cellValue}
-          renderCell={(column, row) => renderCell(column, row, facets, t)}
+          renderCell={(column, row) => renderCell(column, row, facets, t, back)}
           defaultHidden={EXTRA_COLUMNS}
           columnWidths={columnWidths}
+          preservedFilters={typePage ? ["resourceType"] : undefined}
           stickyFirst
           filterPopovers={false}
+          onRowActivate={setPreview}
+          rowLabel={(row) =>
+            t("preview.row", { name: row.resourceName ?? row.resourceId })
+          }
           toolbar={
             <ResourceFilters
               state={state}
@@ -191,11 +351,18 @@ function Resources() {
               columns={apiColumns ?? []}
               scope={scope}
               total={total}
+              hideType={typePage}
               exportHref={exportHref}
             />
           }
         />
       </div>
+      <ResourcePreview
+        resource={preview}
+        typeColumns={typeColumns}
+        typeLabel={previewTypeLabel}
+        onClose={() => setPreview(null)}
+      />
     </div>
   )
 }
@@ -252,11 +419,12 @@ function renderCell(
   row: ResourceItem,
   facets: Record<string, Option[]>,
   t: ReturnType<typeof useI18n>["t"],
+  back: string,
 ) {
   const { account } = row
   switch (column.key) {
     case "resourceName":
-      return <IdentityCell row={row} />
+      return <IdentityCell row={row} back={back} />
     case "accountId":
       return (
         <div className="min-w-0">
@@ -324,7 +492,7 @@ function renderCell(
   }
 }
 
-function IdentityCell({ row }: { row: ResourceItem }) {
+function IdentityCell({ row, back }: { row: ResourceItem; back: string }) {
   const { t } = useI18n()
   return (
     <div className="min-w-0">
@@ -332,6 +500,7 @@ function IdentityCell({ row }: { row: ResourceItem }) {
         <Link
           to="/resources/$id"
           params={{ id: String(row.id) }}
+          search={{ back }}
           title={row.resourceName ?? row.resourceId}
           className="truncate font-semibold text-primary hover:underline"
         >
@@ -357,4 +526,128 @@ function IdentityCell({ row }: { row: ResourceItem }) {
       </span>
     </div>
   )
+}
+
+/** The service or group header's strip: how many resources, and where they are. */
+function TypeStrip({
+  total,
+  envs,
+  regions,
+  envActive,
+  regionActive,
+  showEnv,
+  onToggle,
+}: {
+  total: number
+  envs: Option[]
+  regions: Option[]
+  envActive: string | undefined
+  regionActive: string | undefined
+  showEnv: boolean
+  onToggle: (key: "accountType" | "awsRegion", value: string) => void
+}) {
+  const { t, locale } = useI18n()
+  return (
+    <dl className="grid grid-cols-1 divide-y overflow-hidden rounded-lg border bg-card sm:grid-cols-[minmax(160px,0.5fr)_1fr_1fr] sm:divide-x sm:divide-y-0">
+      <div className="px-5 py-3">
+        <dt className="text-xs font-semibold text-muted-foreground">
+          {t("overview.statResources")}
+        </dt>
+        <dd className="mt-1 text-xs text-muted-foreground">
+          <strong className="mr-0.5 text-lg leading-tight font-semibold text-primary">
+            {formatNumber(total, locale)}
+          </strong>
+          {t("overview.unitCount")}
+        </dd>
+      </div>
+      {showEnv && (
+        <PillsCell
+          label={t("resources.group.accountType")}
+          options={envs}
+          active={envActive}
+          onToggle={(value) => onToggle("accountType", value)}
+        />
+      )}
+      <PillsCell
+        label={t("resources.group.awsRegion")}
+        options={regions}
+        active={regionActive}
+        onToggle={(value) => onToggle("awsRegion", value)}
+      />
+    </dl>
+  )
+}
+
+function PillsCell({
+  label,
+  options,
+  active,
+  onToggle,
+}: {
+  label: string
+  options: Option[]
+  active: string | undefined
+  onToggle: (value: string) => void
+}) {
+  const { t, locale } = useI18n()
+  return (
+    <div className="px-5 py-3">
+      <dt className="text-xs font-semibold text-muted-foreground">{label}</dt>
+      <dd className="mt-1 flex flex-wrap items-center gap-1.5">
+        {options.length === 0 && (
+          <span className="text-xs text-muted-foreground">
+            {t("common.none")}
+          </span>
+        )}
+        {options.map((option) => {
+          const on = option.value === active
+          return (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={on}
+              onClick={() => onToggle(option.value)}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs",
+                on
+                  ? "border-primary bg-primary-soft font-semibold text-primary"
+                  : "border-border hover:bg-subtle",
+              )}
+            >
+              {option.label}
+              {option.count !== undefined && (
+                <span
+                  className={cn("tabular-nums", !on && "text-muted-foreground")}
+                >
+                  {formatNumber(option.count, locale)}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </dd>
+    </div>
+  )
+}
+
+function asList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String)
+  return typeof value === "string" && value ? [value] : []
+}
+
+/** The service every selected type belongs to, if there is one. */
+function findService(types: string[]): NavService | undefined {
+  if (types.length === 0) return undefined
+  return NAV_GROUPS.flatMap((group) => group.services).find((service) =>
+    types.every((type) => service.types.includes(type)),
+  )
+}
+
+/** The menu group every selected type belongs to, if there is one. */
+function findGroup(types: string[]): NavGroup | undefined {
+  if (types.length === 0) return undefined
+  return NAV_GROUPS.find((group) => {
+    const known = new Set(group.services.flatMap((service) => service.types))
+    return types.every((type) => known.has(type))
+  })
 }

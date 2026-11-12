@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
-import { Loader2 } from "lucide-react"
+import { ArrowLeft, Loader2 } from "lucide-react"
 import { type ReactNode, useMemo } from "react"
 import { z } from "zod"
 import {
@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { refreshReason } from "@/features/scan-parts"
 import { type MessageKey, useI18n } from "@/i18n"
+import { basePath } from "@/lib/base-path"
 import { errorText } from "@/lib/errors"
 import { scopeParam } from "@/lib/scope"
 import { cn } from "@/lib/utils"
@@ -94,14 +95,23 @@ function AccountChooser({ rows }: { rows: ResourceDetail[] }) {
 
 function Detail({ resource: r }: { resource: ResourceDetail }) {
   const { t } = useI18n()
+  const { back } = Route.useSearch()
   const types = useResourceTypes()
   const refresh = useRefreshResource()
   const typeLabel =
     types.data?.find((x) => x.typeName === r.resourceType)?.label ??
     r.resourceType
+  const backLink = backInfo(back, t)
 
   return (
     <>
+      <a
+        href={`${basePath}${backLink.href}`}
+        className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" />
+        {backLink.label}
+      </a>
       <div className="flex flex-col gap-2">
         <PageHeader
           title={r.resourceName ?? r.resourceId}
@@ -165,19 +175,40 @@ function Detail({ resource: r }: { resource: ResourceDetail }) {
             <span className="font-mono">{r.resourceType}</span>
           </Field>
           <Field label={t("detail.account")}>
-            <Link
-              to="/accounts/$accountId"
-              params={{ accountId: r.accountId }}
-              title={r.accountId}
-              className="text-primary hover:underline"
-            >
-              {r.account.accountName}
-            </Link>
+            <div className="min-w-0">
+              <Link
+                to="/accounts/$accountId"
+                params={{ accountId: r.accountId }}
+                title={r.account.accountName}
+                className="block truncate text-primary hover:underline"
+              >
+                {r.account.accountName}
+              </Link>
+              <span className="flex min-w-0 items-center gap-0.5 font-mono text-xs text-muted-foreground">
+                <span className="truncate">{r.accountId}</span>
+                <CopyButton value={r.accountId} className="size-5 shrink-0" />
+              </span>
+            </div>
           </Field>
           {r.account.eimId && (
             <Field label={t("detail.eim")}>
-              <span className="font-mono">{r.account.eimId}</span>
-              {r.account.eimApp && ` ${r.account.eimApp}`}
+              <div className="min-w-0">
+                <Link
+                  to="/"
+                  search={{ s: `app:${r.account.eimId}` }}
+                  title={r.account.eimApp ?? r.account.eimId}
+                  className="block truncate text-primary hover:underline"
+                >
+                  {r.account.eimApp ?? r.account.eimId}
+                </Link>
+                <span className="flex min-w-0 items-center gap-0.5 font-mono text-xs text-muted-foreground">
+                  <span className="truncate">{r.account.eimId}</span>
+                  <CopyButton
+                    value={r.account.eimId}
+                    className="size-5 shrink-0"
+                  />
+                </span>
+              </div>
             </Field>
           )}
           {r.account.baId && (
@@ -189,7 +220,7 @@ function Detail({ resource: r }: { resource: ResourceDetail }) {
             {t(`env.${r.account.accountType}`)}
           </Field>
           <Field label={t("detail.region")}>
-            <span className="font-mono">{r.awsRegion}</span>
+            {r.awsRegion === "global" ? t("region.global") : r.awsRegion}
           </Field>
           <Field label={t("detail.firstSeen")}>
             <Time value={r.firstSeenAt} />
@@ -391,4 +422,27 @@ function Relationships({ id }: { id: number }) {
       </div>
     </QueryRegion>
   )
+}
+
+/** The back link keeps its source: the list with its filters, or the scan, task or review page. */
+function backInfo(
+  back: string | undefined,
+  t: ReturnType<typeof useI18n>["t"],
+) {
+  const href = back ?? "/resources"
+  const scan = href.match(/^\/scans\/(\d+)/)
+  if (scan) {
+    return {
+      href,
+      label: t("resources.backToScan", { id: Number(scan[1]) }),
+    }
+  }
+  const task = href.match(/^\/tasks\/(\d+)/)
+  if (task) {
+    return { href, label: t("detail.backToTask", { id: Number(task[1]) }) }
+  }
+  if (href.startsWith("/scan-scopes/")) {
+    return { href, label: t("detail.backToReview") }
+  }
+  return { href, label: t("detail.backToList") }
 }

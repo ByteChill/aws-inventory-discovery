@@ -54,7 +54,7 @@ const SERVICE_ICON: Record<string, ComponentType<{ className?: string }>> = {
 
 const linkBase =
   "flex min-h-8 items-center gap-1.5 rounded-md px-2.5 py-1 hover:bg-subtle-strong"
-const linkActive = "bg-surface font-semibold text-primary hover:bg-surface"
+const linkActive = "bg-card font-semibold text-primary hover:bg-card"
 
 export function Sidebar({
   open,
@@ -213,7 +213,7 @@ export function Sidebar({
             aria-label={t("scope.switch")}
             title={t("scope.switch")}
             className={cn(
-              "grid min-h-[50px] w-full grid-cols-[32px_minmax(0,1fr)_14px] items-center gap-2 rounded-md border border-[#d8d0c8] bg-surface px-2 py-2 text-left hover:border-input dark:border-border",
+              "grid min-h-[50px] w-full grid-cols-[32px_minmax(0,1fr)_14px] items-center gap-2 rounded-md border border-[#d8d0c8] bg-card px-2 py-2 text-left hover:border-input dark:border-border",
               scope && "border-primary bg-primary-soft hover:border-primary",
             )}
           >
@@ -306,7 +306,7 @@ export function Sidebar({
                     onClick={onClose}
                     className={cn(
                       "min-h-7 rounded-md px-2 py-0.5 text-xs font-semibold text-muted-foreground hover:bg-subtle-strong",
-                      isOn && "bg-surface text-primary hover:bg-surface",
+                      isOn && "bg-card text-primary hover:bg-card",
                     )}
                   >
                     {t(`nav.group.${group.key}`)}

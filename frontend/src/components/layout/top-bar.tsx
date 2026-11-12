@@ -115,7 +115,7 @@ export function TopBar({ onOpenNav }: { onOpenNav: () => void }) {
 
       {scrolled && !barOpen && (
         <>
-          <div className="fixed top-2.5 right-2 z-30 flex items-center gap-0.5 rounded-full border border-[#d8d0c8] bg-surface p-0.5 shadow-float dark:border-border">
+          <div className="fixed top-2.5 right-2 z-30 flex items-center gap-0.5 rounded-full border border-[#d8d0c8] bg-card p-0.5 shadow-float dark:border-border">
             <button
               ref={searchFabRef}
               type="button"
@@ -133,7 +133,7 @@ export function TopBar({ onOpenNav }: { onOpenNav: () => void }) {
             type="button"
             onClick={onOpenNav}
             aria-label={t("nav.expand")}
-            className="fixed top-2.5 left-2 z-30 hidden size-9 place-items-center rounded-full border border-[#d8d0c8] bg-surface shadow-float hover:bg-subtle-strong max-[800px]:grid dark:border-border"
+            className="fixed top-2.5 left-2 z-30 hidden size-9 place-items-center rounded-full border border-[#d8d0c8] bg-card shadow-float hover:bg-subtle-strong max-[800px]:grid dark:border-border"
           >
             <PanelLeft className="size-4" />
           </button>

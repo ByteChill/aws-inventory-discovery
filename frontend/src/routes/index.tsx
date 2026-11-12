@@ -1,14 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
+import { z } from "zod"
 
 import { useOverview } from "@/api/hooks"
 import { BarList } from "@/components/bar-list"
 import { QueryRegion } from "@/components/inline-state"
 import { Page, PageHeader, Section } from "@/components/layout/page"
-import { SearchBox } from "@/components/search-box"
 import { useI18n } from "@/i18n"
 import { formatCount } from "@/lib/format"
+import { scopeParam } from "@/lib/scope"
 
 export const Route = createFileRoute("/")({
+  validateSearch: z.object({ s: scopeParam }),
   component: Overview,
 })
 
@@ -21,7 +23,6 @@ function Overview() {
   return (
     <Page>
       <PageHeader title={t("nav.overview")} />
-      <SearchBox size="large" className="max-w-2xl" />
       <QueryRegion
         isLoading={stats.isLoading}
         error={stats.error}

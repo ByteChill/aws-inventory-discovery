@@ -31,6 +31,7 @@ import {
   singleType,
   toSearchParams,
 } from "@/lib/resource-query"
+import { parseScope, scopeParams } from "@/lib/scope"
 
 export const Route = createFileRoute("/resources/")({
   validateSearch: tableSearchSchema,
@@ -91,8 +92,16 @@ function asList(value: unknown): string[] {
 
 function Resources() {
   const { t, locale } = useI18n()
-  const { state, setState } = useTableUrlState(Route.useSearch())
+  const search = Route.useSearch()
+  const { state, setState } = useTableUrlState(search)
   const type = singleType(state)
+  const scope = parseScope(search.s)
+  const visibleGroups = SIDEBAR_GROUPS.filter(
+    (key) =>
+      !(scope?.kind === "acct" && key === "accountType") &&
+      !(scope?.kind === "app" && key === "eimId") &&
+      !(scope && key === "accountId"),
+  )
 
   const columnsQuery = useColumns(type)
   const apiColumns = columnsQuery.data
@@ -115,7 +124,7 @@ function Resources() {
     ]
   }, [apiColumns, t])
 
-  const params = resourceParams(state, apiColumns ?? [])
+  const params = resourceParams(state, apiColumns ?? [], scopeParams(scope))
   const list = useResources(
     params,
     { page: state.page, pageSize: state.pageSize, sort: state.sort },
@@ -177,7 +186,7 @@ function Resources() {
     })}`
 
   return (
-    <div className="flex h-full flex-col gap-4 px-6 py-6">
+    <div className="flex h-full flex-col gap-4 px-8 py-6 max-[1180px]:px-5 max-[800px]:px-4">
       <h1>{t("resources.title")}</h1>
       <div className="flex min-h-0 flex-1 gap-6">
         <aside
@@ -201,16 +210,18 @@ function Resources() {
               onRetry={() => facetQuery.refetch()}
             />
           )}
-          {SIDEBAR_GROUPS.filter((k) => facets[k]?.length).map((key) => (
-            <section key={key} className="flex flex-col gap-1.5">
-              <h3>{groupLabel(key)}</h3>
-              <OptionList
-                options={facets[key]}
-                selected={asList(state.filters[key])}
-                onChange={(next) => setFilter(key, next)}
-              />
-            </section>
-          ))}
+          {visibleGroups
+            .filter((k) => facets[k]?.length)
+            .map((key) => (
+              <section key={key} className="flex flex-col gap-1.5">
+                <h3>{groupLabel(key)}</h3>
+                <OptionList
+                  options={facets[key]}
+                  selected={asList(state.filters[key])}
+                  onChange={(next) => setFilter(key, next)}
+                />
+              </section>
+            ))}
           <section className="flex flex-col gap-1.5">
             <h3>{groupLabel("tags")}</h3>
             <TagFilter

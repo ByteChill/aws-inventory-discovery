@@ -112,7 +112,7 @@ function Accounts() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-4 px-6 py-6">
+    <div className="flex h-full flex-col gap-4 px-8 py-6 max-[1180px]:px-5 max-[800px]:px-4">
       <h1>{t("accounts.title")}</h1>
       <div className="min-h-0 flex-1">
         <DataTable<AccountSummary>

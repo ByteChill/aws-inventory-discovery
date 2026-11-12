@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { Loader2 } from "lucide-react"
 import { type ReactNode, useMemo } from "react"
+import { z } from "zod"
 import {
   useLookup,
   useRelationships,
@@ -19,12 +20,18 @@ import { Button } from "@/components/ui/button"
 import { refreshReason } from "@/features/scan-parts"
 import { type MessageKey, useI18n } from "@/i18n"
 import { errorText } from "@/lib/errors"
+import { scopeParam } from "@/lib/scope"
 import { cn } from "@/lib/utils"
 
 // `id` is the numeric resource id, or a URL-encoded ARN from the search box;
 // an ARN resolves through GET /resources/lookup, which returns several rows for
 // a shared AMI.
 export const Route = createFileRoute("/resources/$id")({
+  validateSearch: z.object({
+    s: scopeParam,
+    /** Where the resource was opened from, for the back link. */
+    back: z.string().optional(),
+  }),
   component: ResourcePage,
 })
 

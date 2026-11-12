@@ -1,6 +1,8 @@
 import { createRootRoute, Link, Outlet } from "@tanstack/react-router"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 
+import { Page } from "@/components/layout/page"
+import { Sidebar } from "@/components/layout/sidebar"
 import { TopBar } from "@/components/layout/top-bar"
 import { Button } from "@/components/ui/button"
 import { useI18n } from "@/i18n"
@@ -12,15 +14,21 @@ export const Route = createRootRoute({
 
 function Root() {
   const { t } = useI18n()
+  const [navOpen, setNavOpen] = useState(false)
+
   useEffect(() => {
     document.title = t("app.title")
   }, [t])
+
   return (
-    <div className="flex h-dvh flex-col">
-      <TopBar />
-      <main className="min-h-0 flex-1 overflow-auto">
-        <Outlet />
-      </main>
+    <div className="min-h-dvh">
+      <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />
+      <div className="ml-[264px] min-w-0 max-[1180px]:ml-[224px] max-[800px]:ml-0">
+        <TopBar onOpenNav={() => setNavOpen(true)} />
+        <main className="min-w-0">
+          <Outlet />
+        </main>
+      </div>
     </div>
   )
 }
@@ -28,11 +36,11 @@ function Root() {
 function NotFound() {
   const { t } = useI18n()
   return (
-    <div className="flex flex-col items-start gap-3 p-6">
+    <Page>
       <h1>{t("notFound.title")}</h1>
-      <Button asChild variant="outline">
+      <Button asChild variant="outline" className="self-start">
         <Link to="/">{t("action.backToOverview")}</Link>
       </Button>
-    </div>
+    </Page>
   )
 }

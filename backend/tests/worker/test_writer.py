@@ -290,13 +290,18 @@ def test_mass_disappearance_is_held_until_confirmed_then_checked_one_by_one(
     assert {r.status for r in rows(session, TASKDEF).values()} == {"active"}
     shard = session.get_one(ScanShard, (account, REGION, TASKDEF))
     assert shard.guard_state == "abnormal" and shard.guard_detected_at is not None
+    # The review page's candidates: what the scan wanted to mark missing, held for a person.
+    assert {c["resourceId"] for c in shard.candidate_ids or []} == {o.item.resource_id for o in obs}
+    assert {c["arn"] for c in shard.candidate_ids or []} == {o.item.arn for o in obs}
 
     writer.confirm_guard(account_id=account, region=REGION, resource_type=TASKDEF, by="admin")
     confirmed = finish(writer, [], TASKDEF, T0 + minutes(20), account_id=account)
     assert confirmed.missing == 2 and confirmed.confirm_pending == 2
     assert {r.status for r in rows(session, TASKDEF).values()} == {"missing"}  # not deleted
     session.expire_all()
-    assert session.get_one(ScanShard, (account, REGION, TASKDEF)).guard_state == "normal"
+    shard = session.get_one(ScanShard, (account, REGION, TASKDEF))
+    assert shard.guard_state == "normal"
+    assert shard.candidate_count is None and shard.candidate_ids is None
 
     assert [gone(writer, o, T0 + minutes(30)) for o in obs] == ["deleted", "deleted"]
 

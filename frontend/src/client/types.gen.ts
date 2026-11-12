@@ -187,6 +187,38 @@ export type AccountTypeCount = {
 };
 
 /**
+ * Application
+ *
+ * One EIM: its accounts and resources. EIM, application name and BA are 1:1 (DESIGN 2).
+ */
+export type Application = {
+    /**
+     * Eimid
+     */
+    eimId: string;
+    /**
+     * Eimapp
+     */
+    eimApp: string;
+    /**
+     * Baid
+     */
+    baId: string | null;
+    /**
+     * Accountcount
+     */
+    accountCount: number;
+    /**
+     * Environments
+     */
+    environments: Array<'dev' | 'preprod' | 'prod'>;
+    /**
+     * Resourcecount
+     */
+    resourceCount: number;
+};
+
+/**
  * Backlog
  */
 export type Backlog = {
@@ -405,6 +437,28 @@ export type PageAccountSummary = {
 };
 
 /**
+ * Page[Application]
+ */
+export type PageApplication = {
+    /**
+     * Items
+     */
+    items: Array<Application>;
+    /**
+     * Page
+     */
+    page: number;
+    /**
+     * Pagesize
+     */
+    pageSize: number;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
  * Page[RelationshipEntry]
  */
 export type PageRelationshipEntry = {
@@ -478,6 +532,28 @@ export type PageScanScopeOut = {
      * Items
      */
     items: Array<ScanScopeOut>;
+    /**
+     * Page
+     */
+    page: number;
+    /**
+     * Pagesize
+     */
+    pageSize: number;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
+ * Page[ScopeCandidate]
+ */
+export type PageScopeCandidate = {
+    /**
+     * Items
+     */
+    items: Array<ScopeCandidate>;
     /**
      * Page
      */
@@ -1069,6 +1145,10 @@ export type ScanScope = {
  */
 export type ScanScopeOut = {
     /**
+     * Scanshardid
+     */
+    scanShardId: number;
+    /**
      * Accountid
      */
     accountId: string;
@@ -1141,6 +1221,34 @@ export type ScanSummary = {
      */
     abnormalScopeCount: number;
     workers: WorkerActivity;
+};
+
+/**
+ * ScopeCandidate
+ *
+ * A resource the guard spared. `purged` means the row is gone from the inventory.
+ */
+export type ScopeCandidate = {
+    /**
+     * Id
+     */
+    id: number | null;
+    /**
+     * Resourceid
+     */
+    resourceId: string;
+    /**
+     * Resourcename
+     */
+    resourceName: string | null;
+    /**
+     * Arn
+     */
+    arn: string;
+    /**
+     * Inventorystatus
+     */
+    inventoryStatus: 'active' | 'missing' | 'deleted' | 'purged';
 };
 
 /**
@@ -1416,6 +1524,10 @@ export type ListResourcesData = {
          */
         status?: Array<'active' | 'missing' | 'deleted'>;
         /**
+         * Scanrequestid
+         */
+        scanRequestId?: number | null;
+        /**
          * Q
          */
         q?: string | null;
@@ -1540,6 +1652,10 @@ export type ResourceFacetsData = {
          */
         status?: Array<'active' | 'missing' | 'deleted'>;
         /**
+         * Scanrequestid
+         */
+        scanRequestId?: number | null;
+        /**
          * Q
          */
         q?: string | null;
@@ -1659,6 +1775,10 @@ export type ExportResourcesData = {
          * Status
          */
         status?: Array<'active' | 'missing' | 'deleted'>;
+        /**
+         * Scanrequestid
+         */
+        scanRequestId?: number | null;
         /**
          * Q
          */
@@ -2004,6 +2124,14 @@ export type ListAccountsData = {
     path?: never;
     query?: {
         /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Pagesize
+         */
+        pageSize?: number;
+        /**
          * Accounttype
          */
         accountType?: Array<string>;
@@ -2027,14 +2155,6 @@ export type ListAccountsData = {
          * Active
          */
         active?: boolean;
-        /**
-         * Page
-         */
-        page?: number;
-        /**
-         * Pagesize
-         */
-        pageSize?: number;
         /**
          * Sort
          */
@@ -2122,6 +2242,52 @@ export type GetCoverageResponses = {
 };
 
 export type GetCoverageResponse = GetCoverageResponses[keyof GetCoverageResponses];
+
+export type ListApplicationsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Pagesize
+         */
+        pageSize?: number;
+        /**
+         * Q
+         */
+        q?: string | null;
+        /**
+         * Accounttype
+         */
+        accountType?: Array<string>;
+        /**
+         * Sort
+         */
+        sort?: string;
+    };
+    url: '/api/v1/applications';
+};
+
+export type ListApplicationsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListApplicationsError = ListApplicationsErrors[keyof ListApplicationsErrors];
+
+export type ListApplicationsResponses = {
+    /**
+     * Successful Response
+     */
+    200: PageApplication;
+};
+
+export type ListApplicationsResponse = ListApplicationsResponses[keyof ListApplicationsResponses];
 
 export type ScanSummaryData = {
     body?: never;
@@ -2467,6 +2633,49 @@ export type ListScanScopesResponses = {
 };
 
 export type ListScanScopesResponse = ListScanScopesResponses[keyof ListScanScopesResponses];
+
+export type ListScopeCandidatesData = {
+    body?: never;
+    path: {
+        /**
+         * Scan Shard Id
+         */
+        scan_shard_id: number;
+    };
+    query?: {
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Pagesize
+         */
+        pageSize?: number;
+        /**
+         * Q
+         */
+        q?: string | null;
+    };
+    url: '/api/v1/scan-scopes/{scan_shard_id}/candidates';
+};
+
+export type ListScopeCandidatesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListScopeCandidatesError = ListScopeCandidatesErrors[keyof ListScopeCandidatesErrors];
+
+export type ListScopeCandidatesResponses = {
+    /**
+     * Successful Response
+     */
+    200: PageScopeCandidate;
+};
+
+export type ListScopeCandidatesResponse = ListScopeCandidatesResponses[keyof ListScopeCandidatesResponses];
 
 export type ConfirmScopeChangeData = {
     body: ConfirmChangeBody;

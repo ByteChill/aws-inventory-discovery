@@ -206,9 +206,9 @@ RETURNING *;
 只在范围的扫描**完整成功**后执行。
 
 1. **候选**：这个范围内 `status = 'active'`、不在本次结果里、并且 `observed_at < 截止时间` 的资源。截止时间：Cloud Control 和服务 API 来源是观察时间；Config 来源是 `query_started_at − CONFIG_LAG_GRACE_MINUTES`。「本次结果」是读取过程中记下的 `resource_id` 集合。整个判断在范围行（`scan_shard`）的行锁内、一个事务里完成。
-2. **整批保护**：如果 `候选数 > MISSING_GUARD_MIN` 且 `候选数 / 范围内 active 资源数 > MISSING_GUARD_RATIO`，并且范围的 `guard_state` 不是 `confirmed`：不处理任何候选，`guard_state = 'abnormal'`，记录 `guard_detected_at` 和 `candidate_count`（`GET /scan-scopes` 显示的「未发现」数量），结束。
+2. **整批保护**：如果 `候选数 > MISSING_GUARD_MIN` 且 `候选数 / 范围内 active 资源数 > MISSING_GUARD_RATIO`，并且范围的 `guard_state` 不是 `confirmed`：不处理任何候选，`guard_state = 'abnormal'`，记录 `guard_detected_at`、`candidate_count`（`GET /scan-scopes` 显示的「未发现」数量）和候选资源的 ID（`candidate_ids`，供核对页读取），结束。
 3. 否则候选全部设为 `status = 'missing'`、`missing_since = 观察时间`、`absent_in_scan_at = 截止时间`（第一条证据）、`missing_checks = 0`，计入 `missing`。范围内原来就是 `missing`、这次也没出现的资源（比如之前由单资源刷新标记的），同样补上 `absent_in_scan_at`。然后，范围里只要有带第一条证据的 `missing` 资源，就为这个范围创建一个 `confirm_missing` 任务（同一个范围已经有排队中的就不重复创建）。
-4. `guard_state` 是 `confirmed` 或 `abnormal` 的范围，在这一次没有触发整批保护的处理完后恢复为 `normal`，清空 `candidate_count`。
+4. `guard_state` 是 `confirmed` 或 `abnormal` 的范围，在这一次没有触发整批保护的处理完后恢复为 `normal`，清空 `candidate_count` 和 `candidate_ids`。
 5. 每轮全量扫描对还处于 `missing` 的资源再确认一次，不会自动变成删除。
 6. **单资源刷新发现明确不存在时**（`record_gone`）：资源原来是 `active` 的，只设为 `missing`、`missing_since = 观察时间`，不设 `absent_in_scan_at`；原来是 `missing` 并且已有 `absent_in_scan_at` 的，确认删除。**不存在的观察也必须晚于资源现有的 `observed_at`（R4），否则不处理；被接受的观察（不管结果是什么）都把 `observed_at`、`observed_source` 推进到这个时间**，这样更早开始、还没写完的列表扫描就无法再把它「恢复」。按 ID 读取出错时，资源保持 `missing`，`missing_checks + 1`。
 

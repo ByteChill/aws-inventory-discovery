@@ -125,7 +125,11 @@ class ScanShard(SQLModel, table=True):
     """Per-scope lease, last success and deletion guard."""
 
     __tablename__ = "t_inv_aws_scan_shard"
+    __table_args__ = (Index("uq_t_inv_aws_scan_shard_id", "id", unique=True),)
 
+    # The API names a scope by this id (GET /scan-scopes); the scope itself stays the
+    # (account, region, type) triple.
+    id: int | None = Field(default=None, sa_column=Column(BigInteger, Identity(always=True)))
     account_id: str = Field(sa_type=CHAR(12), primary_key=True)
     region: str = Field(primary_key=True)
     resource_type: str = Field(primary_key=True)
@@ -146,3 +150,6 @@ class ScanShard(SQLModel, table=True):
     guard_confirmed_by: str | None = None
     # How many resources the scan that tripped the guard wanted to mark missing.
     candidate_count: int | None = None
+    # Those resources, saved for the review page: [{resourceId, arn}]. Cleared when the
+    # scope returns to normal; kept (and ignored) while the scope is confirmed.
+    candidate_ids: list[dict[str, str]] | None = Field(default=None, sa_type=JSONB)

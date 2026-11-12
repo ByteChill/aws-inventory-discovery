@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic.alias_generators import to_camel
@@ -16,11 +16,13 @@ from app.core.config import Settings
 from app.core.errors import ApiError
 from app.models import ScanRequest, ScanShard, ScanTask
 from app.models.scan import utcnow
+from app.query.search import like_pattern
 from app.schemas.base import Page
 from app.schemas.scans import (
     Backlog,
     BacklogPair,
     FailureCount,
+    InventoryStatus,
     LogEvent,
     ResourceCounts,
     ScanCounts,
@@ -29,6 +31,7 @@ from app.schemas.scans import (
     ScanScope,
     ScanScopeOut,
     ScanSummary,
+    ScopeCandidate,
     SweepProgress,
     TaskLogs,
     TaskOut,
@@ -257,7 +260,8 @@ def list_scopes(
         session.connection()
         .execute(
             text("""
-        SELECT s.account_id, s.region, s.resource_type, s.guard_state, s.guard_detected_at,
+        SELECT s.id, s.account_id, s.region, s.resource_type, s.guard_state,
+               s.guard_detected_at,
                coalesce(s.candidate_count, 0) AS candidates,
                (SELECT count(*) FROM t_inv_aws_resource r
                  WHERE r.account_id = s.account_id AND r.aws_region = s.region
@@ -272,6 +276,7 @@ def list_scopes(
     )
     items = [
         ScanScopeOut(
+            scan_shard_id=r.id,
             account_id=r.account_id,
             region=r.region,
             resource_type=r.resource_type,
@@ -283,6 +288,73 @@ def list_scopes(
         for r in rows
     ]
     return Page(items=items, page=page, page_size=page_size, total=total)
+
+
+CANDIDATES = """
+    SELECT r.id, c.value ->> 'resourceId' AS resource_id, r.resource_name,
+           coalesce(r.arn, c.value ->> 'arn') AS arn, r.status
+      FROM t_inv_aws_scan_shard s
+      CROSS JOIN LATERAL jsonb_array_elements(coalesce(s.candidate_ids, '[]'::jsonb))
+           AS c(value)
+      LEFT JOIN t_inv_aws_resource r
+        ON r.account_id = s.account_id
+       AND r.aws_region = s.region
+       AND r.resource_type = s.resource_type
+       AND r.resource_id = c.value ->> 'resourceId'
+     WHERE s.id = :id AND s.guard_state = 'abnormal'
+       AND c.value ->> 'resourceId' IS NOT NULL
+"""
+CANDIDATES_SEARCH = """
+       AND (coalesce(r.resource_name, '') ILIKE :pattern
+         OR (c.value ->> 'resourceId') ILIKE :pattern
+         OR coalesce(r.arn, c.value ->> 'arn', '') ILIKE :pattern)
+"""
+
+
+def scope_candidates(
+    session: Session, scan_shard_id: int, q: str | None, page: int, page_size: int
+) -> Page[ScopeCandidate]:
+    """The resources the guard spared when it flagged the scope (DESIGN 8.3).
+
+    The saved candidates are `{resourceId, arn}`, expanded in SQL and left-joined to the
+    inventory; the name and status come from the row while it is still there. A row the
+    retention cleanup removed stays in the list as `purged`, with its resource id and ARN.
+    Searching and paging happen in the database, so the size of the saved list is not a
+    limit. Anything but an abnormal scope has no review list.
+    """
+    shard = session.exec(select(ScanShard).where(col(ScanShard.id) == scan_shard_id)).first()
+    if shard is None:
+        raise ApiError(404, "scope_not_found", "扫描范围不存在", {"id": scan_shard_id})
+    if shard.guard_state != "abnormal" or not shard.candidate_ids:
+        return Page(items=[], page=page, page_size=page_size, total=0)
+    search = ""
+    params: dict[str, Any] = {"id": scan_shard_id}
+    if q:
+        search = CANDIDATES_SEARCH
+        params["pattern"] = like_pattern(q)
+    connection = session.connection()
+    total = connection.execute(
+        text(f"SELECT count(*) FROM ({CANDIDATES}{search}) AS candidates"), params
+    ).scalar_one()
+    rows = connection.execute(
+        text(f"{CANDIDATES}{search} ORDER BY c.value ->> 'resourceId' LIMIT :limit OFFSET :offset"),
+        {**params, "limit": page_size, "offset": (page - 1) * page_size},
+    ).all()
+    return Page(
+        items=[
+            ScopeCandidate(
+                id=row.id,
+                resource_id=row.resource_id,
+                resource_name=row.resource_name,
+                arn=row.arn or "",
+                inventory_status=cast(InventoryStatus, row.status or "purged"),
+            )
+            for row in rows
+        ],
+        page=page,
+        page_size=page_size,
+        total=total,
+    )
 
 
 # --------------------------------------------------------------------------- task logs

@@ -14,6 +14,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
+from app.core.regions import GLOBAL_REGION
 from app.types.spec import ResourceTypeSpec
 
 Path = tuple[str, ...]
@@ -272,7 +273,7 @@ def to_config_item(
         resource_id=resource_id,
         resource_name=_resource_name(spec, configuration, tags),
         resource_type=spec.type_name,
-        aws_region="global" if spec.global_ else region,
+        aws_region=GLOBAL_REGION if spec.global_ else region,
         account_id=account_id,
         configuration=configuration,
         tags=tags,

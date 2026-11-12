@@ -9,7 +9,7 @@
 - 排序参数：`sort`，多个字段用逗号分隔，前面加 `-` 表示倒序。只允许对列定义里 `sortable = true` 的列排序：通用列写列的 `key`（如 `-lastChangedAt`），类型专属列写 `attr.<key>`（只在指定了单一 `resourceType` 时可用）；NULL 总是排在最后；最后再按资源 ID 排序，翻页稳定。
 - 请求头：`X-Caller-Id`（可选，记录到扫描请求的 `callerId`，也是确认异常范围时的 `guardConfirmedBy`，dashboard 传 `dashboard`）；`Idempotency-Key`（只用于 `POST /scans`）；`Accept-Language`（`zh*` 或 `en*`，决定列名、类型名、分类标签的语言，默认中文）。
 - 读写分离：查询类接口读 `DATABASE_READ_URL`（没设置就用 `DATABASE_URL`），创建扫描、刷新、确认异常范围写主库。
-- 鉴权：无，访问由网络层控制。
+- 鉴权：不自己做登录，访问由网络层控制；当前设计阶段用假身份展示，正式接入时由网关传入，仅用于显示。
 
 ### 1.1 分页结构
 
@@ -87,6 +87,19 @@ type Column = {
 }
 
 type FacetBucket = { value: string; label: string; count: number }
+
+type Application = {
+  eimId: string; eimApp: string; baId: string | null;
+  accountCount: number;
+  environments: ("dev" | "preprod" | "prod")[];
+  resourceCount: number
+}
+
+type ScopeCandidate = {
+  id: number | null;            // 数据库 ID；记录已清理时为 null
+  resourceId: string; resourceName: string | null; arn: string;
+  inventoryStatus: "active" | "missing" | "deleted" | "purged"
+}
 ```
 
 ## 3. 资源
@@ -95,7 +108,7 @@ type FacetBucket = { value: string; label: string; count: number }
 - 参数：筛选参数（见 DESIGN.md 8.2）、分页、排序。默认排序 `-lastChangedAt`。
 - 返回：`Page<ResourceItem>`。
 - `attrs` 只在请求里指定了单一 `resourceType` 时返回该类型的专属列；否则为 `{}`。详情和按 ARN 查询的 `attrs` 总是按资源自己的类型计算。数据里没有值的列是 `null`。
-- 筛选参数的规则：同名参数重复传是「或」；不同参数之间是「且」；`status` 默认是 `active` 加 `missing`。`tag=key:value` 按**第一个冒号**切分（所以值里可以有冒号），没有冒号就是「有这个标签」，重复的 `tag` 是「或」；`tagMissing=key` 重复传是「且」（这些标签都没有）。`q` 对名称、ARN、资源 ID 做不区分大小写的包含匹配。时间范围参数是 `<字段>.gte` / `<字段>.lte`，字段是 `configurationItemCaptureTime`、`firstSeenAt`、`lastChangedAt`、`missingSince`、`deletedAt`。`attr.<key>`：文本、枚举、布尔列只能等于（可多值，是「或」）；数字列可以等于，也可以 `.gte` / `.lte`；时间列只能 `.gte` / `.lte`；只在 `resourceType` 恰好指定一个类型时可用。
+- 筛选参数的规则：同名参数重复传是「或」；不同参数之间是「且」；`status` 默认是 `active` 加 `missing`。`tag=key:value` 按**第一个冒号**切分（所以值里可以有冒号），没有冒号就是「有这个标签」，重复的 `tag` 是「或」；`tagMissing=key` 重复传是「且」（这些标签都没有）。`q` 对名称、ARN、资源 ID 做不区分大小写的包含匹配。时间范围参数是 `<字段>.gte` / `<字段>.lte`，字段是 `configurationItemCaptureTime`、`firstSeenAt`、`lastChangedAt`、`missingSince`、`deletedAt`。`scanRequestId` 只列这次扫描范围内的当前资源，范围按已解析的账号、区域、类型计算，不是简单拼接请求里的 `scope`；显示的是当前清单，不代表这次扫描当时的结果。`attr.<key>`：文本、枚举、布尔列只能等于（可多值，是「或」）；数字列可以等于，也可以 `.gte` / `.lte`；时间列只能 `.gte` / `.lte`；只在 `resourceType` 恰好指定一个类型时可用。
 - **类型专属列和通用列重名**（ECS Task Definition 的 `status` 是 Config 里的任务定义状态，和资源的 `status` 同名）：类型专属列在查询参数里**一律**写成 `attr.<key>`（`attr.status`），不带前缀的 `status` 永远是资源状态。`GET /columns` 会返回两个 `key` 都是 `status` 的列，用 `scope`（`common` / `type`）区分；dashboard 据此给类型专属列加前缀。
 
 ### `GET /resources/facets`
@@ -177,6 +190,11 @@ type FacetBucket = { value: string; label: string; count: number }
 ### `GET /accounts/{accountId}/coverage`
 返回：`{ region: string; resourceType: string; state: "ok" | "failed" | "access_denied" | "stale" | "never"; lastSucceededAt: string | null; lastErrorCode: string | null }[]`，来自 `t_inv_aws_scan_shard`，所以只有扫描过的范围有格子，没有的组合 dashboard 显示为「未扫描」。`state`：连续失败次数大于 0 时是 `failed`（最近一次错误码是 `access_denied` 一类时是 `access_denied`）；否则从没成功过是 `never`；最近一次成功超过 12 小时前是 `stale`；其余是 `ok`。
 
+### `GET /applications`
+- 参数：`q`（应用名、EIM、BA，包含匹配）、`accountType`（可重复）、分页、排序（`eimApp`、`accountCount`、`resourceCount`，默认 `eimApp`；不认识的参数返回 422）。
+- 返回：`Page<Application>`。只统计活跃账号；没有 EIM 的账号不出现；`resourceCount` 不含已删除资源。
+- 应用的身份是 EIM。EIM、应用名、BA 一一对应的假设来自 DESIGN 2，真实接口格式确认前不变。
+
 ## 6. 扫描
 
 ```ts
@@ -252,7 +270,12 @@ type Task = {
 - 返回：`{ events: { timestamp: string; level: string; message: string; data: Record<string, unknown> }[]; nextToken: string | null }`。
 
 ### `GET /scan-scopes`
-参数：`guardState`（`normal` / `abnormal` / `confirmed`，默认 `abnormal`）、分页。返回：`Page<{ accountId; region; resourceType; guardState; guardDetectedAt; candidateCount: number; activeCount: number }>`，按检测时间倒序。`candidateCount` 是触发保护的那次扫描想标为「可能已删除」的资源数（`scan_shard.candidate_count`），`activeCount` 是现在这个范围里 `active` 的资源数。
+参数：`guardState`（`normal` / `abnormal` / `confirmed`，默认 `abnormal`）、分页。返回：`Page<{ scanShardId: number; accountId; region; resourceType; guardState; guardDetectedAt; candidateCount: number; activeCount: number }>`，按检测时间倒序。`candidateCount` 是触发保护的那次扫描想标为「可能已删除」的资源数（`scan_shard.candidate_count`），`activeCount` 是现在这个范围里 `active` 的资源数。
+
+### `GET /scan-scopes/{id}/candidates`
+- `id` 是 `GET /scan-scopes` 返回的 `scanShardId`；不存在返回 404 `scope_not_found`。
+- 参数：`q`（名称、资源 ID、ARN，包含匹配）、分页。
+- 返回：`Page<ScopeCandidate>`。候选来自触发保护时保存的候选资源 ID（`scan_shard.candidate_ids`），按资源 ID 排序。资源还在库里时返回库里的名称、ARN 和状态；已经清理的 `id` 为 `null`，`inventoryStatus` 为 `purged`。范围当前不是 `abnormal` 时返回空页。
 
 ### `POST /scan-scopes/confirm-change`
 请求体：`{ "accountId", "awsRegion", "resourceType" }`（账号必须是 12 位数字，类型必须认识，否则 422 `validation_error`）。范围从没扫描过返回 404 `scope_not_found`；当前不是 `abnormal` 返回 409 `scope_not_abnormal`。否则把这个范围设为 `confirmed`，记录 `guardConfirmedBy`（`X-Caller-Id`，没有就记 `api`），并立即为它创建一个按需 `shard` 任务（请求的 `target` 是 `{accountId, awsRegion, resourceType}`）。返回：`{ scanRequestId: number }`。这个 `shard` 完成后，这个范围里没看到的资源逐个按 R5 第 4 步确认，不会直接删除。

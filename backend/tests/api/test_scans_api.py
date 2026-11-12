@@ -6,6 +6,7 @@ The end-to-end behaviour is in tests/worker/test_end_to_end.py.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterator
 from typing import Any
 
@@ -30,7 +31,7 @@ def db_engine(schema_name: str) -> Iterator[Engine]:
         connection.execute(
             text(
                 "UPDATE t_inv_aws_scan_shard SET guard_state = 'normal', candidate_count = NULL,"
-                " guard_detected_at = NULL, guard_confirmed_by = NULL"
+                " candidate_ids = NULL, guard_detected_at = NULL, guard_confirmed_by = NULL"
             )
         )
     engine.dispose()
@@ -236,6 +237,7 @@ def test_scan_scopes_and_confirming_an_abnormal_one(api: TestClient, db_engine: 
         )
     (abnormal,) = api.get(f"{API}/scan-scopes").json()["items"]
     assert abnormal["candidateCount"] == 30 and abnormal["resourceType"] == SCOPE["resourceType"]
+    assert isinstance(abnormal["scanShardId"], int)
     assert api.get(f"{API}/scans/summary").json()["abnormalScopeCount"] == 1
 
     confirmed = api.post(
@@ -260,6 +262,68 @@ def test_scan_scopes_and_confirming_an_abnormal_one(api: TestClient, db_engine: 
             {"a": SCOPE["accountId"], "r": SCOPE["awsRegion"], "t": SCOPE["resourceType"]},
         ).one()
     assert tuple(shard) == ("confirmed", "alice")
+
+
+def test_scope_candidates_come_from_the_candidates_saved_with_the_guard(
+    api: TestClient, db_engine: Engine, seeded: Seeded
+) -> None:
+    vpc = seeded.one(account_id=MAIN_ACCOUNT, aws_region="us-east-1", resource_type="AWS::EC2::VPC")
+    purged = {
+        "resourceId": "vpc-0purged0000000000",
+        "arn": "arn:aws:ec2:us-east-1:111122223333:vpc/vpc-0purged0000000000",
+    }
+    stored = [{"resourceId": vpc["resource_id"], "arn": vpc["arn"]}, purged]
+    scope = {"accountId": vpc["account_id"], "awsRegion": vpc["aws_region"]}
+    scope["resourceType"] = vpc["resource_type"]
+    with db_engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE t_inv_aws_scan_shard SET guard_state = 'abnormal', candidate_count = 2,"
+                " candidate_ids = CAST(:ids AS jsonb), guard_detected_at = now()"
+                " WHERE account_id = :a AND region = :r AND resource_type = :t"
+            ),
+            {
+                "ids": json.dumps(stored),
+                "a": scope["accountId"],
+                "r": scope["awsRegion"],
+                "t": scope["resourceType"],
+            },
+        )
+    (item,) = api.get(f"{API}/scan-scopes", params={"guardState": "abnormal"}).json()["items"]
+    url = f"{API}/scan-scopes/{item['scanShardId']}/candidates"
+
+    body = api.get(url).json()
+
+    assert body["total"] == 2
+    resource_ids = [c["resourceId"] for c in body["items"]]
+    assert resource_ids == sorted(resource_ids)
+    found = next(c for c in body["items"] if c["resourceId"] == vpc["resource_id"])
+    assert (found["id"], found["resourceName"], found["arn"]) == (
+        vpc["id"],
+        vpc["resource_name"],
+        vpc["arn"],
+    )
+    assert found["inventoryStatus"] == vpc["status"]
+    gone = next(c for c in body["items"] if c["resourceId"] == purged["resourceId"])
+    assert (gone["id"], gone["resourceName"], gone["inventoryStatus"]) == (
+        None,
+        None,
+        "purged",
+    )
+    assert gone["arn"] == purged["arn"]
+
+    assert api.get(url, params={"q": "purged"}).json()["total"] == 1
+    assert api.get(url, params={"q": vpc["resource_id"][-8:]}).json()["total"] == 1
+    first = api.get(url, params={"pageSize": 1}).json()
+    assert first["total"] == 2 and len(first["items"]) == 1
+
+    with db_engine.begin() as connection:
+        connection.execute(text("UPDATE t_inv_aws_scan_shard SET guard_state = 'normal'"))
+    normal = api.get(url).json()
+    assert normal["total"] == 0 and normal["items"] == []
+
+    missing = api.get(f"{API}/scan-scopes/999999999/candidates")
+    assert error_of(missing, 404)["code"] == "scope_not_found"
 
 
 def test_task_logs_are_503_when_cloudwatch_cannot_be_reached(

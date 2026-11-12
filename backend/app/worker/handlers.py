@@ -35,6 +35,7 @@ from app.aws.errors import ScanError, classify
 from app.aws.regions import ENABLED, NoDescribeRegionsRegion, describe_regions
 from app.aws.session import make_client, make_session
 from app.core.config import Settings
+from app.core.regions import GLOBAL_HOME, GLOBAL_REGION
 from app.models import AccountRegion, Resource, ScanRequest, ScanTask
 from app.models.scan import utcnow
 from app.types.hooks import TYPE_HOOKS, Gone, Hooks
@@ -48,8 +49,6 @@ from app.worker.writer import ACCESS_TASK_KINDS, ResourceWriter
 
 logger = logging.getLogger(__name__)
 
-GLOBAL_REGION = "global"  # the scope region of global types (Route 53 hosted zones)
-GLOBAL_HOME = "us-east-1"  # where global types are read
 STAT_KEYS = ("new", "updated", "unchanged", "restored", "missing", "deleted")
 
 

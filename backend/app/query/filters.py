@@ -8,11 +8,13 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 from pydantic.alias_generators import to_camel
-from sqlalchemy import ColumnElement, and_, or_
+from sqlalchemy import ColumnElement, and_, func, or_, select
 
 from app.core.errors import ApiError
+from app.core.regions import GLOBAL_HOME, GLOBAL_REGION
 from app.query.columns import COMMON_BY_KEY, attr_expr
-from app.query.tables import A, R
+from app.query.search import like_pattern
+from app.query.tables import RESOURCE, SCAN_REQUEST, SCAN_TASK, A, R
 from app.types.columns import ColumnPath, column_paths
 from app.types.registry import TypeRegistry
 from app.types.spec import ResourceTypeSpec
@@ -54,6 +56,7 @@ class ResourceFilter(BaseModel):
     aws_region: list[str] = []
     resource_type: list[str] = []
     status: list[Literal["active", "missing", "deleted"]] = []
+    scan_request_id: int | None = None
     q: str | None = None
     tag: list[str] = []
     tag_missing: list[str] = []
@@ -155,11 +158,6 @@ def attr_condition(
 # --------------------------------------------------------------------------- conditions
 
 
-def _like(text: str) -> str:
-    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    return f"%{escaped}%"
-
-
 def _tag_conditions(f: ResourceFilter) -> list[ColumnElement[bool]]:
     conditions: list[ColumnElement[bool]] = []
     if f.tag:
@@ -173,6 +171,55 @@ def _tag_conditions(f: ResourceFilter) -> list[ColumnElement[bool]]:
     return conditions
 
 
+def _scan_request_condition(scan_request_id: int) -> ColumnElement[bool]:
+    """Resources inside the resolved scope of a scan (DESIGN 8.2): the scopes its tasks
+    actually cover, not the scope written on the request.
+
+    A `shard` task covers its (account, region, type); a `config_group` task covers every
+    Config type of its account and region, so the request's `resourceTypes` restriction (or
+    the absence of one) decides the types. `confirm_missing` covers the whole scope of its
+    account, region and type like a shard; a `resource` task names one resource. Global
+    resources are written under the `global` region but read in us-east-1. A `sweep_account`
+    task is planning only (it covers nothing by itself).
+    """
+    task_region = or_(
+        SCAN_TASK.c.region.is_(None),
+        SCAN_TASK.c.region == R.aws_region,
+        and_(R.aws_region == GLOBAL_REGION, SCAN_TASK.c.region == GLOBAL_HOME),
+    )
+    scope_types = SCAN_REQUEST.c.scope["resourceTypes"]
+    request_allows_type = or_(
+        func.coalesce(func.jsonb_array_length(scope_types), 0) == 0,
+        scope_types.op("?")(R.resource_type),
+    )
+    covered = or_(
+        and_(
+            SCAN_TASK.c.kind.in_(("shard", "config_group", "confirm_missing")),
+            or_(
+                SCAN_TASK.c.resource_type == R.resource_type,
+                and_(SCAN_TASK.c.resource_type.is_(None), request_allows_type),
+            ),
+        ),
+        and_(
+            SCAN_TASK.c.kind == "resource",
+            SCAN_TASK.c.resource_type == R.resource_type,
+            SCAN_TASK.c.resource_id == R.resource_id,
+        ),
+    )
+    return (
+        select(SCAN_TASK.c.scan_request_id)
+        .select_from(SCAN_TASK.join(SCAN_REQUEST, SCAN_TASK.c.scan_request_id == SCAN_REQUEST.c.id))
+        .where(
+            SCAN_TASK.c.scan_request_id == scan_request_id,
+            SCAN_TASK.c.account_id == R.account_id,
+            task_region,
+            covered,
+        )
+        .correlate(RESOURCE)
+        .exists()
+    )
+
+
 def conditions(
     f: ResourceFilter, registry: TypeRegistry, *, skip: str | None = None
 ) -> list[ColumnElement[bool]]:
@@ -184,8 +231,10 @@ def conditions(
             result.append(column.in_(values))
     if skip != "status":
         result.append(R.status.in_(f.status or DEFAULT_STATUSES))
+    if f.scan_request_id is not None:
+        result.append(_scan_request_condition(f.scan_request_id))
     if f.q:
-        pattern = _like(f.q)
+        pattern = like_pattern(f.q)
         result.append(
             or_(
                 R.resource_name.ilike(pattern),

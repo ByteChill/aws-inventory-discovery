@@ -5,13 +5,13 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
-from pydantic.alias_generators import to_camel
 from sqlalchemy import ColumnElement, Row, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
 from app.query.columns import STALE_AFTER
+from app.query.paging import PagingParams
+from app.query.search import like_pattern
 from app.query.tables import ACCOUNT, ACCOUNT_REGION, A, R, S
 from app.schemas.accounts import AccountDetail, AccountRegionInfo, AccountSummary, CoverageCell
 from app.schemas.base import Page
@@ -35,17 +35,13 @@ RESOURCE_COUNT = (
 ACCESS_DENIED_MARKS = ("accessdenied", "access_denied", "unauthorized")
 
 
-class AccountFilter(BaseModel):
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
-
+class AccountFilter(PagingParams):
     account_type: list[str] = []
     eim_id: list[str] = []
     ba_id: list[str] = []
     access_status: list[str] = []
     q: str | None = None
     active: bool = True
-    page: int = Field(default=1, ge=1)
-    page_size: int = Field(default=50, ge=1, le=200)
     sort: str = "accountName"
 
 
@@ -100,10 +96,8 @@ def list_accounts(session: Session, params: AccountFilter, purge_days: int) -> P
         if values:
             conditions.append(column.in_(values))
     if params.q:
-        escaped = params.q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        conditions.append(
-            or_(A.account_name.ilike(f"%{escaped}%"), A.account_id.ilike(f"%{escaped}%"))
-        )
+        pattern = like_pattern(params.q)
+        conditions.append(or_(A.account_name.ilike(pattern), A.account_id.ilike(pattern)))
     ordering: list[ColumnElement[Any]] = []
     for token in params.sort.split(","):
         key = token.strip().removeprefix("-")

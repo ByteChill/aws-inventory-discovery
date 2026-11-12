@@ -4,7 +4,7 @@
 
 完成一项任务后更新这里；里程碑的范围有变化时，先更新 [DESIGN.md](DESIGN.md) 并让人确认。
 
-最后更新：2026-11-10
+最后更新：2026-11-13
 
 ## 总览
 
@@ -20,7 +20,7 @@
 | M7 部署 | 完成（待平台创建资源后实际验证） |
 | M8 上线确认 | 未开始 |
 
-**MVP1 完成，已合并到 main**：两批共 15 个资源类型、完整的扫描和写入流程、API、dashboard、本地环境和部署文件。后端 325 个测试通过（`cd backend && uv run pytest`，需要 `podman compose up -d postgres redis`），Playwright 端到端测试 6 个通过（`cd frontend && npm run e2e`，需要本地栈），CI 工作流（`.github/workflows/ci.yml`）已在 GitHub 上通过。剩下的是真实环境的确认（见 M1、M8）。
+**MVP1 完成，已合并到 main**：两批共 15 个资源类型、完整的扫描和写入流程、API、dashboard、本地环境和部署文件。后端 337 个测试通过（`cd backend && uv run pytest`，需要 `podman compose up -d postgres redis`），Playwright 端到端测试 6 个通过（`cd frontend && npm run e2e`，需要本地栈），CI 工作流（`.github/workflows/ci.yml`）已在 GitHub 上通过。剩下的是真实环境的确认（见 M1、M8）。
 
 设计阶段已完成：[DESIGN.md](DESIGN.md)、[DECISIONS.md](DECISIONS.md)、[specs/](specs/)。实现中发现的偏差已经同步到这些文档（DECISIONS D-21 起）。
 
@@ -74,11 +74,14 @@
 - [x] 列定义、资源类型、概览
 - [x] 账号：列表、详情、扫描状态格子
 - [x] 扫描：摘要、发起（含 `Idempotency-Key`）、记录、详情、任务、重试、取消、任务日志、异常范围
+- [x] 新 dashboard 需要的三个接口：`GET /applications`（按 EIM 汇总活跃账号、环境数和资源数）；资源列表、分类和导出的 `scanRequestId`（按请求里任务的已解析范围，取当前清单）；`GET /scan-scopes/{id}/candidates`（候选 ID 和 ARN 存在 `scan_shard.candidate_ids`，迁移 0005，范围恢复正常时清空）
 - [x] 健康检查；统一错误格式；Redis 缓存
 - [x] 测试：主要接口的行为
 
 ## M6 Dashboard
-- [x] 三套配色方案（中国传统色，暖灰 + 一个主色）：黛绿、黛蓝、胭脂，`?palette=` 切换；最终保留哪套还没有定
+- [x] 静态 Dashboard 原型完成本轮交互验收与独立只读评审；修复搜索／登录菜单焦点冲突、扫描重绘丢失焦点及资源刷新结果串页问题。设计尚待确认，未迁移至生产前端。
+- [x] 规格同步：重写 [specs/dashboard.md](specs/dashboard.md)；补充应用列表、扫描范围过滤、异常范围候选 ID、网关身份、胭脂配色和响应式检查（DESIGN、DECISIONS、api.md、scanner.md）。
+- [x] 配色：胭脂（中国传统色，暖灰 + 一个主色），满足 WCAG AA；黛绿、黛蓝保留在设计记录里，界面不再切换
 - [x] 数据表格组件：根据列定义生成列和筛选控件，服务端筛选、排序、分页
 - [x] 页面：概览、资源列表、资源详情、账号、扫描（含扫描详情、任务详情），见 [specs/dashboard.md](specs/dashboard.md)
 - [x] 中文和英文；亮色和暗色

@@ -467,7 +467,7 @@ class ResourceWriter:
             )
             candidates = list(
                 db.exec(
-                    select(Resource.id)
+                    select(Resource.id, Resource.resource_id, Resource.arn)
                     .where(
                         *in_scope,
                         col(Resource.status) == "active",
@@ -478,6 +478,7 @@ class ResourceWriter:
                     .with_for_update()
                 ).all()
             )
+            candidate_ids = [row[0] for row in candidates]
             active_total = db.exec(
                 select(func.count())
                 .select_from(Resource)
@@ -492,13 +493,16 @@ class ResourceWriter:
                 shard.guard_state = "abnormal"
                 shard.guard_detected_at = datetime.now(UTC)
                 shard.candidate_count = len(candidates)
+                shard.candidate_ids = [
+                    {"resourceId": resource_id, "arn": arn} for _, resource_id, arn in candidates
+                ]
                 db.add(shard)
                 return ScopeOutcome(True, 0, "abnormal", 0)
 
             if candidates:
                 db.exec(
                     update(Resource)
-                    .where(col(Resource.id).in_(candidates))
+                    .where(col(Resource.id).in_(candidate_ids))
                     .values(
                         status="missing",
                         missing_since=observed_at,
@@ -520,6 +524,7 @@ class ResourceWriter:
             if shard.guard_state in ("confirmed", "abnormal"):
                 shard.guard_state = "normal"
                 shard.candidate_count = None
+                shard.candidate_ids = None
                 db.add(shard)
             pending = db.exec(
                 select(func.count())

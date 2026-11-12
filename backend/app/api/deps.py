@@ -11,6 +11,7 @@ from app.core.cache import Cache
 from app.core.config import get_settings
 from app.core.db import get_read_session, get_session
 from app.query.accounts import AccountFilter
+from app.query.applications import ApplicationFilter
 from app.query.columns import Language, pick_language
 from app.query.export import ExportParams
 from app.query.facets import FacetParams
@@ -68,3 +69,4 @@ ResourceListDep = Annotated[Paging, Query()]
 FacetParamsDep = Annotated[FacetParams, Query()]
 ExportParamsDep = Annotated[ExportParams, Query()]
 AccountFilterDep = Annotated[AccountFilter, Query()]
+ApplicationFilterDep = Annotated[ApplicationFilter, Query()]

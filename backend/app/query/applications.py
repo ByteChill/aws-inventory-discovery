@@ -4,25 +4,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, func, or_, select
+from sqlalchemy import ColumnElement, FromClause, Subquery, any_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
 from app.query.paging import PagingParams
 from app.query.search import like_pattern
-from app.query.tables import ACCOUNT, RESOURCE, A, R
+from app.query.tables import A, R
 from app.schemas.applications import Application
 from app.schemas.base import Page
 
 ENVIRONMENTS = ("dev", "preprod", "prod")
-ACCOUNT_COUNT = func.count(func.distinct(A.account_id))
-RESOURCE_COUNT = func.count(func.distinct(R.id))
-GROUPED_ENVIRONMENTS = func.array_agg(func.distinct(A.account_type))
-SORTABLE: dict[str, ColumnElement[Any]] = {
-    "eimApp": A.eim_app,
-    "accountCount": ACCOUNT_COUNT,
-    "resourceCount": RESOURCE_COUNT,
-}
 
 
 class ApplicationFilter(PagingParams):
@@ -51,17 +43,54 @@ def _conditions(params: ApplicationFilter) -> list[ColumnElement[bool]]:
     return conditions
 
 
-def _ordering(sort: str) -> list[ColumnElement[Any]]:
+def _applications(params: ApplicationFilter) -> Subquery:
+    """One row per application with its accounts counted and listed; no resources yet."""
+    return (
+        select(
+            A.eim_id,
+            A.eim_app,
+            A.ba_id,
+            func.count().label("account_count"),
+            func.array_agg(func.distinct(A.account_type)).label("environments"),
+            func.array_agg(A.account_id).label("account_ids"),
+        )
+        .where(*_conditions(params))
+        .group_by(A.eim_id, A.eim_app, A.ba_id)
+        .subquery("application")
+    )
+
+
+def _resource_count(applications: FromClause) -> ColumnElement[int]:
+    """The resources of an application's accounts; deleted resources are not counted."""
+    return (
+        select(func.count())
+        .where(R.account_id == any_(applications.c.account_ids), R.status != "deleted")
+        .correlate(applications)
+        .scalar_subquery()
+    )
+
+
+def _ordering(
+    sort: str, applications: FromClause, resource_count: ColumnElement[int]
+) -> list[ColumnElement[Any]]:
+    sortable: dict[str, ColumnElement[Any]] = {
+        "eimApp": applications.c.eim_app,
+        "accountCount": applications.c.account_count,
+        "resourceCount": resource_count,
+    }
     ordering: list[ColumnElement[Any]] = []
     for token in sort.split(","):
         key = token.strip().removeprefix("-")
-        expr = SORTABLE.get(key)
+        expr = sortable.get(key)
         if expr is None:
             raise ApiError(400, "invalid_sort", f"不能按 {key} 排序", {"sort": token})
         ordering.append(
             expr.desc().nulls_last() if token.strip().startswith("-") else expr.asc().nulls_last()
         )
-    ordering.append(A.eim_id.asc())  # a total order keeps pages stable
+    # The grouping key as the tie-break: a total order keeps pages stable.
+    ordering.extend(
+        (applications.c.eim_id.asc(), applications.c.eim_app.asc(), applications.c.ba_id.asc())
+    )
     return ordering
 
 
@@ -78,34 +107,21 @@ def _application(row: Any) -> Application:
 
 
 def list_applications(session: Session, params: ApplicationFilter) -> Page[Application]:
-    conditions = _conditions(params)
-    base = (
-        select(
-            A.eim_id,
-            A.eim_app,
-            A.ba_id,
-            ACCOUNT_COUNT.label("account_count"),
-            GROUPED_ENVIRONMENTS.label("environments"),
-            RESOURCE_COUNT.label("resource_count"),
-        )
-        .select_from(ACCOUNT)
-        # Deleted resources are not counted; accounts without resources still appear.
-        .join(
-            RESOURCE,
-            and_(R.account_id == A.account_id, R.status != "deleted"),
-            isouter=True,
-        )
-        .where(*conditions)
-        .group_by(A.eim_id, A.eim_app, A.ba_id)
-    )
-    rows = session.execute(
-        base.order_by(*_ordering(params.sort))
+    applications = _applications(params)
+    # Page first, then count resources for that page only. Counting them for every
+    # application is needed only to sort by the count.
+    page = (
+        select(applications)
+        .order_by(*_ordering(params.sort, applications, _resource_count(applications)))
         .limit(params.page_size)
-        .offset((params.page - 1) * params.page_size)
+        .offset(params.offset)
+        .subquery("page")
+    )
+    resource_count = _resource_count(page).label("resource_count")
+    rows = session.execute(
+        select(page, resource_count).order_by(*_ordering(params.sort, page, resource_count))
     ).all()
-    total = session.execute(
-        select(func.count(func.distinct(A.eim_id))).select_from(ACCOUNT).where(*conditions)
-    ).scalar_one()
+    total = session.execute(select(func.count()).select_from(applications)).scalar_one()
     return Page(
         items=[_application(row) for row in rows],
         page=params.page,

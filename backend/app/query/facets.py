@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import timedelta
 from typing import Any
 
 from pydantic import TypeAdapter
@@ -80,6 +81,8 @@ def compute(
     registry: TypeRegistry,
     params: FacetParams,
     language: Language,
+    *,
+    task_retention: timedelta,
 ) -> dict[str, list[FacetBucket]]:
     result: dict[str, list[FacetBucket]] = {}
     for field in dict.fromkeys(params.field):
@@ -92,7 +95,10 @@ def compute(
                 *([func.max(label).label("name")] if label is not None else []),
             )
             .select_from(RESOURCE.join(ACCOUNT, R.account_id == A.account_id))
-            .where(where(params, registry, skip=field), value.is_not(None))
+            .where(
+                where(params, registry, task_retention=task_retention, skip=field),
+                value.is_not(None),
+            )
             .group_by(value)
             .order_by(total.desc(), value)
             .limit(MAX_BUCKETS)
@@ -120,11 +126,13 @@ def facets(
     cache: Cache,
     params: FacetParams,
     language: Language,
+    *,
+    task_retention: timedelta,
 ) -> dict[str, list[FacetBucket]]:
     key = cache_key(cache, params, language)
     cached = cache.get(key)
     if cached is not None:
         return _BUCKETS.validate_python(cached)
-    result = compute(session, registry, params, language)
+    result = compute(session, registry, params, language, task_retention=task_retention)
     cache.set(key, _BUCKETS.dump_python(result, mode="json", by_alias=True), CACHE_SECONDS)
     return result

@@ -282,6 +282,7 @@ CREATE TABLE t_inv_aws_scan_task (
 
 -- 扫描范围：租约、最近一次成功、删除保护
 CREATE TABLE t_inv_aws_scan_shard (
+  id                    bigint GENERATED ALWAYS AS IDENTITY,  -- 唯一；API 用它指代一个范围（scanShardId）
   account_id            char(12),
   region                text,
   resource_type         text,
@@ -298,6 +299,7 @@ CREATE TABLE t_inv_aws_scan_shard (
   guard_detected_at     timestamptz,
   guard_confirmed_by    text,
   candidate_count       int,              -- 触发保护的那次扫描想标为 missing 的资源数
+  candidate_ids         jsonb,            -- 这些资源的 [{resourceId, arn}]；范围恢复 normal 时清空
   PRIMARY KEY (account_id, region, resource_type)
 );
 ```
@@ -409,7 +411,7 @@ T2  定时扫描写入 q1、q2，observed_at = T0
 | `tag=key:value` / `tag=key` / `tagMissing=key` | 有这个标签且值等于（按第一个冒号切分）/ 有这个标签 / 缺少这个标签；重复的 `tag` 是「或」，重复的 `tagMissing` 是「且」 |
 | `configurationItemCaptureTime`、`firstSeenAt`、`lastChangedAt`、`missingSince`、`deletedAt` 加 `.gte` / `.lte` | 时间范围；扫描页「新增 12」「已删除 2」这类数字，跳转到资源列表时就是用它们筛选 |
 | `attr.<列>=值`、`attr.<列>.gte=`、`attr.<列>.lte=` | 类型专属列，只能在指定了一个 `resourceType` 时使用；列名和取值路径来自资源类型配置；和通用列重名的列（ECS Task Definition 的 `status`）也一律加 `attr.` 前缀 |
-| `scanRequestId` | 只列这次扫描范围（解析后的账号、区域、类型）里的当前资源；显示的是当前清单，不代表这次扫描当时的结果 |
+| `scanRequestId` | 只列这次扫描范围（解析后的账号、区域、类型）里的当前资源；显示的是当前清单，不代表这次扫描当时的结果。扫描创建后的任务明细保留期（14 天）内，范围按这次扫描的任务计算；之后任务明细可能已经清理，改按扫描请求里记录的范围计算 |
 
 不认识的参数返回 `400 invalid_filter`。分类计数计算某个字段时不应用这个字段自己的筛选条件（`status` 也一样，所以能看到各状态的数量）。`stale`（数据过期）指资源所在范围从没成功扫描过，或最近一次成功扫描超过 12 小时前。
 

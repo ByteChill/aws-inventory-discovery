@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
@@ -171,59 +171,120 @@ def _tag_conditions(f: ResourceFilter) -> list[ColumnElement[bool]]:
     return conditions
 
 
-def _scan_request_condition(scan_request_id: int) -> ColumnElement[bool]:
-    """Resources inside the resolved scope of a scan (DESIGN 8.2): the scopes its tasks
-    actually cover, not the scope written on the request.
+def _scope_list_allows(key: str, value: ColumnElement[Any]) -> ColumnElement[bool]:
+    """The request's `scope[key]` list names the value, or is empty or absent (no restriction)."""
+    listed = SCAN_REQUEST.c.scope[key]
+    return or_(func.coalesce(func.jsonb_array_length(listed), 0) == 0, listed.op("?")(value))
 
-    A `shard` task covers its (account, region, type); a `config_group` task covers every
-    Config type of its account and region, so the request's `resourceTypes` restriction (or
-    the absence of one) decides the types. `confirm_missing` covers the whole scope of its
-    account, region and type like a shard; a `resource` task names one resource. Global
-    resources are written under the `global` region but read in us-east-1. A `sweep_account`
-    task is planning only (it covers nothing by itself).
+
+def _covered_by_tasks(registry: TypeRegistry) -> ColumnElement[bool]:
+    """A task of the request covers the resource.
+
+    A `shard` task covers its (account, region, type) and `confirm_missing` the same scope.
+    A `config_group` task reads Config for its account and region: it covers the types Config
+    can serve (never Cloud Control-only or native types such as AMI, which always get their
+    own shard), narrowed by the request's `resourceTypes`. A `resource` task names one
+    resource. Global resources are written under the `global` region but read in us-east-1.
+    A `sweep_account` task is planning only (it covers nothing by itself).
     """
+    config_types = [spec.type_name for spec in registry if spec.sources.config]
     task_region = or_(
-        SCAN_TASK.c.region.is_(None),
         SCAN_TASK.c.region == R.aws_region,
         and_(R.aws_region == GLOBAL_REGION, SCAN_TASK.c.region == GLOBAL_HOME),
     )
-    scope_types = SCAN_REQUEST.c.scope["resourceTypes"]
-    request_allows_type = or_(
-        func.coalesce(func.jsonb_array_length(scope_types), 0) == 0,
-        scope_types.op("?")(R.resource_type),
-    )
-    covered = or_(
-        and_(
-            SCAN_TASK.c.kind.in_(("shard", "config_group", "confirm_missing")),
-            or_(
+    return and_(
+        SCAN_TASK.c.account_id == R.account_id,
+        task_region,
+        or_(
+            and_(
+                SCAN_TASK.c.kind.in_(("shard", "confirm_missing")),
                 SCAN_TASK.c.resource_type == R.resource_type,
-                and_(SCAN_TASK.c.resource_type.is_(None), request_allows_type),
+            ),
+            and_(
+                SCAN_TASK.c.kind == "config_group",
+                R.resource_type.in_(config_types),
+                _scope_list_allows("resourceTypes", R.resource_type),
+            ),
+            and_(
+                SCAN_TASK.c.kind == "resource",
+                SCAN_TASK.c.resource_type == R.resource_type,
+                SCAN_TASK.c.resource_id == R.resource_id,
             ),
         ),
-        and_(
-            SCAN_TASK.c.kind == "resource",
-            SCAN_TASK.c.resource_type == R.resource_type,
-            SCAN_TASK.c.resource_id == R.resource_id,
-        ),
     )
-    return (
-        select(SCAN_TASK.c.scan_request_id)
+
+
+def _covered_by_request() -> ColumnElement[bool]:
+    """What the request itself says it covers: its `target` (one resource, or one scope when
+    it has no resource id) or its `scope`. A refresh stores the target's keys in snake_case,
+    confirming a scope stores them in camelCase."""
+
+    def target(camel: str, snake: str) -> ColumnElement[Any]:
+        stored = SCAN_REQUEST.c.target
+        return func.coalesce(stored[camel].astext, stored[snake].astext)
+
+    target_account = target("accountId", "account_id")
+    target_resource_id = target("resourceId", "resource_id")
+    by_target = and_(
+        target_account == R.account_id,
+        target("awsRegion", "aws_region") == R.aws_region,
+        target("resourceType", "resource_type") == R.resource_type,
+        or_(target_resource_id.is_(None), target_resource_id == R.resource_id),
+    )
+    regions = SCAN_REQUEST.c.scope["awsRegions"]
+    by_scope = and_(
+        target_account.is_(None),  # an unset target is stored as JSON null, not SQL NULL
+        or_(
+            SCAN_REQUEST.c.scope["all"].astext == "true",
+            SCAN_REQUEST.c.scope["accountIds"].op("?")(R.account_id),
+        ),
+        or_(
+            _scope_list_allows("awsRegions", R.aws_region),
+            and_(R.aws_region == GLOBAL_REGION, regions.op("?")(GLOBAL_HOME)),
+        ),
+        _scope_list_allows("resourceTypes", R.resource_type),
+    )
+    return or_(by_target, by_scope)
+
+
+def _scan_request_condition(
+    scan_request_id: int, registry: TypeRegistry, task_retention: timedelta
+) -> ColumnElement[bool]:
+    """Resources inside the scope of a scan (DESIGN 8.2).
+
+    While the request's tasks are all still there, the scope is the resolved one: what the
+    tasks actually cover, not the scope written on the request. Tasks are purged
+    `task_retention` after they finish and none finishes before its request is created, so
+    a request older than that may have lost some: from then on the scope is the one the
+    request recorded, rather than an ever smaller list that ends up empty.
+    """
+    tasks_kept = SCAN_REQUEST.c.created_at >= func.now() - task_retention
+    by_tasks = (
+        select(SCAN_TASK.c.id)
         .select_from(SCAN_TASK.join(SCAN_REQUEST, SCAN_TASK.c.scan_request_id == SCAN_REQUEST.c.id))
-        .where(
-            SCAN_TASK.c.scan_request_id == scan_request_id,
-            SCAN_TASK.c.account_id == R.account_id,
-            task_region,
-            covered,
-        )
+        .where(SCAN_REQUEST.c.id == scan_request_id, tasks_kept, _covered_by_tasks(registry))
         .correlate(RESOURCE)
         .exists()
     )
+    by_request = (
+        select(SCAN_REQUEST.c.id)
+        .where(SCAN_REQUEST.c.id == scan_request_id, ~tasks_kept, _covered_by_request())
+        .correlate(RESOURCE)
+        .exists()
+    )
+    return or_(by_tasks, by_request)
 
 
 def conditions(
-    f: ResourceFilter, registry: TypeRegistry, *, skip: str | None = None
+    f: ResourceFilter,
+    registry: TypeRegistry,
+    *,
+    task_retention: timedelta,
+    skip: str | None = None,
 ) -> list[ColumnElement[bool]]:
-    """WHERE conditions of the filter. `skip` names a facet field whose own filter is left out."""
+    """WHERE conditions of the filter. `task_retention` is how long finished scan tasks are
+    kept (it decides how `scanRequestId` is resolved); `skip` names a facet field whose own
+    filter is left out."""
     result: list[ColumnElement[bool]] = []
     for name, (attribute, column) in EQUALS_FIELDS.items():
         values = getattr(f, attribute)
@@ -232,7 +293,7 @@ def conditions(
     if skip != "status":
         result.append(R.status.in_(f.status or DEFAULT_STATUSES))
     if f.scan_request_id is not None:
-        result.append(_scan_request_condition(f.scan_request_id))
+        result.append(_scan_request_condition(f.scan_request_id, registry, task_retention))
     if f.q:
         pattern = like_pattern(f.q)
         result.append(
@@ -262,8 +323,14 @@ def conditions(
     return result
 
 
-def where(f: ResourceFilter, registry: TypeRegistry, *, skip: str | None = None) -> Any:
-    return and_(*conditions(f, registry, skip=skip))
+def where(
+    f: ResourceFilter,
+    registry: TypeRegistry,
+    *,
+    task_retention: timedelta,
+    skip: str | None = None,
+) -> Any:
+    return and_(*conditions(f, registry, task_retention=task_retention, skip=skip))
 
 
 # --------------------------------------------------------------------------- sorting

@@ -20,7 +20,7 @@
 | M7 部署 | 完成（待平台创建资源后实际验证） |
 | M8 上线确认 | 未开始 |
 
-**MVP1 完成，已合并到 main**：两批共 15 个资源类型、完整的扫描和写入流程、API、dashboard、本地环境和部署文件。后端 337 个测试通过（`cd backend && uv run pytest`，需要 `podman compose up -d postgres redis`），Playwright 端到端测试 6 个通过（`cd frontend && npm run e2e`，需要本地栈），CI 工作流（`.github/workflows/ci.yml`）已在 GitHub 上通过。剩下的是真实环境的确认（见 M1、M8）。
+**MVP1 完成，已合并到 main**：两批共 15 个资源类型、完整的扫描和写入流程、API、dashboard、本地环境和部署文件。后端 339 个测试通过（`cd backend && uv run pytest`，需要 `podman compose up -d postgres redis`），Playwright 端到端测试 6 个通过（`cd frontend && npm run e2e`，需要本地栈），CI 工作流（`.github/workflows/ci.yml`）已在 GitHub 上通过。剩下的是真实环境的确认（见 M1、M8）。
 
 设计阶段已完成：[DESIGN.md](DESIGN.md)、[DECISIONS.md](DECISIONS.md)、[specs/](specs/)。实现中发现的偏差已经同步到这些文档（DECISIONS D-21 起）。
 
@@ -49,7 +49,7 @@
 - [x] `podman compose up` 后可以完成一轮完整扫描：2026-11-09 在 compose 的 api / worker 容器上实测，`POST /scans {all: true}` 90 秒完成（20 个账号、740 个任务全部成功、入库 1,082 个资源）；在 fake-aws 里删掉一个 SQS 队列后按需扫描，资源先变为「可能已删除」再确认为「已删除」；`doctor` 16/16 通过，worker `healthcheck` 通过。端到端测试也覆盖了同样的流程。已知限制：moto 里共享 AMI 跨账号不可见，任务日志本地查不到
 
 ## M3 worker 核心
-- [x] 7 张表的 SQLModel 模型和 Alembic 迁移（放在 `DATABASE_SCHEMA`）：0001 初始表，0002 围栏令牌和运行中任务的索引，0003 `candidate_count`
+- [x] 7 张表的 SQLModel 模型和 Alembic 迁移（放在 `DATABASE_SCHEMA`）：0001 初始表，0002 围栏令牌和运行中任务的索引，0003 `candidate_count`，0004 按账号查排队任务的索引，0005 范围的 `id` 和 `candidate_ids`
 - [x] 任务队列：领取、心跳、完成、重新排队、取消，见 [specs/scanner.md](specs/scanner.md)（含围栏令牌、共用任务的取消语义）
 - [x] 范围租约、合并、跳过刚扫过的范围（R1–R3）
 - [x] `ResourceWriter`：加锁 → 叠加 → 脱敏 → 内容哈希 → 有条件写入（R4）→ 关系表
@@ -75,6 +75,7 @@
 - [x] 账号：列表、详情、扫描状态格子
 - [x] 扫描：摘要、发起（含 `Idempotency-Key`）、记录、详情、任务、重试、取消、任务日志、异常范围
 - [x] 新 dashboard 需要的三个接口：`GET /applications`（按 EIM 汇总活跃账号、环境数和资源数）；资源列表、分类和导出的 `scanRequestId`（按请求里任务的已解析范围，取当前清单）；`GET /scan-scopes/{id}/candidates`（候选 ID 和 ARN 存在 `scan_shard.candidate_ids`，迁移 0005，范围恢复正常时清空）
+- [x] 这三个接口的独立评审（Claude 一轮、DeepSeek V4.1 Flash 一轮，2026-11-13）发现的问题已修复：`config_group` 只覆盖 Config 能提供的类型；超过任务保留期的扫描改按请求记录的范围计算（D-33）；应用列表先分页再统计资源数，`total` 和列表按同一组计数；候选接口不再把整个候选列表读进进程；「已清理」候选的测试数据改为来自样本。迁移 0005 之前已经异常的范围没有候选明细，已写进 [specs/api.md](specs/api.md)
 - [x] 健康检查；统一错误格式；Redis 缓存
 - [x] 测试：主要接口的行为
 

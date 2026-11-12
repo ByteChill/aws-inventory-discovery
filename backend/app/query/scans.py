@@ -294,8 +294,10 @@ CANDIDATES = """
     SELECT r.id, c.value ->> 'resourceId' AS resource_id, r.resource_name,
            coalesce(r.arn, c.value ->> 'arn') AS arn, r.status
       FROM t_inv_aws_scan_shard s
-      CROSS JOIN LATERAL jsonb_array_elements(coalesce(s.candidate_ids, '[]'::jsonb))
-           AS c(value)
+      CROSS JOIN LATERAL jsonb_array_elements(
+               CASE WHEN jsonb_typeof(s.candidate_ids) = 'array' THEN s.candidate_ids
+                    ELSE '[]'::jsonb END  -- not saved: SQL NULL, or JSON null once cleared
+           ) AS c(value)
       LEFT JOIN t_inv_aws_resource r
         ON r.account_id = s.account_id
        AND r.aws_region = s.region
@@ -319,20 +321,23 @@ def scope_candidates(
     The saved candidates are `{resourceId, arn}`, expanded in SQL and left-joined to the
     inventory; the name and status come from the row while it is still there. A row the
     retention cleanup removed stays in the list as `purged`, with its resource id and ARN.
-    Searching and paging happen in the database, so the size of the saved list is not a
-    limit. Anything but an abnormal scope has no review list.
+    Searching and paging happen in the database, so the saved list never travels to this
+    process; each page still expands and sorts the whole list there. Anything but an
+    abnormal scope has no review list.
     """
-    shard = session.exec(select(ScanShard).where(col(ScanShard.id) == scan_shard_id)).first()
+    connection = session.connection()
+    shard = connection.execute(
+        text("SELECT guard_state FROM t_inv_aws_scan_shard WHERE id = :id"), {"id": scan_shard_id}
+    ).first()
     if shard is None:
         raise ApiError(404, "scope_not_found", "扫描范围不存在", {"id": scan_shard_id})
-    if shard.guard_state != "abnormal" or not shard.candidate_ids:
+    if shard.guard_state != "abnormal":
         return Page(items=[], page=page, page_size=page_size, total=0)
     search = ""
     params: dict[str, Any] = {"id": scan_shard_id}
     if q:
         search = CANDIDATES_SEARCH
         params["pattern"] = like_pattern(q)
-    connection = session.connection()
     total = connection.execute(
         text(f"SELECT count(*) FROM ({CANDIDATES}{search}) AS candidates"), params
     ).scalar_one()

@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AWS 资源清单：控制台式结构</title>
+<style>
+@font-face { font-family: "Hanken"; src: url("/frontend/node_modules/@fontsource-variable/hanken-grotesk/files/hanken-grotesk-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; }
+@font-face { font-family: "JBMono"; src: url("/frontend/node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2") format("woff2"); font-weight: 100 800; }
+:root { --ac: #2346d8; --ac-soft: #e8edfd; --ink: #141826; --txt: #1b2030; --mut: #5f6779; --line: #dfe3ea; --bg: #f2f4f8; --card: #fff; --ok: #12805c; --warn: #9a5b00; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: #0b0d14; overflow: hidden; }
+body { font: 14px/1.5 "Hanken", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif; color: var(--txt); -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+.mono { font-family: "JBMono", ui-monospace, Menlo, monospace; font-size: 12.5px; }
+svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+a { color: var(--ac); text-decoration: none; cursor: pointer; }
+
+/* Drawn at 1440 × 900 and scaled to the window. */
+.app { width: 1440px; height: 900px; transform-origin: 0 0; background: var(--bg); display: grid; grid-template: 48px 1fr / 248px 1fr; position: relative; }
+
+/* ---- top bar: scope first, like the console's account switcher ---- */
+.top { grid-column: 1 / -1; background: var(--ink); color: #c9cfdd; display: flex; align-items: center; gap: 14px; padding: 0 16px; }
+.logo { display: flex; align-items: center; gap: 9px; color: #fff; font-weight: 650; font-size: 15px; width: 216px; }
+.logo i { width: 20px; height: 20px; border-radius: 5px; background: var(--ac); position: relative; }
+.logo i::after { content: ""; position: absolute; inset: 5px 5px 9px; background: #fff; border-radius: 1.5px; box-shadow: 0 6px 0 #fff; height: 3px; }
+.scope { height: 32px; padding: 0 10px 0 12px; border: 1px solid #3c4560; border-radius: 6px; display: flex; align-items: center; gap: 8px; color: #fff; background: #1e2538; }
+.scope small { color: #9aa3b8; font-size: 12px; }
+.scope b { font-weight: 600; }
+.scope[aria-expanded="true"] { border-color: #8fa4ff; }
+.gsearch { flex: 1; max-width: 520px; height: 32px; border-radius: 6px; background: #fff; color: var(--mut); display: flex; align-items: center; gap: 8px; padding: 0 12px; margin-left: 8px; }
+.top .r { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.top .r button { height: 32px; padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 6px; }
+.top .r button:hover { background: #232b40; color: #fff; }
+
+/* ---- scope picker ---- */
+.picker { position: absolute; top: 44px; left: 232px; width: 460px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 32px rgb(20 24 38 / .22); z-index: 20; display: none; }
+.picker.on { display: block; }
+.picker .tabs { display: flex; padding: 0 14px; border-bottom: 1px solid var(--line); }
+.picker .tabs button { padding: 11px 12px 9px; border-bottom: 2px solid transparent; color: var(--mut); font-weight: 500; }
+.picker .tabs button.on { color: var(--ac); border-color: var(--ac); }
+.picker .q { margin: 12px 14px 6px; height: 34px; border: 1px solid #b9c0cf; border-radius: 6px; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--mut); }
+.picker ul { list-style: none; padding: 4px 6px 8px; }
+.picker li { display: grid; grid-template-columns: 1fr auto; gap: 0 12px; padding: 7px 10px; border-radius: 6px; cursor: pointer; }
+.picker li:hover { background: var(--bg); }
+.picker li.on { background: var(--ac-soft); }
+.picker li b { font-weight: 600; }
+.picker li span { color: var(--mut); font-size: 12.5px; }
+.picker li em { font-style: normal; color: var(--mut); grid-row: span 2; align-self: center; }
+
+/* ---- left: the type tree ---- */
+.tree { background: var(--card); border-right: 1px solid var(--line); padding: 12px 8px; overflow: hidden; display: flex; flex-direction: column; }
+.tree h2 { font-size: 12px; font-weight: 600; color: var(--mut); padding: 4px 10px 6px; }
+.tree .all, .tree .leaf, .tree .grp { display: flex; align-items: center; height: 30px; border-radius: 6px; padding: 0 10px; cursor: pointer; color: var(--txt); }
+.tree .all b, .tree .leaf b { margin-left: auto; font-weight: 400; color: var(--mut); font-size: 12.5px; }
+.tree .grp { font-weight: 600; gap: 4px; margin-top: 2px; padding-left: 4px; cursor: default; }
+.tree .grp svg { color: var(--mut); width: 14px; height: 14px; }
+.tree .leaf { padding-left: 26px; }
+.tree .leaf:hover, .tree .all:hover { background: var(--bg); }
+.tree .on { background: var(--ac-soft); color: var(--ac); font-weight: 600; }
+.tree .on b { color: var(--ac); }
+.tree .sep { height: 1px; background: var(--line); margin: 10px 4px; }
+.tree .foot { margin-top: auto; }
+
+/* ---- main ---- */
+.main { min-width: 0; display: flex; flex-direction: column; padding: 14px 20px 0; gap: 12px; overflow: hidden; }
+.crumb { color: var(--mut); font-size: 13px; display: flex; gap: 8px; align-items: center; }
+.crumb b { color: var(--txt); font-weight: 500; }
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; min-height: 0; }
+.ph { display: flex; align-items: center; gap: 8px; padding: 14px 16px 10px; }
+.ph h1 { font-size: 20px; font-weight: 650; letter-spacing: -0.01em; }
+.ph h1 span { color: var(--mut); font-weight: 400; }
+.ph .sp { flex: 1; }
+.btn { height: 32px; padding: 0 12px; border: 1px solid #aab2c3; border-radius: 6px; background: var(--card); display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+.btn.pri { background: var(--ac); border-color: var(--ac); color: #fff; }
+.btn.sq { width: 32px; padding: 0; justify-content: center; }
+.fbar { display: flex; align-items: center; gap: 8px; padding: 0 16px 12px; }
+.fin { flex: 1; max-width: 560px; height: 32px; border: 1px solid #aab2c3; border-radius: 6px; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--mut); }
+.tok { height: 26px; padding: 0 4px 0 9px; border-radius: 5px; background: var(--ac-soft); color: var(--ac); display: inline-flex; align-items: center; gap: 4px; font-weight: 500; }
+.tok svg { width: 13px; height: 13px; }
+.pager { margin-left: auto; display: flex; align-items: center; gap: 4px; color: var(--mut); }
+.pager b { color: var(--txt); padding: 0 6px; }
+.tw { overflow: hidden; border-top: 1px solid var(--line); }
+table { width: 100%; border-collapse: collapse; text-align: left; }
+th { font-size: 12.5px; font-weight: 600; color: var(--mut); padding: 8px 14px; background: #f8f9fb; border-bottom: 1px solid var(--line); white-space: nowrap; position: relative; }
+th + th::before { content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 1px; background: var(--line); }
+td { padding: 8px 14px; border-bottom: 1px solid #eceff4; white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+tr { cursor: pointer; }
+tr.sel td { background: var(--ac-soft); box-shadow: inset 0 1px 0 #b8c6f7, inset 0 -1px 0 #b8c6f7; }
+td.pick { width: 40px; padding-right: 0; }
+.radio { width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid #8b93a6; display: block; }
+tr.sel .radio { border: 4.5px solid var(--ac); }
+.st { display: inline-flex; align-items: center; gap: 6px; }
+.st::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.st.ok { color: var(--ok); } .st.off { color: var(--mut); } .st.off::before { background: #9aa1b1; }
+.st.warn { color: var(--warn); } .st.warn::before { background: #d08a12; }
+
+/* ---- split panel: the selected resource, without leaving the list ---- */
+.split { flex: 1; min-height: 0; margin: 0 -20px; background: var(--card); border-top: 1px solid #aab2c3; display: flex; flex-direction: column; }
+.grip { height: 14px; display: grid; place-items: center; }
+.grip::after { content: ""; width: 36px; height: 4px; border-radius: 2px; background: #c4cad7; }
+.sh { display: flex; align-items: baseline; gap: 10px; padding: 0 20px 6px; }
+.sh h2 { font-size: 17px; font-weight: 650; }
+.sh span { color: var(--mut); }
+.sh .sp { flex: 1; }
+.stabs { display: flex; gap: 2px; padding: 0 20px; border-bottom: 1px solid var(--line); }
+.stabs button { padding: 8px 12px 8px; border-bottom: 2px solid transparent; color: var(--mut); font-weight: 500; }
+.stabs button.on { color: var(--ac); border-color: var(--ac); font-weight: 600; }
+.kv { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px 0; padding: 16px 20px; }
+.kv div { padding: 0 20px; border-left: 1px solid var(--line); min-width: 0; }
+.kv div:nth-child(4n + 1) { padding-left: 0; border-left: 0; }
+.kv dt { color: var(--mut); font-size: 12.5px; }
+.kv dd { margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note { position: absolute; right: 16px; bottom: 12px; background: var(--ink); color: #c9cfdd; font-size: 12px; padding: 6px 10px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="top">
+    <div class="logo"><i></i>AWS 资源清单</div>
+    <button class="scope" id="scope" aria-expanded="false"></button>
+    <div class="gsearch"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>在当前范围内搜索，或粘贴 ARN 直接打开</div>
+    <div class="r">
+      <button>全部区域 <svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
+      <button>扫描</button>
+      <button>中文</button>
+    </div>
+  </header>
+  <div class="picker" id="picker"></div>
+  <nav class="tree" id="tree"></nav>
+  <main class="main" id="main"></main>
+  <div class="note">示意稿：范围、左侧类型、表格行都可以点</div>
+</div>
+
+<script>
+const I = {
+  down: '<svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>',
+  x: '<svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  search: '<svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+  refresh: '<svg class="i" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>',
+  gear: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>',
+  left: '<svg class="i" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg>',
+  right: '<svg class="i" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>',
+}
+
+// Scopes: an application (EIM) with its accounts, one account, or everything.
+const SCOPES = [
+  { kind: "app", id: "10809007", name: "payments", sub: "3 个账号：dev、preprod、prod", n: 207, accts: ["payments-dev", "payments-preprod", "payments-prod"] },
+  { kind: "app", id: "10809233", name: "risk", sub: "3 个账号", n: 204, accts: ["risk-dev", "risk-preprod", "risk-prod"] },
+  { kind: "app", id: "10809346", name: "treasury", sub: "3 个账号", n: 204, accts: ["treasury-dev", "treasury-preprod", "treasury-prod"] },
+  { kind: "app", id: "10809459", name: "markets", sub: "3 个账号", n: 204, accts: ["markets-dev", "markets-preprod", "markets-prod"] },
+  { kind: "acct", id: "111122220003", name: "payments-prod", sub: "生产，payments", n: 68, accts: ["payments-prod"] },
+  { kind: "acct", id: "111122220001", name: "payments-dev", sub: "开发，payments", n: 71, accts: ["payments-dev"] },
+  { kind: "acct", id: "111122220018", name: "onboarding-prod", sub: "生产，onboarding", n: 68, accts: ["onboarding-prod"] },
+  { kind: "all", id: "", name: "全部账号", sub: "20 个账号，7 个应用", n: 1362, accts: ["payments-prod", "risk-dev", "markets-preprod", "ledger-prod", "onboarding-prod", "treasury-dev"] },
+]
+const ENV = (a) => (a.endsWith("-prod") ? "生产" : a.endsWith("-preprod") ? "预发布" : "开发")
+
+// Each type owns its columns. Counts are per account and scale with the scope.
+const GROUPS = [
+  ["计算", ["ec2", "ami", "lambda"]], ["网络", ["vpc", "subnet", "sg", "r53"]], ["容器", ["ecsc", "ecss", "ecst"]],
+  ["负载均衡", ["lb", "tg"]], ["消息", ["sqs", "sns"]], ["安全", ["secret"]],
+]
+const hex = (seed, n) => { let x = (seed + 1) * 2654435761 % 4294967296, out = ""; for (let i = 0; i < n; i++) { x = (x * 1664525 + 1013904223) % 4294967296; out += "0123456789abcdef"[Math.floor(x / 268435456)] } return out }
+const TYPES = {
+  ec2: { label: "EC2 实例", per: 3, idCol: "实例 ID", cols: ["状态", "实例类型", "可用区", "私有 IP", "VPC"],
+    row: (i) => ({ name: `Server_${i + 1}`, id: `i-0${hex(i + 3, 16)}`, v: [i % 4 === 3 ? ["off", "stopped"] : ["ok", "running"], ["t2.micro", "t3.medium", "m5.large"][i % 3], ["us-east-1c", "eu-west-1a", "eu-west-2b"][i % 3], `10.0.${i % 4}.${17 + i * 9}`, `vpc-${hex(i % 3 + 1, 17)}`] }) },
+  ami: { label: "AMI", per: 4, idCol: "镜像 ID", cols: ["状态", "架构", "根设备", "可见性", "创建时间"],
+    row: (i) => ({ name: "RHEL-8.0.0_HVM-20190618-x86_64-1-Hourly2-GP2", id: `ami-${hex(i + 5, 17)}`, v: [["ok", "available"], "x86_64", "ebs", i % 2 ? "私有" : "共享给本账号", "2019-06-18"] }) },
+  lambda: { label: "Lambda 函数", per: 3, idCol: "函数名", cols: ["运行时", "内存", "超时", "代码大小", "最近修改"],
+    row: (i) => ({ name: i ? `my-function-${i + 1}` : "my-function", id: i ? `my-function-${i + 1}` : "my-function", v: [["nodejs20.x", "python3.12"][i % 2], "256 MB", "15 秒", "5,797 字节", "昨天 16:12"] }) },
+  vpc: { label: "VPC", per: 6, idCol: "VPC ID", cols: ["状态", "IPv4 CIDR", "默认 VPC", "租期", "DHCP 选项集"],
+    row: (i) => ({ name: i % 3 ? `vpc-${hex(i + 1, 17)}` : "main", id: `vpc-${hex(i + 1, 17)}`, v: [["ok", "available"], `10.${i}.0.0/16`, i % 6 ? "否" : "是", "default", `dopt-${hex(i + 2, 8)}`] }) },
+  subnet: { label: "子网", per: 6, idCol: "子网 ID", cols: ["状态", "VPC", "IPv4 CIDR", "可用 IP", "可用区"],
+    row: (i) => ({ name: `subnet-${hex(i + 2, 17)}`, id: `subnet-${hex(i + 2, 17)}`, v: [["ok", "available"], `vpc-${hex(i % 3 + 1, 17)}`, `10.0.${i}.0/24`, String(251 - i * 3), ["us-east-1c", "eu-west-1a", "eu-west-2b"][i % 3]] }) },
+  sg: { label: "安全组", per: 6, idCol: "安全组 ID", cols: ["VPC", "入站规则", "出站规则", "描述"],
+    row: (i) => ({ name: i % 2 ? "web-tier" : "default", id: `sg-${hex(i + 4, 8)}`, v: [`vpc-${hex(i % 3 + 1, 17)}`, `${1 + (i % 4)} 条`, "1 条", i % 2 ? "Allow HTTPS from the load balancer" : "default VPC security group"] }) },
+  r53: { label: "Route 53 托管区域", per: 2, idCol: "托管区域 ID", cols: ["类型", "记录数", "备注"],
+    row: (i) => ({ name: i % 2 ? "internal.example.com" : "example.com", id: `Z${hex(i + 6, 13).toUpperCase()}`, v: [i % 2 ? "私有" : "公有", String(2 + i * 5), ""] }) },
+  ecsc: { label: "ECS 集群", per: 6, idCol: "集群名", cols: ["状态", "服务", "运行中任务", "等待中任务", "容器实例"],
+    row: (i) => ({ name: i ? `MyCluster-${i + 1}` : "MyCluster", id: i ? `MyCluster-${i + 1}` : "MyCluster", v: [["ok", "ACTIVE"], String(1 + (i % 3)), String(2 + i), "0", String(i % 2)] }) },
+  ecss: { label: "ECS 服务", per: 3, idCol: "服务名", cols: ["状态", "集群", "期望 / 运行", "启动类型", "任务定义"],
+    row: (i) => ({ name: `sample-webapp-${i + 1}`, id: `sample-webapp-${i + 1}`, v: [["ok", "ACTIVE"], "MyCluster", i % 5 === 4 ? "2 / 1" : "2 / 2", "FARGATE", `webapp:${3 + i}`] }) },
+  ecst: { label: "ECS 任务定义", per: 6, idCol: "任务定义", cols: ["状态", "CPU", "内存", "网络模式", "兼容性"],
+    row: (i) => ({ name: `webapp:${i + 1}`, id: `webapp:${i + 1}`, v: [["ok", "ACTIVE"], "256", "512", "awsvpc", "FARGATE"] }) },
+  lb: { label: "负载均衡器", per: 6, idCol: "DNS 名称", cols: ["状态", "类型", "模式", "VPC", "可用区"],
+    row: (i) => ({ name: i ? `my-load-balancer-${i + 1}` : "my-load-balancer", id: `my-load-balancer-${1234567890 + i * 7919}.us-east-1.elb.amazonaws.com`, v: [["ok", "active"], i % 3 ? "application" : "network", i % 2 ? "internal" : "internet-facing", `vpc-${hex(i % 3 + 1, 17)}`, "2 个"] }) },
+  tg: { label: "目标组", per: 6, idCol: "目标组", cols: ["协议 : 端口", "目标类型", "负载均衡器", "VPC", "健康检查"],
+    row: (i) => ({ name: i ? `my-targets-${i + 1}` : "my-targets", id: `targetgroup/my-targets/${hex(i + 7, 16)}`, v: ["HTTP : 80", ["instance", "ip"][i % 2], "my-load-balancer", `vpc-${hex(i % 3 + 1, 17)}`, "HTTP /"] }) },
+  sqs: { label: "SQS 队列", per: 6, idCol: "队列名", cols: ["类型", "可见性超时", "消息保留", "加密", "死信队列"],
+    row: (i) => ({ name: i % 3 === 2 ? `MyQueue-${i}.fifo` : i ? `MyQueue-${i}` : "MyQueue", id: i % 3 === 2 ? `MyQueue-${i}.fifo` : i ? `MyQueue-${i}` : "MyQueue", v: [i % 3 === 2 ? "FIFO" : "标准", "30 秒", "4 天", i % 2 ? "SSE-KMS" : "SSE-SQS", i % 4 ? "" : "MyQueue-dlq"] }) },
+  sns: { label: "SNS 主题", per: 3, idCol: "主题名", cols: ["类型", "订阅", "加密", "显示名称"],
+    row: (i) => ({ name: i ? `MyTopic-${i + 1}` : "MyTopic", id: i ? `MyTopic-${i + 1}` : "MyTopic", v: ["标准", String(1 + (i % 3)), i % 2 ? "已加密" : "未加密", ""] }) },
+  secret: { label: "密钥", per: 3, idCol: "密钥名", cols: ["轮换", "上次轮换", "上次访问", "KMS 密钥"],
+    row: (i) => ({ name: i ? `MySecret-${i + 1}` : "MySecret", id: `MySecret-${hex(i + 9, 6)}`, v: [i % 2 ? ["ok", "已开启"] : ["off", "未开启"], i % 2 ? "3 月 14 日" : "", "昨天", "aws/secretsmanager"] }) },
+}
+
+let scope = SCOPES[0], type = "ec2", sel = 0, pickTab = "app"
+const count = (k) => Math.round((TYPES[k].per * scope.n) / 68)
+const cell = (v) => (Array.isArray(v) ? `<span class="st ${v[0]}">${v[1]}</span>` : /^(vpc-|dopt-|10\.|\d+\.\d+)/.test(v) ? `<span class="mono">${v}</span>` : v || "–")
+
+function rows() {
+  const T = TYPES[type]
+  return Array.from({ length: Math.min(count(type), 9) }, (_, i) => ({ ...T.row(i), acct: scope.accts[i % scope.accts.length] }))
+}
+
+function render() {
+  const T = TYPES[type], R = rows(), multi = scope.accts.length > 1
+  document.getElementById("scope").innerHTML = `<small>${{ app: "应用", acct: "账号", all: "范围" }[scope.kind]}</small><b>${scope.name}</b>${scope.id ? `<span class="mono" style="color:#9aa3b8">${scope.id}</span>` : ""}${I.down}`
+
+  document.getElementById("tree").innerHTML = `<h2>资源类型</h2>
+    <div class="all">全部类型<b>${scope.n.toLocaleString()}</b></div>
+    ${GROUPS.map(([g, ks]) => `<div class="grp">${I.down}${g}</div>${ks.map((k) => `<div class="leaf ${k === type ? "on" : ""}" data-t="${k}">${TYPES[k].label}<b>${count(k)}</b></div>`).join("")}`).join("")}
+    <div class="foot"><div class="sep"></div><div class="all">账号与应用</div><div class="all">扫描管理</div></div>`
+
+  const r = R[sel] ?? R[0]
+  document.getElementById("main").innerHTML = `
+    <div class="crumb"><a>${scope.name}</a>${I.right}<span>${GROUPS.find(([, ks]) => ks.includes(type))[0]}</span>${I.right}<b>${T.label}</b></div>
+    <section class="panel">
+      <div class="ph"><h1>${T.label} <span>(${count(type)})</span></h1><div class="sp"></div>
+        <button class="btn sq" title="重新读取列表">${I.refresh}</button><button class="btn">导出</button><button class="btn pri">扫描这个范围</button></div>
+      <div class="fbar">
+        <div class="fin">${I.search}按属性或标签筛选${T.label}</div>
+        <div class="pager">${I.left}<b>1</b>${count(type) > 9 ? "2" : ""}${I.right}<button class="btn sq" style="border:0" title="列和每页行数">${I.gear}</button></div>
+      </div>
+      <div class="tw"><table>
+        <thead><tr><th></th><th>名称</th><th>${T.idCol}</th>${T.cols.map((c) => `<th>${c}</th>`).join("")}${multi ? "<th>账号</th>" : ""}<th>区域</th><th>更新</th></tr></thead>
+        <tbody>${R.map((x, i) => `<tr class="${i === sel ? "sel" : ""}" data-i="${i}"><td class="pick"><span class="radio"></span></td>
+          <td><a>${x.name}</a></td><td class="mono">${x.id}</td>${x.v.map((v) => `<td>${cell(v)}</td>`).join("")}
+          ${multi ? `<td>${x.acct}</td>` : ""}<td class="mono">${["us-east-1", "eu-west-1", "eu-west-2"][i % 3]}</td><td>${["3 分钟前", "27 分钟前", "27 分钟前", "28 分钟前", "昨天 16:12"][i % 5]}</td></tr>`).join("")}</tbody>
+      </table></div>
+    </section>
+    <section class="split">
+      <div class="grip"></div>
+      <div class="sh"><h2>${r.name}</h2><span class="mono">${r.id === r.name ? "" : r.id}</span><div class="sp"></div><button class="btn">${I.refresh}刷新</button><button class="btn">打开完整页面</button></div>
+      <div class="stabs"><button class="on">详情</button><button>标签</button><button>关联资源</button><button>配置 JSON</button><button>实时数据</button></div>
+      <dl class="kv">
+        <div><dt>${T.idCol}</dt><dd class="mono">${r.id}</dd></div>
+        ${T.cols.map((c, i) => `<div><dt>${c}</dt><dd>${cell(r.v[i])}</dd></div>`).join("")}
+        <div><dt>账号</dt><dd><a>${r.acct}</a>，${ENV(r.acct)}</dd></div>
+        <div><dt>应用</dt><dd><a>${r.acct.split("-")[0]}</a></dd></div>
+        <div><dt>ARN</dt><dd class="mono">arn:aws:…:${r.id}</dd></div>
+        <div><dt>首次发现</dt><dd>11 小时前</dd></div>
+        <div><dt>数据来源</dt><dd>AWS Config，3 分钟前</dd></div>
+      </dl>
+    </section>`
+
+  document.getElementById("picker").innerHTML = `
+    <div class="tabs"><button class="${pickTab === "app" ? "on" : ""}" data-p="app">应用 (EIM)</button><button class="${pickTab === "acct" ? "on" : ""}" data-p="acct">账号</button><button class="${pickTab === "all" ? "on" : ""}" data-p="all">全部</button></div>
+    <div class="q">${I.search}按名称、EIM、BA 或账号 ID 查找</div>
+    <ul>${SCOPES.filter((s) => s.kind === pickTab).map((s) => `<li class="${s === scope ? "on" : ""}" data-s="${SCOPES.indexOf(s)}"><b>${s.name} <span class="mono">${s.id}</span></b><em>${s.n.toLocaleString()} 个资源</em><span>${s.sub}</span></li>`).join("")}</ul>`
+}
+
+const picker = document.getElementById("picker"), scopeBtn = document.getElementById("scope")
+function togglePicker(on) { picker.classList.toggle("on", on); scopeBtn.setAttribute("aria-expanded", String(on)) }
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-t]"), row = e.target.closest("tr[data-i]"), p = e.target.closest("[data-p]"), s = e.target.closest("[data-s]")
+  if (e.target.closest("#scope")) return togglePicker(!picker.classList.contains("on"))
+  if (p) { pickTab = p.dataset.p; return render() }
+  if (s) { scope = SCOPES[Number(s.dataset.s)]; sel = 0; togglePicker(false); return render() }
+  if (!e.target.closest("#picker")) togglePicker(false)
+  if (t) { type = t.dataset.t; sel = 0; render() }
+  else if (row) { sel = Number(row.dataset.i); render() }
+})
+
+const app = document.getElementById("app")
+function fit() {
+  const k = Math.min(innerWidth / 1440, innerHeight / 900)
+  app.style.transform = `scale(${k})`
+  app.style.marginLeft = `${Math.max(0, (innerWidth - 1440 * k) / 2)}px`
+}
+addEventListener("resize", fit)
+fit()
+render()
+</script>
+</body>
+</html>

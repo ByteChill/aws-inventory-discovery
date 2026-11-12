@@ -6,16 +6,27 @@ The end-to-end behaviour is in tests/worker/test_end_to_end.py.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, delete, insert, text
 
 from app.core.db import make_engine
+from app.query.tables import RESOURCE
+from app.types.registry import TypeRegistry
 from tests.conftest import NOWHERE, TEST_DATABASE_URL
-from tests.support.seed import DEV_ACCOUNT, IMAGES_ACCOUNT, MAIN_ACCOUNT, Seeded
+from tests.support.seed import (
+    AWS_FIXTURES,
+    DEV_ACCOUNT,
+    IMAGES_ACCOUNT,
+    MAIN_ACCOUNT,
+    Seeded,
+    cloudcontrol_rows,
+    load_json,
+)
 
 API = "/api/v1"
 SCOPE = {"accountId": MAIN_ACCOUNT, "awsRegion": "eu-west-1", "resourceType": "AWS::SNS::Topic"}
@@ -30,7 +41,7 @@ def db_engine(schema_name: str) -> Iterator[Engine]:
         connection.execute(
             text(
                 "UPDATE t_inv_aws_scan_shard SET guard_state = 'normal', candidate_count = NULL,"
-                " guard_detected_at = NULL, guard_confirmed_by = NULL"
+                " candidate_ids = NULL, guard_detected_at = NULL, guard_confirmed_by = NULL"
             )
         )
     engine.dispose()
@@ -236,6 +247,7 @@ def test_scan_scopes_and_confirming_an_abnormal_one(api: TestClient, db_engine: 
         )
     (abnormal,) = api.get(f"{API}/scan-scopes").json()["items"]
     assert abnormal["candidateCount"] == 30 and abnormal["resourceType"] == SCOPE["resourceType"]
+    assert isinstance(abnormal["scanShardId"], int)
     assert api.get(f"{API}/scans/summary").json()["abnormalScopeCount"] == 1
 
     confirmed = api.post(
@@ -260,6 +272,87 @@ def test_scan_scopes_and_confirming_an_abnormal_one(api: TestClient, db_engine: 
             {"a": SCOPE["accountId"], "r": SCOPE["awsRegion"], "t": SCOPE["resourceType"]},
         ).one()
     assert tuple(shard) == ("confirmed", "alice")
+
+
+def test_scope_candidates_come_from_the_candidates_saved_with_the_guard(
+    api: TestClient, db_engine: Engine, seeded: Seeded, registry: TypeRegistry
+) -> None:
+    vpc = seeded.one(account_id=MAIN_ACCOUNT, aws_region="us-east-1", resource_type="AWS::EC2::VPC")
+    # A second VPC of the same scope, from the Cloud Control fixture: a candidate when the
+    # guard fired, removed by the retention cleanup afterwards.
+    listing = load_json(AWS_FIXTURES / "aws.ec2.vpc" / "cloudcontrol_list.json")
+    purged = next(
+        row
+        for row in cloudcontrol_rows(
+            registry, listing, account_id=vpc["account_id"], region=vpc["aws_region"]
+        )
+        if row["resource_id"] != vpc["resource_id"]
+    )
+    stored = [{"resourceId": r["resource_id"], "arn": r["arn"]} for r in (vpc, purged)]
+    scope = {"accountId": vpc["account_id"], "awsRegion": vpc["aws_region"]}
+    scope["resourceType"] = vpc["resource_type"]
+    with db_engine.begin() as connection:
+        purged_id = connection.execute(
+            insert(RESOURCE).values(**purged).returning(RESOURCE.c.id)
+        ).scalar_one()
+        connection.execute(
+            text(
+                "UPDATE t_inv_aws_scan_shard SET guard_state = 'abnormal', candidate_count = 2,"
+                " candidate_ids = CAST(:ids AS jsonb), guard_detected_at = now()"
+                " WHERE account_id = :a AND region = :r AND resource_type = :t"
+            ),
+            {
+                "ids": json.dumps(stored),
+                "a": scope["accountId"],
+                "r": scope["awsRegion"],
+                "t": scope["resourceType"],
+            },
+        )
+        connection.execute(delete(RESOURCE).where(RESOURCE.c.id == purged_id))
+    (item,) = api.get(f"{API}/scan-scopes", params={"guardState": "abnormal"}).json()["items"]
+    url = f"{API}/scan-scopes/{item['scanShardId']}/candidates"
+
+    body = api.get(url).json()
+
+    assert body["total"] == 2
+    resource_ids = [c["resourceId"] for c in body["items"]]
+    assert resource_ids == sorted(resource_ids)
+    found = next(c for c in body["items"] if c["resourceId"] == vpc["resource_id"])
+    assert (found["id"], found["resourceName"], found["arn"]) == (
+        vpc["id"],
+        vpc["resource_name"],
+        vpc["arn"],
+    )
+    assert found["inventoryStatus"] == vpc["status"]
+    gone = next(c for c in body["items"] if c["resourceId"] == purged["resource_id"])
+    assert (gone["id"], gone["resourceName"], gone["inventoryStatus"]) == (
+        None,
+        None,
+        "purged",
+    )
+    assert gone["arn"] == purged["arn"]
+
+    for candidate in (vpc, purged):
+        assert api.get(url, params={"q": candidate["resource_id"]}).json()["total"] == 1
+    first = api.get(url, params={"pageSize": 1}).json()
+    assert first["total"] == 2 and len(first["items"]) == 1
+
+    # Flagged before candidates were saved (SQL NULL), or cleared since (JSON null): no list.
+    for unsaved in ("NULL", "'null'::jsonb"):
+        with db_engine.begin() as connection:
+            connection.execute(
+                text(f"UPDATE t_inv_aws_scan_shard SET candidate_ids = {unsaved} WHERE id = :id"),
+                {"id": item["scanShardId"]},
+            )
+        assert api.get(url).json()["total"] == 0
+
+    with db_engine.begin() as connection:
+        connection.execute(text("UPDATE t_inv_aws_scan_shard SET guard_state = 'normal'"))
+    normal = api.get(url).json()
+    assert normal["total"] == 0 and normal["items"] == []
+
+    missing = api.get(f"{API}/scan-scopes/999999999/candidates")
+    assert error_of(missing, 404)["code"] == "scope_not_found"
 
 
 def test_task_logs_are_503_when_cloudwatch_cannot_be_reached(

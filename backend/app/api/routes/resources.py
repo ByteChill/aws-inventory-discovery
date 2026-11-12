@@ -1,3 +1,4 @@
+from datetime import timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Body, Header, Query, Response
@@ -37,6 +38,11 @@ from app.worker import requests
 router = APIRouter(prefix="/resources", tags=["resources"])
 
 
+def task_retention() -> timedelta:
+    """How long finished scan tasks are kept; `scanRequestId` is resolved from them until then."""
+    return timedelta(days=get_settings().TASK_RETENTION_DAYS)
+
+
 class RelationshipParams(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
 
@@ -49,7 +55,9 @@ class RelationshipParams(BaseModel):
 def list_resources(
     params: ResourceListDep, session: ReadSessionDep, registry: RegistryDep
 ) -> Page[ResourceItem]:
-    return resources_query.list_resources(session, registry, params)
+    return resources_query.list_resources(
+        session, registry, params, task_retention=task_retention()
+    )
 
 
 @router.get("/facets")
@@ -60,7 +68,9 @@ def resource_facets(
     cache: CacheDep,
     language: LanguageDep,
 ) -> dict[str, list[FacetBucket]]:
-    return facets_query.facets(session, registry, cache, params, language)
+    return facets_query.facets(
+        session, registry, cache, params, language, task_retention=task_retention()
+    )
 
 
 @router.get("/export")
@@ -70,7 +80,9 @@ def export_resources(
     registry: RegistryDep,
     language: LanguageDep,
 ) -> StreamingResponse:
-    result = export_query.export(session, registry, params, params.lang or language)
+    result = export_query.export(
+        session, registry, params, params.lang or language, task_retention=task_retention()
+    )
     return StreamingResponse(
         result.body,
         media_type=result.media_type,

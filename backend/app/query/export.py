@@ -6,7 +6,7 @@ import csv
 import io
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from sqlalchemy import Row
@@ -130,8 +130,10 @@ def export(
     registry: TypeRegistry,
     params: ExportParams,
     language: Language,
+    *,
+    task_retention: timedelta,
 ) -> Export:
-    condition = where(params, registry)
+    condition = where(params, registry, task_retention=task_retention)
     ordering = order_by(params.sort or DEFAULT_SORT, params, registry)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     if params.format == "jsonl":

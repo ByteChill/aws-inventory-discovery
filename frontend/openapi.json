@@ -7,7 +7,9 @@
   "paths": {
     "/api/v1/health": {
       "get": {
-        "tags": ["health"],
+        "tags": [
+          "health"
+        ],
         "summary": "Health",
         "description": "Database down is a 503; Redis down only slows things, so it stays 200.",
         "operationId": "health",
@@ -27,7 +29,9 @@
     },
     "/api/v1/resources": {
       "get": {
-        "tags": ["resources"],
+        "tags": [
+          "resources"
+        ],
         "summary": "List Resources",
         "operationId": "list_resources",
         "parameters": [
@@ -116,11 +120,31 @@
             "schema": {
               "type": "array",
               "items": {
-                "enum": ["active", "missing", "deleted"],
+                "enum": [
+                  "active",
+                  "missing",
+                  "deleted"
+                ],
                 "type": "string"
               },
               "default": [],
               "title": "Status"
+            }
+          },
+          {
+            "name": "scanRequestId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scanrequestid"
             }
           },
           {
@@ -401,7 +425,9 @@
     },
     "/api/v1/resources/facets": {
       "get": {
-        "tags": ["resources"],
+        "tags": [
+          "resources"
+        ],
         "summary": "Resource Facets",
         "operationId": "resource_facets",
         "parameters": [
@@ -490,11 +516,31 @@
             "schema": {
               "type": "array",
               "items": {
-                "enum": ["active", "missing", "deleted"],
+                "enum": [
+                  "active",
+                  "missing",
+                  "deleted"
+                ],
                 "type": "string"
               },
               "default": [],
               "title": "Status"
+            }
+          },
+          {
+            "name": "scanRequestId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scanrequestid"
             }
           },
           {
@@ -772,7 +818,9 @@
     },
     "/api/v1/resources/export": {
       "get": {
-        "tags": ["resources"],
+        "tags": [
+          "resources"
+        ],
         "summary": "Export Resources",
         "operationId": "export_resources",
         "parameters": [
@@ -861,11 +909,31 @@
             "schema": {
               "type": "array",
               "items": {
-                "enum": ["active", "missing", "deleted"],
+                "enum": [
+                  "active",
+                  "missing",
+                  "deleted"
+                ],
                 "type": "string"
               },
               "default": [],
               "title": "Status"
+            }
+          },
+          {
+            "name": "scanRequestId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scanrequestid"
             }
           },
           {
@@ -1085,7 +1153,10 @@
             "in": "query",
             "required": false,
             "schema": {
-              "enum": ["csv", "jsonl"],
+              "enum": [
+                "csv",
+                "jsonl"
+              ],
               "type": "string",
               "default": "csv",
               "title": "Format"
@@ -1130,7 +1201,10 @@
             "schema": {
               "anyOf": [
                 {
-                  "enum": ["zh-CN", "en"],
+                  "enum": [
+                    "zh-CN",
+                    "en"
+                  ],
                   "type": "string"
                 },
                 {
@@ -1181,7 +1255,9 @@
     },
     "/api/v1/resources/lookup": {
       "get": {
-        "tags": ["resources"],
+        "tags": [
+          "resources"
+        ],
         "summary": "Lookup Resource",
         "operationId": "lookup_resource",
         "parameters": [
@@ -1225,7 +1301,9 @@
     },
     "/api/v1/resources/refresh": {
       "post": {
-        "tags": ["resources"],
+        "tags": [
+          "resources"
+        ],
         "summary": "Refresh Resource",
         "operationId": "refresh_resource",
         "parameters": [
@@ -1320,7 +1398,9 @@
     },
     "/api/v1/resources/{resource_id}": {
       "get": {
-        "tags": ["resources"],
+        "tags": [
+          "resources"
+        ],
         "summary": "Get Resource",
         "operationId": "get_resource",
         "parameters": [
@@ -1360,7 +1440,9 @@
     },
     "/api/v1/resources/{resource_id}/relationships": {
       "get": {
-        "tags": ["resources"],
+        "tags": [
+          "resources"
+        ],
         "summary": "Get Relationships",
         "operationId": "get_relationships",
         "parameters": [
@@ -1378,7 +1460,11 @@
             "in": "query",
             "required": false,
             "schema": {
-              "enum": ["out", "in", "both"],
+              "enum": [
+                "out",
+                "in",
+                "both"
+              ],
               "type": "string",
               "default": "both",
               "title": "Direction"
@@ -1434,7 +1520,9 @@
     },
     "/api/v1/resource-types": {
       "get": {
-        "tags": ["metadata"],
+        "tags": [
+          "metadata"
+        ],
         "summary": "List Resource Types",
         "operationId": "list_resource_types",
         "parameters": [
@@ -1485,7 +1573,9 @@
     },
     "/api/v1/columns": {
       "get": {
-        "tags": ["metadata"],
+        "tags": [
+          "metadata"
+        ],
         "summary": "List Columns",
         "operationId": "list_columns",
         "parameters": [
@@ -1552,7 +1642,9 @@
     },
     "/api/v1/stats/overview": {
       "get": {
-        "tags": ["metadata"],
+        "tags": [
+          "metadata"
+        ],
         "summary": "Overview",
         "operationId": "overview",
         "parameters": [
@@ -1599,10 +1691,35 @@
     },
     "/api/v1/accounts": {
       "get": {
-        "tags": ["accounts"],
+        "tags": [
+          "accounts"
+        ],
         "summary": "List Accounts",
         "operationId": "list_accounts",
         "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Pagesize"
+            }
+          },
           {
             "name": "accountType",
             "in": "query",
@@ -1682,29 +1799,6 @@
             }
           },
           {
-            "name": "page",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "default": 1,
-              "title": "Page"
-            }
-          },
-          {
-            "name": "pageSize",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 200,
-              "minimum": 1,
-              "default": 50,
-              "title": "Pagesize"
-            }
-          },
-          {
             "name": "sort",
             "in": "query",
             "required": false,
@@ -1741,7 +1835,9 @@
     },
     "/api/v1/accounts/{account_id}": {
       "get": {
-        "tags": ["accounts"],
+        "tags": [
+          "accounts"
+        ],
         "summary": "Get Account",
         "operationId": "get_account",
         "parameters": [
@@ -1781,7 +1877,9 @@
     },
     "/api/v1/accounts/{account_id}/coverage": {
       "get": {
-        "tags": ["accounts"],
+        "tags": [
+          "accounts"
+        ],
         "summary": "Get Coverage",
         "operationId": "get_coverage",
         "parameters": [
@@ -1823,9 +1921,106 @@
         }
       }
     },
+    "/api/v1/applications": {
+      "get": {
+        "tags": [
+          "applications"
+        ],
+        "summary": "List Applications",
+        "operationId": "list_applications",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Pagesize"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "accountType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Accounttype"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "eimApp",
+              "title": "Sort"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_Application_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/scans/summary": {
       "get": {
-        "tags": ["scans"],
+        "tags": [
+          "scans"
+        ],
         "summary": "Scan Summary",
         "operationId": "scan_summary",
         "responses": {
@@ -1844,7 +2039,9 @@
     },
     "/api/v1/scans": {
       "post": {
-        "tags": ["scans"],
+        "tags": [
+          "scans"
+        ],
         "summary": "Create Scan",
         "operationId": "create_scan",
         "parameters": [
@@ -1915,7 +2112,9 @@
         }
       },
       "get": {
-        "tags": ["scans"],
+        "tags": [
+          "scans"
+        ],
         "summary": "List Scans",
         "operationId": "list_scans",
         "parameters": [
@@ -1949,7 +2148,10 @@
             "schema": {
               "anyOf": [
                 {
-                  "enum": ["schedule", "api"],
+                  "enum": [
+                    "schedule",
+                    "api"
+                  ],
                   "type": "string"
                 },
                 {
@@ -2010,7 +2212,9 @@
     },
     "/api/v1/scans/{scan_id}": {
       "get": {
-        "tags": ["scans"],
+        "tags": [
+          "scans"
+        ],
         "summary": "Get Scan",
         "operationId": "get_scan",
         "parameters": [
@@ -2050,7 +2254,9 @@
     },
     "/api/v1/scans/{scan_id}/tasks": {
       "get": {
-        "tags": ["scans"],
+        "tags": [
+          "scans"
+        ],
         "summary": "List Scan Tasks",
         "operationId": "list_scan_tasks",
         "parameters": [
@@ -2177,7 +2383,9 @@
     },
     "/api/v1/scans/{scan_id}/retry-failed": {
       "post": {
-        "tags": ["scans"],
+        "tags": [
+          "scans"
+        ],
         "summary": "Retry Failed",
         "operationId": "retry_failed",
         "parameters": [
@@ -2217,7 +2425,9 @@
     },
     "/api/v1/scans/{scan_id}/cancel": {
       "post": {
-        "tags": ["scans"],
+        "tags": [
+          "scans"
+        ],
         "summary": "Cancel Scan",
         "operationId": "cancel_scan",
         "parameters": [
@@ -2257,7 +2467,9 @@
     },
     "/api/v1/tasks/{task_id}": {
       "get": {
-        "tags": ["scans"],
+        "tags": [
+          "scans"
+        ],
         "summary": "Get Task",
         "operationId": "get_task",
         "parameters": [
@@ -2297,7 +2509,9 @@
     },
     "/api/v1/tasks/{task_id}/logs": {
       "get": {
-        "tags": ["scans"],
+        "tags": [
+          "scans"
+        ],
         "summary": "Get Task Logs",
         "operationId": "get_task_logs",
         "parameters": [
@@ -2365,7 +2579,9 @@
     },
     "/api/v1/scan-scopes": {
       "get": {
-        "tags": ["scans"],
+        "tags": [
+          "scans"
+        ],
         "summary": "List Scan Scopes",
         "operationId": "list_scan_scopes",
         "parameters": [
@@ -2397,7 +2613,11 @@
             "in": "query",
             "required": false,
             "schema": {
-              "enum": ["normal", "abnormal", "confirmed"],
+              "enum": [
+                "normal",
+                "abnormal",
+                "confirmed"
+              ],
               "type": "string",
               "default": "abnormal",
               "title": "Guardstate"
@@ -2428,9 +2648,92 @@
         }
       }
     },
+    "/api/v1/scan-scopes/{scan_shard_id}/candidates": {
+      "get": {
+        "tags": [
+          "scans"
+        ],
+        "summary": "List Scope Candidates",
+        "operationId": "list_scope_candidates",
+        "parameters": [
+          {
+            "name": "scan_shard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Scan Shard Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Pagesize"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ScopeCandidate_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/scan-scopes/confirm-change": {
       "post": {
-        "tags": ["scans"],
+        "tags": [
+          "scans"
+        ],
         "summary": "Confirm Scope Change",
         "operationId": "confirm_scope_change",
         "parameters": [
@@ -2500,7 +2803,11 @@
           },
           "accountType": {
             "type": "string",
-            "enum": ["dev", "preprod", "prod"],
+            "enum": [
+              "dev",
+              "preprod",
+              "prod"
+            ],
             "title": "Accounttype"
           },
           "eimId": {
@@ -2621,7 +2928,11 @@
           },
           "accountType": {
             "type": "string",
-            "enum": ["dev", "preprod", "prod"],
+            "enum": [
+              "dev",
+              "preprod",
+              "prod"
+            ],
             "title": "Accounttype"
           },
           "eimId": {
@@ -2696,7 +3007,12 @@
           }
         },
         "type": "object",
-        "required": ["region", "optInStatus", "reachable", "configRecording"],
+        "required": [
+          "region",
+          "optInStatus",
+          "reachable",
+          "configRecording"
+        ],
         "title": "AccountRegionInfo"
       },
       "AccountSummary": {
@@ -2711,7 +3027,11 @@
           },
           "accountType": {
             "type": "string",
-            "enum": ["dev", "preprod", "prod"],
+            "enum": [
+              "dev",
+              "preprod",
+              "prod"
+            ],
             "title": "Accounttype"
           },
           "eimId": {
@@ -2828,8 +3148,66 @@
           }
         },
         "type": "object",
-        "required": ["accountType", "label", "count"],
+        "required": [
+          "accountType",
+          "label",
+          "count"
+        ],
         "title": "AccountTypeCount"
+      },
+      "Application": {
+        "properties": {
+          "eimId": {
+            "type": "string",
+            "title": "Eimid"
+          },
+          "eimApp": {
+            "type": "string",
+            "title": "Eimapp"
+          },
+          "baId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baid"
+          },
+          "accountCount": {
+            "type": "integer",
+            "title": "Accountcount"
+          },
+          "environments": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "dev",
+                "preprod",
+                "prod"
+              ]
+            },
+            "type": "array",
+            "title": "Environments"
+          },
+          "resourceCount": {
+            "type": "integer",
+            "title": "Resourcecount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "eimId",
+          "eimApp",
+          "baId",
+          "accountCount",
+          "environments",
+          "resourceCount"
+        ],
+        "title": "Application",
+        "description": "One EIM: its accounts and resources. EIM, application name and BA are 1:1 (DESIGN 2)."
       },
       "Backlog": {
         "properties": {
@@ -2843,7 +3221,10 @@
           }
         },
         "type": "object",
-        "required": ["queued", "oldestWaitSeconds"],
+        "required": [
+          "queued",
+          "oldestWaitSeconds"
+        ],
         "title": "Backlog"
       },
       "BacklogPair": {
@@ -2856,7 +3237,10 @@
           }
         },
         "type": "object",
-        "required": ["onDemand", "scheduled"],
+        "required": [
+          "onDemand",
+          "scheduled"
+        ],
         "title": "BacklogPair"
       },
       "Column": {
@@ -2871,7 +3255,13 @@
           },
           "type": {
             "type": "string",
-            "enum": ["text", "enum", "number", "bool", "datetime"],
+            "enum": [
+              "text",
+              "enum",
+              "number",
+              "bool",
+              "datetime"
+            ],
             "title": "Type"
           },
           "mono": {
@@ -2888,7 +3278,10 @@
           },
           "scope": {
             "type": "string",
-            "enum": ["common", "type"],
+            "enum": [
+              "common",
+              "type"
+            ],
             "title": "Scope"
           }
         },
@@ -2924,7 +3317,11 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "required": ["accountId", "awsRegion", "resourceType"],
+        "required": [
+          "accountId",
+          "awsRegion",
+          "resourceType"
+        ],
         "title": "ConfirmChangeBody"
       },
       "CoverageCell": {
@@ -2939,7 +3336,13 @@
           },
           "state": {
             "type": "string",
-            "enum": ["ok", "failed", "access_denied", "stale", "never"],
+            "enum": [
+              "ok",
+              "failed",
+              "access_denied",
+              "stale",
+              "never"
+            ],
             "title": "State"
           },
           "lastSucceededAt": {
@@ -2992,7 +3395,11 @@
           }
         },
         "type": "object",
-        "required": ["value", "label", "count"],
+        "required": [
+          "value",
+          "label",
+          "count"
+        ],
         "title": "FacetBucket"
       },
       "FailureCount": {
@@ -3007,7 +3414,10 @@
           }
         },
         "type": "object",
-        "required": ["errorCode", "count"],
+        "required": [
+          "errorCode",
+          "count"
+        ],
         "title": "FailureCount"
       },
       "HTTPValidationError": {
@@ -3027,17 +3437,26 @@
         "properties": {
           "database": {
             "type": "string",
-            "enum": ["ok", "unavailable"],
+            "enum": [
+              "ok",
+              "unavailable"
+            ],
             "title": "Database"
           },
           "redis": {
             "type": "string",
-            "enum": ["ok", "unavailable"],
+            "enum": [
+              "ok",
+              "unavailable"
+            ],
             "title": "Redis"
           }
         },
         "type": "object",
-        "required": ["database", "redis"],
+        "required": [
+          "database",
+          "redis"
+        ],
         "title": "HealthStatus"
       },
       "LiveData": {
@@ -3054,7 +3473,10 @@
           }
         },
         "type": "object",
-        "required": ["properties", "observedAt"],
+        "required": [
+          "properties",
+          "observedAt"
+        ],
         "title": "LiveData"
       },
       "LogEvent": {
@@ -3079,7 +3501,12 @@
           }
         },
         "type": "object",
-        "required": ["timestamp", "level", "message", "data"],
+        "required": [
+          "timestamp",
+          "level",
+          "message",
+          "data"
+        ],
         "title": "LogEvent"
       },
       "Page_AccountSummary_": {
@@ -3105,8 +3532,44 @@
           }
         },
         "type": "object",
-        "required": ["items", "page", "pageSize", "total"],
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
         "title": "Page[AccountSummary]"
+      },
+      "Page_Application_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Application"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "pageSize": {
+            "type": "integer",
+            "title": "Pagesize"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "title": "Page[Application]"
       },
       "Page_RelationshipEntry_": {
         "properties": {
@@ -3131,7 +3594,12 @@
           }
         },
         "type": "object",
-        "required": ["items", "page", "pageSize", "total"],
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
         "title": "Page[RelationshipEntry]"
       },
       "Page_ResourceItem_": {
@@ -3157,7 +3625,12 @@
           }
         },
         "type": "object",
-        "required": ["items", "page", "pageSize", "total"],
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
         "title": "Page[ResourceItem]"
       },
       "Page_ScanRequestOut_": {
@@ -3183,7 +3656,12 @@
           }
         },
         "type": "object",
-        "required": ["items", "page", "pageSize", "total"],
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
         "title": "Page[ScanRequestOut]"
       },
       "Page_ScanScopeOut_": {
@@ -3209,8 +3687,44 @@
           }
         },
         "type": "object",
-        "required": ["items", "page", "pageSize", "total"],
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
         "title": "Page[ScanScopeOut]"
+      },
+      "Page_ScopeCandidate_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScopeCandidate"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "pageSize": {
+            "type": "integer",
+            "title": "Pagesize"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "title": "Page[ScopeCandidate]"
       },
       "Page_TaskOut_": {
         "properties": {
@@ -3235,7 +3749,12 @@
           }
         },
         "type": "object",
-        "required": ["items", "page", "pageSize", "total"],
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
         "title": "Page[TaskOut]"
       },
       "RefreshAccepted": {
@@ -3246,7 +3765,9 @@
           }
         },
         "type": "object",
-        "required": ["taskId"],
+        "required": [
+          "taskId"
+        ],
         "title": "RefreshAccepted"
       },
       "RefreshByArn": {
@@ -3259,7 +3780,9 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "required": ["arn"],
+        "required": [
+          "arn"
+        ],
         "title": "RefreshByArn"
       },
       "RefreshByKey": {
@@ -3287,7 +3810,12 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "required": ["accountId", "awsRegion", "resourceType", "resourceId"],
+        "required": [
+          "accountId",
+          "awsRegion",
+          "resourceType",
+          "resourceId"
+        ],
         "title": "RefreshByKey"
       },
       "RefreshError": {
@@ -3302,7 +3830,10 @@
           }
         },
         "type": "object",
-        "required": ["code", "message"],
+        "required": [
+          "code",
+          "message"
+        ],
         "title": "RefreshError"
       },
       "RefreshedResource": {
@@ -3363,7 +3894,11 @@
           },
           "status": {
             "type": "string",
-            "enum": ["active", "missing", "deleted"],
+            "enum": [
+              "active",
+              "missing",
+              "deleted"
+            ],
             "title": "Status"
           },
           "stale": {
@@ -3452,7 +3987,11 @@
           },
           "observedSource": {
             "type": "string",
-            "enum": ["config", "cloudcontrol", "native"],
+            "enum": [
+              "config",
+              "cloudcontrol",
+              "native"
+            ],
             "title": "Observedsource"
           },
           "refreshError": {
@@ -3498,7 +4037,10 @@
         "properties": {
           "direction": {
             "type": "string",
-            "enum": ["out", "in"],
+            "enum": [
+              "out",
+              "in"
+            ],
             "title": "Direction"
           },
           "relationName": {
@@ -3550,7 +4092,11 @@
           }
         },
         "type": "object",
-        "required": ["resourceType", "resourceId", "name"],
+        "required": [
+          "resourceType",
+          "resourceId",
+          "name"
+        ],
         "title": "RelationshipRef"
       },
       "Requeued": {
@@ -3561,7 +4107,9 @@
           }
         },
         "type": "object",
-        "required": ["requeued"],
+        "required": [
+          "requeued"
+        ],
         "title": "Requeued"
       },
       "ResourceCounts": {
@@ -3648,7 +4196,11 @@
           },
           "status": {
             "type": "string",
-            "enum": ["active", "missing", "deleted"],
+            "enum": [
+              "active",
+              "missing",
+              "deleted"
+            ],
             "title": "Status"
           },
           "stale": {
@@ -3737,7 +4289,11 @@
           },
           "observedSource": {
             "type": "string",
-            "enum": ["config", "cloudcontrol", "native"],
+            "enum": [
+              "config",
+              "cloudcontrol",
+              "native"
+            ],
             "title": "Observedsource"
           }
         },
@@ -3827,7 +4383,11 @@
           },
           "status": {
             "type": "string",
-            "enum": ["active", "missing", "deleted"],
+            "enum": [
+              "active",
+              "missing",
+              "deleted"
+            ],
             "title": "Status"
           },
           "stale": {
@@ -3920,7 +4480,11 @@
           }
         },
         "type": "object",
-        "required": ["typeName", "label", "global"],
+        "required": [
+          "typeName",
+          "label",
+          "global"
+        ],
         "title": "ResourceTypeInfo"
       },
       "ScanCounts": {
@@ -3937,7 +4501,10 @@
           }
         },
         "type": "object",
-        "required": ["tasks", "resources"],
+        "required": [
+          "tasks",
+          "resources"
+        ],
         "title": "ScanCounts"
       },
       "ScanCreated": {
@@ -3948,7 +4515,9 @@
           }
         },
         "type": "object",
-        "required": ["scanRequestId"],
+        "required": [
+          "scanRequestId"
+        ],
         "title": "ScanCreated"
       },
       "ScanDetail": {
@@ -3959,7 +4528,10 @@
           },
           "trigger": {
             "type": "string",
-            "enum": ["schedule", "api"],
+            "enum": [
+              "schedule",
+              "api"
+            ],
             "title": "Trigger"
           },
           "callerId": {
@@ -4073,7 +4645,10 @@
           },
           "trigger": {
             "type": "string",
-            "enum": ["schedule", "api"],
+            "enum": [
+              "schedule",
+              "api"
+            ],
             "title": "Trigger"
           },
           "callerId": {
@@ -4232,6 +4807,10 @@
       },
       "ScanScopeOut": {
         "properties": {
+          "scanShardId": {
+            "type": "integer",
+            "title": "Scanshardid"
+          },
           "accountId": {
             "type": "string",
             "title": "Accountid"
@@ -4271,6 +4850,7 @@
         },
         "type": "object",
         "required": [
+          "scanShardId",
           "accountId",
           "region",
           "resourceType",
@@ -4358,6 +4938,60 @@
           "workers"
         ],
         "title": "ScanSummary"
+      },
+      "ScopeCandidate": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "resourceId": {
+            "type": "string",
+            "title": "Resourceid"
+          },
+          "resourceName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourcename"
+          },
+          "arn": {
+            "type": "string",
+            "title": "Arn"
+          },
+          "inventoryStatus": {
+            "type": "string",
+            "enum": [
+              "active",
+              "missing",
+              "deleted",
+              "purged"
+            ],
+            "title": "Inventorystatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "resourceId",
+          "resourceName",
+          "arn",
+          "inventoryStatus"
+        ],
+        "title": "ScopeCandidate",
+        "description": "A resource the guard spared. `purged` means the row is gone from the inventory."
       },
       "StatsOverview": {
         "properties": {
@@ -4463,7 +5097,10 @@
           }
         },
         "type": "object",
-        "required": ["key", "value"],
+        "required": [
+          "key",
+          "value"
+        ],
         "title": "Tag"
       },
       "TaskLogs": {
@@ -4488,7 +5125,10 @@
           }
         },
         "type": "object",
-        "required": ["events", "nextToken"],
+        "required": [
+          "events",
+          "nextToken"
+        ],
         "title": "TaskLogs"
       },
       "TaskOut": {
@@ -4667,7 +5307,11 @@
           }
         },
         "type": "object",
-        "required": ["resourceType", "label", "count"],
+        "required": [
+          "resourceType",
+          "label",
+          "count"
+        ],
         "title": "TypeCount"
       },
       "ValidationError": {
@@ -4703,7 +5347,11 @@
           }
         },
         "type": "object",
-        "required": ["loc", "msg", "type"],
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
         "title": "ValidationError"
       },
       "WorkerActivity": {
@@ -4726,7 +5374,10 @@
           }
         },
         "type": "object",
-        "required": ["activeTasks", "lastHeartbeatAt"],
+        "required": [
+          "activeTasks",
+          "lastHeartbeatAt"
+        ],
         "title": "WorkerActivity"
       }
     }

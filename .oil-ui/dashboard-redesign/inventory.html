@@ -1,0 +1,975 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AWS 资源清单 · Inventory</title>
+<style>
+:root{--accent:#b52c62;--soft:#f9eaf0;--soft-line:#edd8e0;--ink:#292724;--muted:#716b66;--line:#e5e0db;--bg:#f5f3f0;--side:#eeebe7;--surface:#fff;--good:#28734f;--side-w:264px}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;font-variant-numeric:tabular-nums}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);border-radius:8px;background:#fff;padding:7px 12px}
+button:hover{background:#f7f4f1}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button:disabled{cursor:default;opacity:.45}
+h1,h2,h3,p,dl,dd{margin:0}
+h1{font-size:28px;line-height:1.3;letter-spacing:-.6px}
+h2{font-size:16px}
+.small{font-size:12px;color:var(--muted)}
+.muted{color:var(--muted)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+.icon{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;pointer-events:none}
+
+/* ---- sidebar: Inventory (All Resources / Applications) and 扫描管理; slides out to the left ---- */
+.sidebar{position:fixed;inset:0 auto 0 0;width:var(--side-w);background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;transition:transform .18s ease-out;z-index:10}
+body.nav-hidden .sidebar{transform:translateX(-100%)}
+.workspace{margin-left:var(--side-w);min-width:0}
+body.nav-hidden .workspace{margin-left:0}
+.side-head{display:flex;align-items:center;gap:10px;padding:18px 12px 14px 22px;font-weight:650}
+.brandmark{display:grid;grid-template-columns:repeat(2,7px);gap:3px;color:var(--accent)}
+.brandmark i{width:7px;height:7px;border-radius:2px;background:currentColor}
+.brandmark i:last-child{opacity:.4}
+.iconbtn{width:32px;height:32px;padding:0;display:grid;place-items:center;border-color:transparent;background:transparent;color:var(--muted)}
+.iconbtn:hover{background:#e5dfd9;color:var(--ink)}
+.side-head .iconbtn{margin-left:auto}
+.nav{flex:1;overflow:auto;padding:0 10px 16px;scrollbar-width:thin}
+.nav button{border:0;background:transparent;display:flex;width:100%;align-items:center;gap:6px;text-align:left;min-height:32px;padding:5px 10px;border-radius:7px}
+.nav button:hover{background:#e5dfd9}
+.nav button.active{background:#fff;color:var(--accent);font-weight:600}
+.nav .root{font-size:12px;font-weight:650;color:var(--muted);padding:16px 12px 6px}
+.nav .sec{font-weight:600}
+.nav .sec .twist,.nav .grp .twist{width:20px;height:20px;margin:-2px 0 -2px -4px;display:grid;place-items:center;border-radius:5px;color:var(--muted)}
+.nav .grp{font-size:12px;color:var(--muted);font-weight:600;padding-left:26px;min-height:28px;margin-top:4px}
+.nav .leaf{padding-left:50px}
+.nav .flat{padding-left:32px}
+.nav .num{margin-left:auto;font-size:12px;color:var(--muted);font-weight:400}
+.nav .active .num{color:var(--accent)}
+.app-pick{margin:4px 0 4px 26px;width:calc(100% - 26px)!important;background:#fff!important;border:1px solid #d8d0c8!important;padding:7px 10px!important;justify-content:space-between}
+.app-pick strong{display:block;font-weight:650;line-height:1.3}
+.app-pick .small{display:block;line-height:1.3}
+.side-foot{padding:12px 22px 16px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
+
+/* ---- top bar ---- */
+.topbar{position:sticky;top:0;z-index:5;height:56px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 32px;background:#fbfaf8}
+.topbar .show-nav{display:none;margin-left:-12px}
+body.nav-hidden .topbar .show-nav{display:grid}
+.gsearch{width:min(460px,60%);display:flex;align-items:center;gap:8px;color:var(--muted)}
+.gsearch input{width:100%;border:0;background:transparent;padding:8px 0}
+.gsearch input:focus-visible{outline:0}
+.topbar .right{margin-left:auto}
+
+.main{padding:22px 32px 48px;max-width:1680px}
+.breadcrumb{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-bottom:14px}
+.breadcrumb .icon{width:12px;height:12px}
+.heading{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px}
+.heading p{margin-top:4px;color:var(--muted)}
+
+/* ---- type tabs inside one service ---- */
+.type-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:20px}
+.type-tabs button{border:0;border-radius:0;background:transparent;padding:8px 14px 10px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;display:flex;gap:8px;align-items:baseline}
+.type-tabs button:hover{color:var(--ink);background:transparent}
+.type-tabs button.active{color:var(--accent);border-color:var(--accent);font-weight:600}
+.type-tabs .num{font-size:12px;font-weight:400}
+
+/* ---- overview cards ---- */
+.section-heading{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 0 12px}
+.insights{display:grid;grid-template-columns:1.15fr repeat(3,minmax(0,1fr));gap:14px;margin-bottom:26px}
+.insight{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;min-width:0;display:flex;flex-direction:column;min-height:156px}
+.insight.lead{background:var(--soft);border-color:var(--soft-line)}
+.insight-label{font-size:12px;color:var(--muted);font-weight:600;margin-bottom:10px}
+.insight-value{font-size:28px;font-weight:650;line-height:1.2;letter-spacing:-.5px;margin-bottom:10px}
+.insight-value small{font-size:12px;color:var(--muted);font-weight:400;margin-left:6px;letter-spacing:0}
+.insight-bottom{font-size:12px;color:var(--muted);margin-top:auto}
+.dist>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;font-size:12px;padding:2px 0;align-items:center}
+.dist [data-set-f]{cursor:pointer;border-radius:4px}
+.dist [data-set-f]:hover dt{color:var(--accent)}
+.dist dt{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dist .bar{grid-column:1/-1;height:3px;border-radius:2px;background:#f1ece8;margin-bottom:3px}
+.dist .bar i{display:block;height:100%;border-radius:2px;background:var(--accent);opacity:.75}
+.svc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-bottom:26px}
+.svc-card{padding:14px 16px;text-align:left;display:flex;flex-direction:column;gap:8px;border-radius:12px}
+.svc-card:hover{background:#fff;border-color:#c38a9e}
+.svc-card .top{display:flex;align-items:baseline;gap:8px}
+.svc-card strong{font-size:16px}
+.svc-card .count{margin-left:auto;font-size:16px;font-weight:650}
+.svc-card .types{font-size:12px;color:var(--muted);line-height:1.7}
+
+/* ---- search, filters, export ---- */
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.filters .q{flex:1 1 260px;max-width:380px;display:flex;align-items:center;gap:8px;border:1px solid #cfc7be;border-radius:8px;background:#fff;padding:0 10px;color:var(--muted)}
+.filters .q input{border:0;background:transparent;width:100%;padding:7px 0}
+.filters .q input:focus-visible{outline:0}
+.filters .q:focus-within{outline:2px solid var(--accent);outline-offset:1px}
+.filters select{appearance:none;border:1px solid #cfc7be;border-radius:8px;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23716b66' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 8px center/14px;padding:7px 28px 7px 10px;max-width:190px}
+.filters select.set{border-color:var(--accent);background-color:var(--soft);color:var(--accent);font-weight:600}
+.filters .fixed{border:1px dashed #cfc7be;border-radius:8px;padding:7px 10px;color:var(--muted);background:transparent}
+.filters .clear{border:0;background:transparent;color:var(--accent);padding:7px 6px}
+.filters .export{margin-left:auto;display:flex;align-items:center;gap:6px;font-weight:600}
+
+/* ---- the list: Type, Name, ARN, the type's own columns, Region, Account, EIM ---- */
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff}
+table{width:100%;border-collapse:collapse;text-align:left;white-space:nowrap}
+th{background:#faf8f5;color:var(--muted);font-weight:500;font-size:12px}
+th,td{padding:10px 14px;border-bottom:1px solid #efebe6}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover{background:#fcf8f9}
+th.own{color:var(--accent)}
+th.own:first-of-type,td.own:first-of-type{border-left:1px solid #efebe6}
+th.tail:first-of-type,td.tail:first-of-type{border-left:1px solid #efebe6}
+td .name{padding:0;border:0;background:transparent;color:var(--accent);font-weight:600;text-align:left}
+td.arn{max-width:300px;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.typechip{font-size:12px;border:1px solid var(--line);border-radius:6px;padding:1px 7px;background:#faf8f5}
+.off{color:var(--muted)}
+.warn{color:#8a5a00;font-weight:600}
+.ref{color:var(--accent);text-decoration:underline;text-decoration-color:transparent;text-underline-offset:3px;cursor:pointer}
+.ref:hover{text-decoration-color:currentColor}
+.empty{padding:56px 20px;text-align:center}
+.footer-count{margin-top:14px;display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:12px}
+.pager{display:flex;align-items:center;gap:8px}
+.pager button{padding:5px 8px;display:grid}
+
+/* ---- application picker and detail drawer ---- */
+.picker{position:fixed;left:calc(var(--side-w) - 8px);top:150px;width:360px;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 16px 60px #2b222022;padding:12px;z-index:30}
+.picker[hidden]{display:none}
+.picker input{width:100%;border:1px solid #cfc7be;border-radius:8px;padding:8px 10px;margin-bottom:8px}
+.picker button{width:100%;display:flex;align-items:center;justify-content:space-between;text-align:left;border:0;padding:8px 10px}
+.picker button.active{background:var(--soft)}
+.picker strong{display:block}
+.shade{position:fixed;inset:0;background:#28221e26;z-index:40}
+.shade[hidden]{display:none}
+.drawer{position:absolute;right:0;top:0;height:100%;width:min(520px,100%);background:#fff;box-shadow:-10px 0 60px #30241a15;overflow:auto;padding:26px}
+.drawer h2{font-size:16px;line-height:1.5;overflow-wrap:anywhere;margin:14px 0 2px}
+.drawer h3{font-size:14px;margin:24px 0 6px}
+.drawer .actions{display:flex;gap:8px;margin-top:14px}
+.drawer .keys{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px;padding:14px 16px;border:1px solid var(--line);border-radius:10px}
+.drawer .keys dt{font-size:12px;color:var(--muted)}
+.drawer .keys dd{font-weight:600;overflow-wrap:anywhere}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:10px;padding:8px 0;border-bottom:1px solid #f1eeeb}
+.kv dt{color:var(--muted)}
+.kv dd{overflow-wrap:anywhere}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+@media(max-width:1180px){.insights{grid-template-columns:repeat(2,minmax(0,1fr))}.main{padding:20px 20px 40px}.topbar{padding:0 20px}}
+
+a{color:inherit;text-decoration:none}
+a.link{color:var(--accent);font-weight:600}
+a.link:hover,.breadcrumb a:hover{text-decoration:underline;text-underline-offset:3px}
+.nav a{display:flex;width:100%;align-items:center;gap:6px;min-height:32px;padding:5px 10px;border-radius:7px}
+.nav a:hover{background:#e5dfd9}
+.nav a.active{background:#fff;color:var(--accent);font-weight:600}
+.nav a.top{font-weight:600;padding-left:12px}
+.nav .grp{padding-left:8px}
+.nav a.leaf{padding-left:34px}
+.type-tabs a{padding:8px 14px 10px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;display:flex;gap:8px;align-items:baseline}
+.type-tabs a:hover{color:var(--ink)}
+.type-tabs a.active{color:var(--accent);border-color:var(--accent);font-weight:600}
+a.svc-card{border:1px solid var(--line);background:#fff}
+.heading h1{overflow-wrap:anywhere}
+.heading .actions{display:flex;gap:8px;flex-shrink:0}
+.primary{background:var(--accent)!important;border-color:var(--accent)!important;color:#fff!important;font-weight:600;border-radius:8px;padding:7px 12px;border:1px solid}
+/* ---- detail pages: summary panel, field groups, log ---- */
+.panel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:16px}
+.panel>h2{margin-bottom:12px}
+.summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 24px}
+.summary dt{font-size:12px;color:var(--muted)}
+.summary dd{overflow-wrap:anywhere}
+.cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+.cols2 .panel{margin-bottom:0}
+.panel .kv:last-child{border-bottom:0}
+.kv{grid-template-columns:140px 1fr}
+.notice{border:1px solid #e6d3a8;background:#fbf4e3;border-radius:10px;padding:12px 16px;margin-bottom:16px}
+.notice strong{color:#8a5a00}
+.log{margin:0;background:#faf8f5;border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow:auto;max-height:420px;font:12px/1.8 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre}
+.log .t{color:var(--muted)}
+.log .err{color:#8a5a00;font-weight:600}
+.log-head{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.log-head h2{margin-right:auto}
+.log-head input{border:1px solid #cfc7be;border-radius:8px;padding:6px 10px;width:220px}
+@media(max-width:1180px){.summary{grid-template-columns:repeat(2,minmax(0,1fr))}.cols2{grid-template-columns:1fr}}
+.ty{display:inline-flex;align-items:center;gap:6px;vertical-align:middle}
+.ty .icon{color:var(--muted)}
+.tile{display:inline-grid;place-items:center;width:36px;height:36px;border-radius:8px;background:var(--soft);color:var(--accent);flex-shrink:0}
+.tile .icon{width:20px;height:20px}
+h1{display:flex;align-items:center;gap:12px}
+h1>span:last-child{min-width:0}
+.nav a .icon{color:var(--muted)}
+.nav a.active .icon{color:var(--accent)}
+.type-tabs a{align-items:center}
+.svc-card .top{align-items:center}
+.svc-card strong,.svc-card .top .small{white-space:nowrap}
+.svc-grid{grid-template-columns:repeat(auto-fill,minmax(270px,1fr))}
+/* ---- v7: clickable groups, slim overview, one-page detail, account picker ---- */
+.nav div.grp{display:flex;align-items:center;gap:2px;padding-left:6px;margin-top:4px}
+.nav div.grp .twist{width:22px;min-height:22px;height:22px;padding:0;margin:0;justify-content:center;flex-shrink:0}
+.nav div.grp a{min-height:28px;padding:3px 8px;font-size:12px;font-weight:600;color:var(--muted)}
+.nav div.grp.on a{background:#fff;color:var(--accent)}
+.stats,.strip{display:grid;background:#fff;border:1px solid var(--line);border-radius:12px;margin:0 0 16px}
+.stats{grid-template-columns:repeat(5,minmax(0,1fr))}
+.strip{grid-template-columns:1.2fr 1fr 1fr 1.3fr}
+.stats>div,.strip>div{padding:14px 20px;border-left:1px solid #efebe6;min-width:0}
+.stats>div:first-child,.strip>div:first-child{border-left:0}
+.stats dt,.strip dt{font-size:12px;color:var(--muted);font-weight:600;margin-bottom:4px}
+.stats dd,.strip dd{font-size:12px;color:var(--muted)}
+.stats strong,.strip strong{font-size:28px;line-height:1.25;font-weight:650;letter-spacing:-.5px;color:var(--ink);margin-right:2px}
+.stats>div:first-child strong,.strip>div:first-child strong{color:var(--accent)}
+.strip dd{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}
+.strip>div:first-child dd{display:block}
+.pill{border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12px;background:#fff;color:var(--ink);line-height:1.6}
+.pill b{font-weight:650;margin-left:2px}
+.pill.plain{background:#faf8f5}
+button.pill.on{background:var(--soft);border-color:var(--accent);color:var(--accent)}
+.cols2.gap{margin-bottom:26px}
+.bars{display:flex;flex-direction:column;gap:2px}
+.brow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px;align-items:center;width:calc(100% + 16px);margin:0 -8px;text-align:left;border:0;background:transparent;padding:6px 8px;border-radius:8px}
+.brow:hover{background:#f7f4f1}
+.brow.on{background:var(--soft)}
+.brow.on .bl{color:var(--accent);font-weight:600}
+.bl{display:flex;align-items:center;gap:8px;min-width:0}
+.bl .icon{color:var(--muted)}
+.bn{font-weight:600}
+.brow .bar{grid-column:1/-1;height:4px;border-radius:2px;background:#f1ece8}
+.brow .bar i{display:block;height:100%;border-radius:2px;background:var(--accent);opacity:.8}
+tr[data-row]{cursor:pointer}
+td a.name{color:var(--accent);font-weight:600}
+td a.name:hover{text-decoration:underline;text-underline-offset:3px}
+.arnw{display:flex;align-items:center;gap:4px;max-width:320px;color:var(--muted)}
+.arnw span{overflow:hidden;text-overflow:ellipsis}
+.cp{border:0;background:transparent;padding:3px;color:var(--muted);opacity:0;display:grid}
+tr:hover .cp,.cp:focus-visible{opacity:1}
+.cp:hover{color:var(--accent);background:transparent}
+.summary.six{grid-template-columns:repeat(6,minmax(0,1fr))}
+.stack{display:flex;flex-direction:column;gap:16px;min-width:0}
+.prog{display:flex;gap:2px;height:6px;border-radius:3px;background:#efebe6;overflow:hidden;margin-bottom:16px}
+.prog i{display:block;height:100%}
+.prog .ok{background:var(--accent)}
+.prog .bad{background:#b7791f}
+.prog .run{background:var(--accent);opacity:.4}
+.picker{width:400px}
+.picker .ptitle{font-weight:600;margin:4px 6px 8px}
+.picker input[type=checkbox]{width:16px;height:16px;margin:0;padding:0;accent-color:var(--accent)}
+.acct-list{max-height:300px;overflow:auto;scrollbar-width:thin}
+.acct-row{display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:10px;align-items:center;padding:6px 8px;border-radius:8px;cursor:pointer}
+.acct-row:hover{background:#f7f4f1}
+.acct-row strong{font-weight:600;line-height:1.3}
+.picker .foot{display:flex;gap:8px;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.picker .foot button{width:auto;border:1px solid var(--line);justify-content:center;padding:7px 12px}
+@media(max-width:1180px){.stats{grid-template-columns:repeat(3,minmax(0,1fr))}.strip{grid-template-columns:repeat(2,minmax(0,1fr))}.summary.six{grid-template-columns:repeat(3,minmax(0,1fr))}.stats>div,.strip>div{border-left:0}}
+.picker{width:520px;overflow:auto;padding:14px}
+.picker .seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:#f1ece8;border-radius:10px;padding:4px;margin-bottom:6px}
+.picker .seg button{justify-content:center;border-radius:7px;background:transparent;color:var(--muted);padding:6px 10px}
+.picker .seg button.on{background:#fff;color:var(--ink);font-weight:600}
+.picker .plabel{font-weight:600;margin:14px 6px 8px;display:flex;align-items:baseline;gap:8px}
+.picker .plabel .small{font-weight:400}
+.picker .pnote{margin:12px 6px}
+.picker .acct-list{max-height:196px;border:1px solid var(--line);border-radius:10px;padding:4px}
+.picker .chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 6px}
+.picker .chips button{width:auto;display:inline-flex;gap:5px;align-items:center;border:1px solid var(--line);padding:3px 10px;justify-content:flex-start}
+.picker .chips button.on{border-color:var(--accent)}
+.picker .chips .icon{width:14px;height:14px}
+.picker .textbtn{width:auto;display:inline;border:0;background:transparent;color:var(--accent);padding:0 0 0 6px}
+.picker .foot{align-items:center;margin-top:14px}
+/* ---- v9: API-true scans, accounts, sorting, export menu, confirm ---- */
+.cols4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:26px;align-items:start}
+.cols4 .panel{margin-bottom:0}
+.textbtn{border:0;background:transparent;color:var(--accent);padding:4px 0;text-align:left}
+.textbtn:hover{background:transparent;text-decoration:underline;text-underline-offset:3px}
+.statlink:hover strong{color:var(--accent)}
+.filters .combo{border:1px solid #cfc7be;border-radius:8px;background:#fff;padding:7px 10px;width:170px}
+.filters .combo.set{border-color:var(--accent);background:var(--soft);color:var(--accent);font-weight:600}
+details.menu{position:relative}
+details.menu summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;font-weight:600;border:1px solid var(--line);border-radius:8px;background:#fff;padding:7px 12px}
+details.menu summary::-webkit-details-marker{display:none}
+details.menu summary:hover{background:#f7f4f1}
+details.menu>div{position:absolute;right:0;top:calc(100% + 6px);z-index:6;width:300px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 16px 60px #2b222022;padding:10px}
+details.menu>div p{margin:2px 6px 8px}
+details.menu>div button{display:block;width:100%;text-align:left;border:0;padding:8px 10px}
+details.export{margin-left:auto}
+th .sort{border:0;background:transparent;padding:0;font:inherit;color:inherit;display:inline-flex;align-items:center;gap:3px}
+th .sort:hover{background:transparent;color:var(--ink)}
+th.own .sort:hover{color:var(--accent)}
+th .sort .icon{width:12px;height:12px}
+th[aria-sort=ascending],th[aria-sort=descending]{color:var(--ink)}
+.numcol{text-align:right}
+.rowact{text-align:right}
+.rowact button{padding:4px 10px}
+.pager select{appearance:none;border:1px solid var(--line);border-radius:8px;background:#fff;padding:5px 10px;font-size:12px;color:var(--muted)}
+.table-wrap.flat{border:0;border-radius:0}
+.table-wrap.flat th{background:transparent;padding-left:0}
+.table-wrap.flat td{padding-left:0}
+.panel .sub{font-size:12px;color:var(--muted);font-weight:600;margin:10px 0 2px}
+.panel h2+.sub{margin-top:0}
+a.btn{border:1px solid var(--line);border-radius:8px;background:#fff;padding:7px 12px}
+a.btn:hover{background:#f7f4f1}
+.notice .pill{margin-left:4px}
+.notice p+p{margin-top:4px}
+.shade.ask{display:grid;place-items:center;z-index:50}
+.shade.ask[hidden]{display:none}
+.askbox{background:#fff;border-radius:14px;padding:22px 24px;width:min(460px,calc(100% - 32px));box-shadow:0 16px 60px #2b222033}
+.askbox h2{margin-bottom:10px}
+.askbox p{margin-bottom:8px}
+.askbox .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.summary.six{row-gap:16px}
+@media(max-width:1300px){.cols4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.done-note{margin-left:10px;color:var(--good);font-weight:600}
+.picker .phead{display:flex;align-items:center;justify-content:space-between;margin:0 2px 10px 6px}
+.picker .phead .iconbtn{width:28px;height:28px;display:grid;padding:0}
+.stats.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.pfind{width:100%;border:1px solid #cfc7be;border-radius:8px;padding:6px 10px;margin-bottom:8px;background:#fff}
+a.textbtn{display:inline-block;color:var(--accent);padding:6px 0 0}
+a.textbtn:hover{text-decoration:underline;text-underline-offset:3px}
+th.numcol .sort{flex-direction:row-reverse}
+/* ---- scope switcher ---- */
+.scope-slot{padding:0 12px 10px}
+.scope-btn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;background:#fff;border:1px solid #d8d0c8;border-radius:10px;padding:8px 12px}
+.scope-btn span>*{display:block;line-height:1.35}
+.scope-btn strong{font-weight:650;overflow-wrap:anywhere}
+.scope-btn.set{border-color:var(--accent);background:var(--soft)}
+.scope-btn.set strong{color:var(--accent)}
+.stats.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.cols4.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+/* ---- scope picker dialog ---- */
+.scopedlg{border:0;padding:0;border-radius:16px;width:min(660px,calc(100vw - 32px));max-height:min(640px,calc(100vh - 96px));margin:12vh auto auto;background:#fff;color:var(--ink);box-shadow:0 24px 80px #2b222038;overflow:hidden}
+.scopedlg[open]{display:flex;flex-direction:column}
+.scopedlg::backdrop{background:#28221e33}
+.scopedlg .shead{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 12px 24px}
+.scopedlg .ssearch{display:flex;align-items:center;gap:10px;margin:0 24px 14px;border:1px solid #cfc7be;border-radius:10px;padding:0 14px;color:var(--muted)}
+.scopedlg .ssearch:focus-within{outline:2px solid var(--accent);outline-offset:1px}
+.scopedlg .ssearch input{border:0;background:transparent;width:100%;padding:11px 0;font-size:16px}
+.scopedlg .ssearch input:focus-visible{outline:0}
+.scopedlg .slist{overflow:auto;border-top:1px solid var(--line);padding:8px 12px;scrollbar-width:thin}
+.scopedlg .srow{display:grid;grid-template-columns:36px minmax(0,1fr) auto 16px;gap:12px;align-items:center;padding:8px 12px;border-radius:10px}
+.scopedlg .srow:hover,.scopedlg .srow.cur{background:#f7f4f1}
+.scopedlg .srow.on{background:var(--soft)}
+.scopedlg .srow .icon{color:var(--muted)}
+.scopedlg .avatar{width:36px;height:36px;border-radius:8px;display:grid;place-items:center;background:#f1ece8;font-weight:650;color:var(--muted)}
+.scopedlg .srow.on .avatar,.scopedlg .avatar.all{background:var(--soft);color:var(--accent)}
+.scopedlg .avatar.all .icon{color:var(--accent);width:18px;height:18px}
+.scopedlg .who>*{display:block;line-height:1.4}
+.scopedlg .who strong{font-weight:600}
+.scopedlg .sgroup{font-size:12px;font-weight:650;color:var(--muted);margin:14px 12px 4px;display:flex;gap:10px;align-items:baseline}
+.scopedlg .sgroup .small{font-weight:400}
+.scopedlg .snone{padding:6px 12px}
+.scopedlg .smore{display:block;color:var(--accent);padding:6px 12px 2px 60px}
+.scopedlg .smore:hover{text-decoration:underline;text-underline-offset:3px}
+.scopedlg .sfoot{padding:10px 24px;border-top:1px solid var(--line);background:#faf8f5}
+/* ---- consistency pass: dialogs share one shell, every row is clickable ---- */
+.scandlg{width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 64px);margin-top:6vh}
+.picker.inl{position:static;width:auto;border:0;box-shadow:none;border-radius:0;padding:0 18px 18px;overflow:auto;max-height:none}
+.askbox{border-radius:16px}
+.askbox .shead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}
+.askbox .shead h2{margin:0}
+.drawer .iconbtn,.shead .iconbtn{width:32px;height:32px;padding:0;display:grid;place-items:center;flex-shrink:0}
+tbody tr:has(a.name,a.link):not(:has(button)){cursor:pointer}
+/* Resource browsing keeps identity and ownership ahead of configuration. */
+a:focus-visible,summary:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.scope-context{padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.scope-context>*{display:block}.scope-context a{display:flex;gap:6px;align-items:center;margin-top:5px;overflow-wrap:anywhere}
+.scope-accounts{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:16px 0}
+.account-choice{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.account-choice:hover{border-color:var(--accent)}.account-choice strong{font-weight:600}
+.distributions{margin:0 0 18px;border-bottom:1px solid var(--line)}
+.distributions>summary{cursor:pointer;padding:8px 0 12px;font-weight:600}.distributions>summary .small{margin-left:12px;font-weight:400}
+.distributions .cols4{margin:8px 0 16px}.scope-note{color:var(--muted);margin:0 0 16px}
+.resource-table table{table-layout:fixed}.resource-table th,.resource-table td{padding:9px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
+.resource-table tbody tr{height:64px}.resource-table tr:focus-visible{outline-offset:-2px}
+.identity-name{display:flex;gap:8px;align-items:baseline}.identity-name a{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.4}.identity-name>.small{flex-shrink:0}
+.resource-id{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);line-height:1.4;margin-top:3px}
+.resource-table .account-link,.resource-table .application-link{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;line-height:1.4}.account-link:hover,.application-link:hover{text-decoration:underline;text-underline-offset:3px}
+.account-id{display:flex;align-items:center;gap:5px;margin-top:3px;color:var(--muted);line-height:1.4;white-space:nowrap}.account-id .cp{opacity:1}.account-id .cp .icon{width:14px;height:14px}
+th.own{color:var(--muted)}.summary.five{grid-template-columns:repeat(5,minmax(0,1fr))}
+.heading{align-items:flex-start;flex-wrap:wrap}.heading .actions{flex-wrap:wrap;align-items:center}.heading .actions .btn{display:inline-flex;align-items:center;gap:6px}
+.selected-title{font-weight:600;margin:8px 6px}.selected-list{max-height:160px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:4px 8px}
+.selected-row{display:flex;align-items:center;gap:12px;padding:5px 2px}.selected-row>span:first-child{flex:1;min-width:0}.selected-row strong{overflow-wrap:anywhere}.selected-row .mono{display:block}
+.picker .selected-row .iconbtn{width:32px;height:32px;display:grid;padding:0;border:0;background:transparent;flex-shrink:0}
+.add-accounts{margin:10px 0 0}.add-accounts summary{cursor:pointer;color:var(--accent);padding:6px}.add-accounts[open] summary{margin-bottom:6px}
+.picker .foot{position:sticky;bottom:-18px;background:var(--surface);padding-bottom:4px;z-index:1}.picker .foot .small{max-width:calc(100% - 112px)}.picker .foot button{flex-shrink:0}
+.shade{border:0;margin:0;padding:0;width:100vw;height:100dvh;max-width:none;max-height:none;background:transparent;color:var(--ink)}
+.shade::backdrop{background:#28221e33}.shade:not([open]),.shade.ask:not([open]){display:none}.shade.ask[open]{display:grid}
+.shade .askbox{max-height:calc(100dvh - 32px);overflow:auto}.drawer{overscroll-behavior:contain}
+body:has(dialog[open]){overflow:hidden}.scopedlg{overscroll-behavior:contain}.shead{flex-shrink:0}
+.guard-arn>.mono{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.guard-arn .textbtn{display:block;font-size:12px}
+.guard-decision{margin-top:24px}.guard-decision p{color:var(--muted);max-width:780px}.guard-decision .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}.section-heading{flex-wrap:wrap}
+@media(max-width:1180px){:root{--side-w:224px}.summary.five{grid-template-columns:repeat(3,minmax(0,1fr))}.main{padding:20px 16px 40px}}
+@media(max-width:800px){.workspace{margin-left:0}.topbar .show-nav{display:grid}.sidebar{width:min(280px,85vw);box-shadow:12px 0 32px #29272422}.gsearch{width:100%}.topbar{padding:0 16px}.topbar .right{display:none}.stats,.stats.four,.stats.three,.strip,.summary,.summary.six,.summary.five{grid-template-columns:repeat(2,minmax(0,1fr))}.cols4,.cols4.two,.cols2,.insights{grid-template-columns:1fr}.heading .actions{flex-shrink:1}.type-tabs{overflow:auto}.breadcrumb{flex-wrap:wrap}.kv{grid-template-columns:90px minmax(0,1fr)}.scopedlg{margin-top:24px;max-height:calc(100dvh - 48px)}.scopedlg .srow{grid-template-columns:32px minmax(0,1fr) 16px}.srow>.small{display:none}.filters .q{max-width:none}.footer-count{gap:12px;flex-wrap:wrap}}
+
+/* ---- wide tables: keep the name column in view, fade the edge that has more ---- */
+.resource-table th:first-child,.resource-table td:first-child{position:sticky;left:0;z-index:1}
+.resource-table td:first-child{background:#fff}
+.resource-table tbody tr:hover td:first-child{background:#fcf8f9}
+.resource-table.scrolled th:first-child,.resource-table.scrolled td:first-child{box-shadow:1px 0 0 var(--line)}
+.resource-table.more{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 48px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 48px),transparent)}
+td.wrapcell{white-space:normal;min-width:200px}
+.scope-context>*{line-height:1.35}
+.scope-context a{margin-top:0}
+
+/* ---- preview drawer: one list style for every section ---- */
+.drawer{padding:20px 24px 0;display:flex;flex-direction:column}
+.dtop{display:flex;justify-content:space-between;align-items:center}
+.drawer h2{margin:10px 0 0}
+.dsub{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:12px;line-height:1.5;margin-top:2px;overflow-wrap:anywhere}
+.drawer h3{font-size:12px;font-weight:600;color:var(--muted);margin:22px 0 2px}
+.drawer .kv{grid-template-columns:96px minmax(0,1fr);gap:12px;padding:9px 0}
+.drawer .kv dd.dflex{display:flex;align-items:flex-start;gap:6px}
+.darn{font-size:12px;line-height:1.6;overflow-wrap:anywhere;min-width:0}
+.dfoot{position:sticky;bottom:0;margin:auto -24px 0;padding:14px 24px;background:#fff;border-top:1px solid var(--line);display:flex;align-items:center;gap:12px}
+.dfoot .small{color:var(--muted)}
+.drawer .cp{opacity:1;flex-shrink:0}
+
+/* ---- sidebar scope block: same two-line shape in every state ---- */
+.scope-btn,.scope-btn.set{display:grid;grid-template-columns:32px minmax(0,1fr) 16px;gap:10px;align-items:center;padding:8px 10px;background:#fff;border:1px solid #d8d0c8;min-height:50px}
+.scope-btn:hover{border-color:#bdb3a9}
+.scope-btn .avatar{width:32px;height:32px;display:grid;place-items:center;border-radius:8px;font-weight:650;line-height:1}
+.scope-btn .avatar.all{background:#f1ece8}
+.scope-btn .avatar.all .icon{color:var(--muted)}
+.scope-btn .avatar.on{background:var(--soft);color:var(--accent)}
+.scope-btn .scope-text>*{display:block;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scope-btn strong,.scope-btn.set strong{color:var(--ink,inherit);font-weight:600}
+.scope-btn .small{color:var(--muted)}
+.scope-btn .small .mono{display:inline}
+.scope-btn>.icon{color:var(--muted)}
+.scope-context{min-height:53px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;padding:6px 12px}
+
+/* ---- sidebar: keep scrolled menu from running into the scope block ---- */
+.scope-slot{position:relative;z-index:1}
+.nav.scrolled{border-top:1px solid var(--line)}
+.scope-btn,.scope-btn.set{grid-template-columns:32px minmax(0,1fr) 14px;gap:8px;padding:8px}
+@media(min-width:1181px){.strip.three{grid-template-columns:1.2fr 1fr 1.3fr}}
+
+/* ---- top bar scrolls away; search stays reachable as a small floating icon ---- */
+.topbar{position:static}
+.fab{position:fixed;top:10px;z-index:6;width:36px;height:36px;padding:0;border-radius:50%;background:#fff;border:1px solid #d8d0c8;color:var(--ink);display:grid;place-items:center;box-shadow:0 4px 14px #30241a1a;opacity:0;visibility:hidden;transform:scale(.85);transition:opacity .16s ease-out,transform .16s ease-out,visibility 0s .16s}
+.fab:hover{background:#f7f4f1}
+.fab-search{right:6px}
+.fab-nav{left:6px}
+body.scrolled .fab-search,body.scrolled.nav-hidden .fab-nav{opacity:1;visibility:visible;transform:none;transition:opacity .16s ease-out,transform .16s ease-out}
+@media(prefers-reduced-motion:reduce){.fab{transition:none}}
+#searchdlg .ssearch{margin-bottom:18px}
+#searchdlg .sfoot{line-height:1.6}
+
+/* ---- signed-in user: chip in the top bar, avatar next to the search icon once scrolled ---- */
+.uav{width:26px;height:26px;border-radius:50%;background:var(--soft);color:var(--accent);display:grid;place-items:center;font-size:12px;font-weight:650;flex-shrink:0}
+.uav.big{width:36px;height:36px;font-size:14px}
+.userchip{display:flex;align-items:center;gap:8px;border:0;background:transparent;padding:4px 6px 4px 4px;border-radius:18px}
+.userchip:hover{background:#efeae5}
+.userchip .icon{color:var(--muted);width:14px;height:14px}
+.fabs{position:fixed;top:10px;right:6px;z-index:6;display:flex;gap:2px;padding:3px;border-radius:21px;background:#fff;border:1px solid #d8d0c8;box-shadow:0 4px 14px #30241a1a;opacity:0;visibility:hidden;transform:scale(.9);transform-origin:right center;transition:opacity .16s ease-out,transform .16s ease-out,visibility 0s .16s}
+body.scrolled .fabs{opacity:1;visibility:visible;transform:none;transition:opacity .16s ease-out,transform .16s ease-out}
+.fabbtn{width:30px;height:30px;padding:0;border:0;border-radius:50%;background:transparent;display:grid;place-items:center;color:var(--ink)}
+.fabbtn:hover{background:#f1ece8}
+.usermenu{position:fixed;z-index:7;right:16px;top:52px;width:240px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 40px #2b222026;padding:6px}
+.usermenu .uhead{display:flex;gap:10px;align-items:center;padding:10px 10px 8px}
+.usermenu .uhead div>*{display:block;line-height:1.4}
+.usermenu .uhead .small,.usermenu .ustat{color:var(--muted)}
+.usermenu .ustat{display:flex;align-items:center;gap:6px;padding:0 10px 10px;margin:0 0 6px;border-bottom:1px solid var(--line)}
+.udot{width:6px;height:6px;border-radius:50%;background:#4f8a5b}
+.usermenu button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:8px 10px;border-radius:8px}
+.usermenu button:hover,.usermenu button:focus-visible{background:#f7f4f1}
+@media(prefers-reduced-motion:reduce){.fabs{transition:none}}
+@media(max-width:800px){.topbar .userchip.right{display:flex;margin-left:8px}.userchip .uname,.userchip .icon{display:none}}
+
+/* ---- floating search: the top bar's own search field, brought back as a slim bar ---- */
+#searchdlg{width:min(560px,calc(100vw - 32px));margin:8px auto auto;border:1px solid #d8d0c8;border-radius:12px;box-shadow:0 8px 28px #30241a1f}
+#searchdlg::backdrop{background:transparent}
+.fsearch{display:flex;align-items:center;gap:8px;padding:0 8px 0 14px;height:42px;color:var(--muted)}
+.fsearch input{flex:1;min-width:0;border:0;background:transparent;padding:0;font-size:14px}
+.fsearch input:focus-visible{outline:0}
+.kbd{border:1px solid var(--line);background:#faf8f5;color:var(--muted);border-radius:6px;font-size:12px;padding:2px 6px;line-height:1.4}
+.fhint{margin:0;padding:8px 14px 10px;border-top:1px solid var(--line);color:var(--muted)}
+
+/* ---- sign-in state: nothing extra while signed in; a mark on the avatar once the session has expired ---- */
+[data-user-menu]{position:relative}
+body.auth-expired [data-user-menu] .uav{background:#f1ece8;color:var(--muted)}
+body.auth-expired [data-user-menu]::after{content:"";position:absolute;width:8px;height:8px;border-radius:50%;background:#b7791f;border:2px solid #fff;top:2px;left:22px}
+body.auth-expired .fabs [data-user-menu]::after{top:0;left:20px}
+body.auth-expired .udot{background:#b7791f}
+.usermenu .primary{background:var(--accent);color:#fff;text-align:center;margin-top:4px}
+.usermenu .primary:hover,.usermenu .primary:focus-visible{background:var(--accent);filter:brightness(.94)}
+
+/* ---- scrolled search: the top bar itself comes back, instead of a second floating field ---- */
+body.bar-open .topbar{position:sticky;top:0;box-shadow:0 6px 20px #30241a14;animation:bar-in .16s ease-out}
+body.bar-open .fabs,body.bar-open .fab-nav{opacity:0!important;visibility:hidden!important}
+@keyframes bar-in{from{transform:translateY(-100%)}to{transform:none}}
+@media(prefers-reduced-motion:reduce){body.bar-open .topbar{animation:none}}
+</style>
+</head>
+<body>
+<aside class="sidebar" id="sidebar">
+  <div class="side-head"><span class="brandmark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>AWS 资源清单
+    <button class="iconbtn" data-nav-toggle aria-label="收起菜单" title="收起菜单"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16M15 10l-2 2 2 2"/></svg></button></div>
+  <div id="scope-slot" class="scope-slot"></div>
+  <nav class="nav" id="nav" aria-label="主导航"></nav>
+  <div class="side-foot">只读清单，显示当前状态</div>
+</aside>
+<div class="workspace">
+  <header class="topbar" id="global-search-bar">
+    <button class="iconbtn show-nav" data-nav-toggle aria-label="展开菜单" title="展开菜单"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16M13 10l2 2-2 2"/></svg></button>
+    <label class="gsearch"><svg class="icon" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><input id="global-search" aria-label="全局搜索资源" placeholder="全局搜索：名称、ID 或 ARN，按回车"></label>
+    <button class="userchip right" data-user-menu aria-haspopup="menu" aria-expanded="false"><span class="uav">张</span><span class="uname">张敏</span><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+  </header>
+  <main class="main" id="main"></main>
+</div>
+<dialog id="scandlg" class="scopedlg scandlg" aria-label="新扫描"><div class="shead"><h2>新扫描</h2><button class="iconbtn" id="scan-close" aria-label="关闭"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div><div id="picker" class="picker inl"></div></dialog>
+<dialog id="shade" class="shade" aria-label="资源预览"><section class="drawer" id="drawer"></section></dialog>
+<dialog id="ask" class="shade ask" aria-label="确认是真实变化"></dialog>
+<dialog id="scopedlg" class="scopedlg" aria-label="选择范围"></dialog>
+<dialog id="searchdlg" class="scopedlg" aria-label="全局搜索"></dialog>
+<div class="fabs"><button id="search-fab" class="fabbtn" aria-controls="global-search-bar" aria-expanded="false" aria-label="全局搜索" title="全局搜索，快捷键 /"><svg class="icon" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg></button><button class="fabbtn" data-user-menu aria-haspopup="menu" aria-expanded="false" aria-label="张敏，已登录" title="张敏，已登录"><span class="uav">张</span></button></div>
+<div id="usermenu" class="usermenu" role="menu" hidden><div class="uhead"><span class="uav big">张</span><div><strong>张敏</strong><span class="small">zhangmin@example.com</span></div></div><p class="ustat small"><span class="udot"></span>已登录，只读访问</p><button role="menuitem" data-lang>语言：中文</button><button role="menuitem" data-logout>退出登录</button></div>
+<button class="fab fab-nav" data-nav-toggle aria-label="展开菜单" title="展开菜单"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16M13 10l2 2-2 2"/></svg></button>
+
+<script src="console-data.js"></script>
+<script>
+const icons={down:'<path d="m6 9 6 6 6-6"/>',up:'<path d="m6 15 6-6 6 6"/>',right:'<path d="m9 6 6 6-6 6"/>',left:'<path d="m15 6-6 6 6 6"/>',close:'<path d="m6 6 12 12M18 6 6 18"/>',dl:'<path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/>',search:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/>',copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>',check:'<path d="m5 12 5 5 9-9"/>'};
+const ico=k=>`<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${icons[k]}</svg>`;
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const N=n=>n.toLocaleString();
+// ---- one icon per resource type and per service (lucide, the icon set the product already uses) ----
+const LU={"cpu":"<path d=\"M12 20v2\"/><path d=\"M12 2v2\"/><path d=\"M17 20v2\"/><path d=\"M17 2v2\"/><path d=\"M2 12h2\"/><path d=\"M2 17h2\"/><path d=\"M2 7h2\"/><path d=\"M20 12h2\"/><path d=\"M20 17h2\"/><path d=\"M20 7h2\"/><path d=\"M7 20v2\"/><path d=\"M7 2v2\"/><rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"2\"/><rect x=\"8\" y=\"8\" width=\"8\" height=\"8\" rx=\"1\"/>","hard-drive":"<path d=\"M10 16h.01\"/><path d=\"M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z\"/><path d=\"M21.946 12.013H2.054\"/><path d=\"M6 16h.01\"/>","zap":"<path d=\"M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z\"/>","cloud":"<path d=\"M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z\"/>","network":"<rect x=\"16\" y=\"16\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"2\" y=\"16\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"9\" y=\"2\" width=\"6\" height=\"6\" rx=\"1\"/><path d=\"M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3\"/><path d=\"M12 12V8\"/>","shield":"<path d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/>","globe":"<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\"/><path d=\"M2 12h20\"/>","boxes":"<path d=\"M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z\"/><path d=\"m7 16.5-4.74-2.85\"/><path d=\"m7 16.5 5-3\"/><path d=\"M7 16.5v5.17\"/><path d=\"M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z\"/><path d=\"m17 16.5-5-3\"/><path d=\"m17 16.5 4.74-2.85\"/><path d=\"M17 16.5v5.17\"/><path d=\"M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z\"/><path d=\"M12 8 7.26 5.15\"/><path d=\"m12 8 4.74-2.85\"/><path d=\"M12 13.5V8\"/>","layers":"<path d=\"M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z\"/><path d=\"M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12\"/><path d=\"M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17\"/>","clipboard-list":"<rect width=\"8\" height=\"4\" x=\"8\" y=\"2\" rx=\"1\" ry=\"1\"/><path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\"/><path d=\"M12 11h4\"/><path d=\"M12 16h4\"/><path d=\"M8 11h.01\"/><path d=\"M8 16h.01\"/>","split":"<path d=\"M16 3h5v5\"/><path d=\"M8 3H3v5\"/><path d=\"M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3\"/><path d=\"m15 9 6-6\"/>","target":"<circle cx=\"12\" cy=\"12\" r=\"10\"/><circle cx=\"12\" cy=\"12\" r=\"6\"/><circle cx=\"12\" cy=\"12\" r=\"2\"/>","inbox":"<polyline points=\"22 12 16 12 14 15 10 15 8 12 2 12\"/><path d=\"M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z\"/>","megaphone":"<path d=\"M11 6a13 13 0 0 0 8.4-2.8A1 1 0 0 1 21 4v12a1 1 0 0 1-1.6.8A13 13 0 0 0 11 14H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z\"/><path d=\"M6 14a12 12 0 0 0 2.4 7.2 2 2 0 0 0 3.2-2.4A8 8 0 0 1 10 14\"/><path d=\"M8 6v8\"/>","key-round":"<path d=\"M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z\"/><circle cx=\"16.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/>","container":"<path d=\"M22 7.7c0-.6-.4-1.2-.8-1.5l-6.3-3.9a1.72 1.72 0 0 0-1.7 0l-10.3 6c-.5.2-.9.8-.9 1.4v6.6c0 .5.4 1.2.8 1.5l6.3 3.9a1.72 1.72 0 0 0 1.7 0l10.3-6c.5-.3.9-1 .9-1.5Z\"/><path d=\"M10 21.9V14L2.1 9.1\"/><path d=\"m10 14 11.9-6.9\"/><path d=\"M14 19.8v-8.1\"/><path d=\"M18 17.5V9.4\"/>","layout-dashboard":"<rect width=\"7\" height=\"9\" x=\"3\" y=\"3\" rx=\"1\"/><rect width=\"7\" height=\"5\" x=\"14\" y=\"3\" rx=\"1\"/><rect width=\"7\" height=\"9\" x=\"14\" y=\"12\" rx=\"1\"/><rect width=\"7\" height=\"5\" x=\"3\" y=\"16\" rx=\"1\"/>","scan-search":"<path d=\"M3 7V5a2 2 0 0 1 2-2h2\"/><path d=\"M17 3h2a2 2 0 0 1 2 2v2\"/><path d=\"M21 17v2a2 2 0 0 1-2 2h-2\"/><path d=\"M7 21H5a2 2 0 0 1-2-2v-2\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"m16 16-1.9-1.9\"/>","waypoints":"<path d=\"m10.586 5.414-5.172 5.172\"/><path d=\"m18.586 13.414-5.172 5.172\"/><path d=\"M6 12h12\"/><circle cx=\"12\" cy=\"20\" r=\"2\"/><circle cx=\"12\" cy=\"4\" r=\"2\"/><circle cx=\"20\" cy=\"12\" r=\"2\"/><circle cx=\"4\" cy=\"12\" r=\"2\"/>"};
+const TI={ec2:'cpu',ami:'hard-drive',lambda:'zap',vpc:'cloud',subnet:'network',sg:'shield',r53:'globe',ecsc:'boxes',ecss:'layers',ecst:'clipboard-list',lb:'split',tg:'target',sqs:'inbox',sns:'megaphone',secret:'key-round'};
+const SI={ec2:'cpu',ecs:'container',lambda:'zap',vpc:'cloud',elb:'split',r53:'globe',sqs:'inbox',sns:'megaphone',sm:'key-round'};
+const lu=n=>`<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${LU[n]}</svg>`;
+const tile=n=>`<span class="tile">${lu(n)}</span>`;
+
+// ---- applications (EIM) and their accounts: 64 applications, 183 accounts, one of them unreachable ----
+const APP_BASE=['payments','risk','treasury','markets','onboarding','ledger','reporting','settlement','pricing','custody','fx','lending','cards','fraud','kyc','billing'],APP_SUF=['','-api','-batch','-portal'];
+const APPS=APP_SUF.flatMap((suf,si)=>APP_BASE.map((b,bi)=>{const i=si*16+bi;return {name:b+suf,eim:String(10809007+i*113),ba:`BA2011${String(230+i)}`,envs:i%7===6?['dev','preprod']:['dev','preprod','prod']}}));
+const ACCOUNTS=APPS.flatMap(a=>a.envs.map(env=>({name:`${a.name}-${env}`,env,app:a.name,eim:a.eim,ba:a.ba,access:'ok',lastOk:'今天 14:06'})));
+ACCOUNTS.forEach((a,i)=>a.id=`11112222${String(i+1).padStart(4,'0')}`);
+Object.assign(ACCOUNTS.find(a=>a.name==='ledger-dev'),{access:'access_denied',accessError:'AssumeRole 被拒绝：目标账号里的只读角色不信任清单服务的角色',lastOk:'3 天前'});
+const SW=ACCOUNTS.length*4; // tasks in one scheduled sweep
+const ACCESS={ok:'正常',access_denied:'无法访问'};
+const acctById=id=>ACCOUNTS.find(a=>a.id===id);
+const REGIONS=['us-east-1','eu-west-1','eu-west-2'];
+
+// ---- the menu: group → service; a service page has one tab per resource type ----
+const SVC={ec2:{label:'EC2',types:['ec2','ami']},ecs:{label:'ECS',types:['ecsc','ecss','ecst']},lambda:{label:'Lambda',types:['lambda']},vpc:{label:'VPC',types:['vpc','subnet','sg']},elb:{label:'ELB',types:['lb','tg']},r53:{label:'Route 53',types:['r53']},sqs:{label:'SQS',types:['sqs']},sns:{label:'SNS',types:['sns']},sm:{label:'Secrets Manager',types:['secret']}};
+const MENU=[['计算',['ec2','ecs']],['Serverless',['lambda']],['网络',['vpc','elb','r53']],['消息',['sqs','sns']],['安全',['sm']]];
+const svcOf=k=>Object.keys(SVC).find(s=>SVC[s].types.includes(k));
+const groupOf=s=>MENU.find(([,ss])=>ss.includes(s))[0];
+const GSLUG={'计算':'compute','Serverless':'serverless','网络':'network','消息':'messaging','安全':'security'},GNAME=Object.fromEntries(Object.entries(GSLUG).map(([k,v])=>[v,k]));
+const gHref=g=>href({name:'group',g});
+const CFN={ec2:'AWS::EC2::Instance',ami:'AWS::EC2::Image',lambda:'AWS::Lambda::Function',vpc:'AWS::EC2::VPC',subnet:'AWS::EC2::Subnet',sg:'AWS::EC2::SecurityGroup',r53:'AWS::Route53::HostedZone',ecsc:'AWS::ECS::Cluster',ecss:'AWS::ECS::Service',ecst:'AWS::ECS::TaskDefinition',lb:'AWS::ElasticLoadBalancingV2::LoadBalancer',tg:'AWS::ElasticLoadBalancingV2::TargetGroup',sqs:'AWS::SQS::Queue',sns:'AWS::SNS::Topic',secret:'AWS::SecretsManager::Secret'};
+const ARN={ec2:(r,a,x)=>`arn:aws:ec2:${r}:${a}:instance/${x.id}`,ami:(r,a,x)=>`arn:aws:ec2:${r}::image/${x.id}`,lambda:(r,a,x)=>`arn:aws:lambda:${r}:${a}:function:${x.id}`,vpc:(r,a,x)=>`arn:aws:ec2:${r}:${a}:vpc/${x.id}`,subnet:(r,a,x)=>`arn:aws:ec2:${r}:${a}:subnet/${x.id}`,sg:(r,a,x)=>`arn:aws:ec2:${r}:${a}:security-group/${x.id}`,r53:(r,a,x)=>`arn:aws:route53:::hostedzone/${x.id}`,ecsc:(r,a,x)=>`arn:aws:ecs:${r}:${a}:cluster/${x.id}`,ecss:(r,a,x)=>`arn:aws:ecs:${r}:${a}:service/MyCluster/${x.id}`,ecst:(r,a,x)=>`arn:aws:ecs:${r}:${a}:task-definition/${x.id}`,lb:(r,a,x)=>`arn:aws:elasticloadbalancing:${r}:${a}:loadbalancer/app/${x.name}/${hex(x.name.length,16)}`,tg:(r,a,x)=>`arn:aws:elasticloadbalancing:${r}:${a}:${x.id}`,sqs:(r,a,x)=>`arn:aws:sqs:${r}:${a}:${x.id}`,sns:(r,a,x)=>`arn:aws:sns:${r}:${a}:${x.id}`,secret:(r,a,x)=>`arn:aws:secretsmanager:${r}:${a}:secret:${x.id}`};
+const allKeys=Object.keys(TYPES);
+
+// ---- resources: numeric ID, status (active / missing / deleted) and stale, as the API reports them ----
+// Keep the two demonstration guard scopes together so their candidate counts match their resource lists.
+const ALL=allKeys.flatMap((k,ki)=>ACCOUNTS.flatMap((acct,ai)=>Array.from({length:TYPES[k].per},(_,j)=>{const x=TYPES[k].row(ai*TYPES[k].per+j),region=k==='r53'?'global':k==='sqs'&&ai===0?'eu-west-1':k==='subnet'&&ai===10?'us-east-1':REGIONS[(ai+j)%3];
+  const azi=TYPES[k].cols.indexOf('可用区');if(azi>=0&&/^[a-z]+-[a-z]+-\d[a-z]$/.test(x.v[azi]))x.v[azi]=region+'abc'[j%3];if(k==='lb')x.id=x.id.replace('us-east-1',region);
+  return {...x,rid:100000+ki*10000+ai*10+j,k,type:TYPES[k].label,acct,region,arn:ARN[k](region==='global'?'':region,acct.id,x)}})));
+const VPCS=new Map();ALL.forEach(r=>{if(r.k==='vpc')VPCS.set(r.acct,[...(VPCS.get(r.acct)||[]),r])});
+ALL.forEach(r=>{if(r.k==='vpc')return;r.v=r.v.map(v=>{if(typeof v!=='string'||!/^vpc-/.test(v))return v;const V=VPCS.get(r.acct);return (V.find(x=>x.region===r.region)||V[0]).id})});
+const BYID=new Map(ALL.map(r=>[r.rid,r]));
+const MISSING=new Set([140013,220051,230092]),DELETED=new Set([100052,220093]);
+const JUST=new Set();
+const statusOf=r=>DELETED.has(r.rid)?'deleted':MISSING.has(r.rid)?'missing':'active';
+const staleOf=r=>statusOf(r)!=='deleted'&&r.acct.access!=='ok';
+const mark=r=>statusOf(r)==='missing'?' <span class="warn small">可能已删除</span>':statusOf(r)==='deleted'?' <span class="off small">已删除</span>':staleOf(r)?' <span class="warn small">可能过期</span>':'';
+const LIVE=ALL.filter(r=>statusOf(r)!=='deleted');
+
+// ---- scans and tasks, shaped like the API: a task is one account, one account + region, or one account + region + type ----
+const hm=s=>[Math.floor(s/3600),Math.floor(s/60)%60,s%60].map(n=>String(n).padStart(2,'0'));
+const clock=s=>hm(s).slice(0,2).join(':'),clockS=s=>hm(s).join(':');
+const dur=s=>s<60?`${s} 秒`:`${Math.floor(s/60)} 分 ${s%60} 秒`;
+const byApp=n=>ACCOUNTS.filter(a=>a.app===n);
+const scopeLabel=A=>A.length<=2?A.map(a=>a.name).join('、'):`${A[0].name} 等 ${A.length} 个账号`;
+const KIND={sweep_account:'账号',config_group:'账号 + 区域',shard:'账号 + 区域 + 类型',resource:'单个资源'};
+const SRC={sweep_account:'EC2、Config',config_group:'Config',shard:'Cloud Control',resource:'Cloud Control'};
+const STAT=[['new','新增'],['updated','更新'],['unchanged','没有变化'],['restored','重新出现'],['missing','可能已删除'],['deleted','已删除']];
+const ERRS={access_denied:{title:'没有读取权限',msg:'AccessDeniedException: User is not authorized to perform: config:SelectResourceConfig',fix:'请账号负责人检查只读角色的权限，改好后回到这次扫描，重试失败的任务。'},
+  throttled:{title:'被 AWS 限流',msg:'ThrottlingException: Rate exceeded',fix:'通常稍后重试就能成功，不需要改配置。回到这次扫描，重试失败的任务。'}};
+const SCAN_LIST=[
+  {id:1042,trig:'schedule',by:null,all:true,accts:ACCOUNTS,day:'今天',start:14*3600+120,st:i=>i<SW*.62?'成功':i<SW*.62+4?'运行中':'排队中'},
+  {id:1041,trig:'api',by:'dashboard',accts:byApp('payments'),day:'今天',start:11*3600+47*60,st:()=>'成功'},
+  {id:1040,trig:'schedule',by:null,all:true,accts:ACCOUNTS,day:'今天',start:8*3600+120,st:i=>i===17?'已跳过':'成功'},
+  {id:1039,trig:'schedule',by:null,all:true,accts:ACCOUNTS,day:'昨天',start:20*3600+120,st:i=>[9,30,31,62,71].includes(i)?'失败':'成功',errOf:i=>i<40?'access_denied':'throttled'},
+  {id:1038,trig:'api',by:'dashboard',accts:[ACCOUNTS[0]],one:BYID.get(220000),day:'昨天',start:16*3600+12*60,st:()=>'成功'},
+  {id:1037,trig:'api',by:'dashboard',accts:byApp('risk'),regions:['eu-west-1'],types:['lambda','sqs'],day:'昨天',start:15*3600+30*60,st:i=>i<4?'成功':'已取消'},
+];
+// Prototype-only candidate snapshots. The current API exposes counts, not candidate IDs.
+const ABNORMAL=[{id:'payments-sqs',acct:ACCOUNTS[0],region:'eu-west-1',k:'sqs',at:'今天 14:05',cand:5,active:6},{id:'markets-subnet',acct:ACCOUNTS[10],region:'us-east-1',k:'subnet',at:'今天 08:09',cand:4,active:6}].map(x=>({...x,candidates:ALL.filter(r=>r.acct===x.acct&&r.region===x.region&&r.k===x.k).slice(0,x.cand).map(r=>r.rid)}));
+const scopeText=s=>s.one?`单个资源 ${s.one.name}`:s.shard?`${s.shard[0].name}，${s.shard[1]}，${TYPES[s.shard[2]].label}`:s.all?'全部账号':scopeLabel(s.accts)+(s.regions?`，${s.regions.join('、')}`:'')+(s.types?`，${s.types.length} 种类型`:'');
+function tasksOf(s){if(s.tasks)return s.tasks;
+  const scopes=s.one?[['resource',s.one.acct,s.one.region,s.one.k]]:s.shard?[['shard',...s.shard]]
+    :s.accts.flatMap(a=>[['sweep_account',a,null,null],...(s.regions||REGIONS).flatMap((r,ri)=>s.trig==='schedule'?[['config_group',a,r,null]]:(s.types||allKeys).filter(k=>k!=='r53'||ri===0).map(k=>['shard',a,k==='r53'?'global':r,k]))]);
+  return s.tasks=scopes.map(([kind,acct,region,k],i)=>{const status=s.st(i),failed=status==='失败',done=status==='成功',up=i*13%9,nw=i%7===0?1:0;
+    const part=failed&&s.errOf?.(i)==='throttled';
+    const stats=part?{new:0,updated:3,unchanged:9,restored:0,missing:0,deleted:0}:!done||kind==='sweep_account'?null:kind==='resource'?{new:0,updated:1,unchanged:0,restored:0,missing:0,deleted:0}:{new:nw,updated:up,unchanged:(kind==='shard'?4:23)-up%4-nw,restored:0,missing:i%29===3?1:0,deleted:0};
+    return {id:(s.id-1000)*1000+i,scan:s,kind,acct,region,k,status,attempt:failed?3:i%11===5?2:1,err:failed?(s.errOf?s.errOf(i):'access_denied'):null,queued:s.start+2,
+      begin:['排队中','已取消','已跳过'].includes(status)?null:s.start+8+Math.floor(i/4)*20+i%4*3,secs:done||failed?(kind==='sweep_account'?4+i%5:14+i*37%50):null,stats}})}
+const findTask=id=>{for(const s of SCAN_LIST){const t=tasksOf(s).find(t=>t.id===id);if(t)return t}};
+function scanInfo(s){const T=tasksOf(s),n=x=>T.filter(t=>t.status===x).length,ok=n('成功'),bad=n('失败'),run=n('运行中'),wait=n('排队中'),off=n('已取消'),skip=n('已跳过');
+  const status=run||wait?(ok||run?'运行中':'排队中'):off?'已取消':bad?(ok?'部分失败':'失败'):'成功',sum=k=>T.reduce((a,t)=>a+(t.stats?.[k]||0),0),end=Math.max(...T.map(t=>(t.begin||s.start)+(t.secs||0)));
+  const parts=STAT.filter(([k])=>k!=='unchanged'&&sum(k)).map(([k,l])=>`${l} ${sum(k)}`),codes=new Map();T.forEach(t=>t.err&&codes.set(t.err,(codes.get(t.err)||0)+1));
+  const acctsDone=s.accts.filter(a=>!T.some(t=>t.acct===a&&['运行中','排队中'].includes(t.status))).length;
+  return {T,ok,bad,run,wait,off,skip,status,done:T.length-run-wait,end,codes:[...codes],acctsDone,took:run||wait?null:end-s.start,result:parts.join('，')||(ok?'没有变化':'')}}
+const stat=s=>`<span class="${s==='失败'||s==='部分失败'?'warn':['排队中','已取消','已跳过'].includes(s)?'off':''}">${s}</span>`;
+const TRIG={schedule:'定时',api:'手动'};
+
+// ---- state lives in the address: #/svc/ec2/ami?env=prod&sort=-name ----
+let appq='',appRows=[];
+let route={name:'overall'},query='',page=1,size=10,sort='',hidden=matchMedia('(max-width:800px)').matches,logq='',logAll=false,returnTo='';
+const F0=()=>({eim:'',acct:'',env:'',region:'',type:'',status:'',st:'',err:'',kind:'',access:'',scan:''});
+let f=F0();const shut=new Set(),more=new Set(),comboOpts={};
+const pathOf=r=>r.name==='group'?`/group/${GSLUG[r.g]}`:r.name==='svc'?`/svc/${r.svc}/${r.tab}`:r.name==='resource'?`/resources/${r.id}`:r.name==='apps'?'/apps':r.name==='accounts'?'/accounts':r.name==='account'?`/accounts/${r.id}`:r.name==='guard'?`/scan-scopes/${r.id}`:r.name==='scans'?'/scans':r.name==='scan'?`/scans/${r.id}`:r.name==='task'?`/tasks/${r.id}`:'/';
+let scope=null; // null = everything, or {kind:'app',app} / {kind:'acct',acct}
+const INV=['overall','group','svc'];
+const scopeParam=()=>!scope?'':scope.kind==='app'?'app:'+scope.app.eim:'acct:'+scope.acct.id;
+const scopeFrom=v=>{const [k,id]=(v||'').split(':'),app=k==='app'&&APPS.find(a=>a.eim===id),acct=k==='acct'&&acctById(id);return app?{kind:'app',app}:acct?{kind:'acct',acct}:null};
+const inScope=r=>!scope||(scope.kind==='app'?r.acct.eim===scope.app.eim:r.acct===scope.acct);
+const scopeName=()=>!scope?'':scope.kind==='app'?`应用 ${scope.app.name}`:`账号 ${scope.acct.name}`;
+const href=(r,q)=>{const o={...(q||{})};if(o.s===undefined)o.s=scopeParam();if(o.s==='all')delete o.s;const s=new URLSearchParams(Object.entries(o).filter(([,v])=>v)).toString();return '#'+pathOf(r)+(s?'?'+s:'')};
+const contextualHref=h=>{const [path,qs='']=h.split('?');if(!/^#\/(resources|scans|tasks|accounts|apps)(\/|$)/.test(path))return h;const q=new URLSearchParams(qs);if(scopeParam()&&!q.has('s'))q.set('s',scopeParam());return path+(q.size?'?'+q:'')};
+const resourceHref=id=>href({name:'resource',id},{back:INV.includes(route.name)||['guard','scan','task'].includes(route.name)?location.hash:returnTo});
+const scanMatch=(r,s)=>!!s&&(s.one?r.rid===s.one.rid:s.shard?r.acct===s.shard[0]&&r.region===s.shard[1]&&r.k===s.shard[2]:s.accts.includes(r.acct)&&(!s.regions||r.region==='global'||s.regions.includes(r.region))&&(!s.types||s.types.includes(r.k)));
+const home=()=>href({name:'overall'});
+const allHref=()=>href({name:'overall'},{s:'all'}),acctHref=a=>href({name:'overall'},{s:'acct:'+a.id}),appHref=eim=>href({name:'overall'},{s:'app:'+eim});
+const scopeApp=()=>!scope?null:scope.kind==='app'?scope.app:APPS.find(a=>a.eim===scope.acct.eim);
+function sync(){history.replaceState(null,'',href(route,{...f,q:query,page:page>1?page:'',size:size!==10?size:'',sort}))}
+function parse(){const [path,qs='']=location.hash.replace(/^#\/?/,'').split('?'),p=path.split('/').filter(Boolean),q=new URLSearchParams(qs);
+  f=F0();for(const k in f)f[k]=q.get(k)||'';query=q.get('q')||'';page=+q.get('page')||1;size=+q.get('size')||10;sort=q.get('sort')||'';logq='';logAll=false;appq='';
+  route=p[0]==='group'&&GNAME[p[1]]?{name:'group',g:GNAME[p[1]]}:p[0]==='svc'&&SVC[p[1]]?{name:'svc',svc:p[1],tab:SVC[p[1]].types.includes(p[2])?p[2]:SVC[p[1]].types[0]}:p[0]==='resources'&&p[1]?{name:'resource',id:+p[1]}:p[0]==='apps'?{name:'apps'}:p[0]==='accounts'?(p[1]?{name:'account',id:p[1]}:{name:'accounts'}):p[0]==='scan-scopes'&&p[1]?{name:'guard',id:p[1]}:p[0]==='scans'?(p[1]?{name:'scan',id:+p[1]}:{name:'scans'}):p[0]==='tasks'&&p[1]?{name:'task',id:+p[1]}:{name:'overall'};
+  scope=scopeFrom(q.get('s'));returnTo=q.get('back')?.startsWith('#/')?q.get('back'):'';if(scope&&INV.includes(route.name)){f.eim='';if(scope.kind==='acct')f.acct=''}}
+
+// The list search matches name, resource ID and ARN only, like the API's q.
+const pass=(r,skip)=>{if(!inScope(r)||f.scan&&!scanMatch(r,SCAN_LIST.find(s=>s.id===+f.scan)))return false;const st=statusOf(r);if(skip!=='status'&&(f.status==='all'?false:f.status?st!==f.status:st==='deleted'))return false;
+  return (skip==='env'||!f.env||r.acct.env===f.env)&&(skip==='region'||!f.region||r.region===f.region)&&(!query||[r.name,r.id,r.arn].join(' ').toLowerCase().includes(query.trim().toLowerCase()))};
+const REF=/^(vpc|subnet|ami|sg|dopt)-|^MyCluster|^my-load-balancer$|^webapp:|^MyQueue-dlq$/;
+const display=v=>Array.isArray(v)?`<span class="${v[0]==='off'?'off':''}">${esc(v[1])}</span>`:REF.test(v||'')?`<span class="mono">${esc(v)}</span>`:esc(v||'—');
+const plain=v=>Array.isArray(v)?v[1]:String(v||'未提供');
+
+// ---- sidebar: Inventory (Overall, then group → service) and 扫描管理 ----
+function renderNav(){const cur=route.name==='svc'?route.svc:route.name==='resource'&&BYID.get(route.id)?svcOf(BYID.get(route.id).k):null,scanOn=['scans','scan','task','guard'].includes(route.name),live=SCAN_LIST.filter(s=>scanInfo(s).status==='运行中').length;
+  document.getElementById('scope-slot').innerHTML=scanOn?`<div class="scope-context"><span class="small">扫描管理 · 全部账号</span><a class="link" href="${home()}">${ico('left')}${scope?`返回 ${esc(scope.kind==='app'?scope.app.name:scope.acct.name)} 的资源`:'返回全部资源'}</a></div>`:`<button class="scope-btn" id="scope-btn" aria-haspopup="dialog" aria-label="资源范围：${scope?esc(scope.kind==='app'?scope.app.name:scope.acct.name):'全部应用和账号'}，点击切换" title="切换资源范围，快捷键 ⌘K 或 Ctrl+K">${scope?`<span class="avatar on">${esc((scope.kind==='app'?scope.app.name:scope.acct.name)[0].toUpperCase())}</span>`:`<span class="avatar all">${lu('layout-dashboard')}</span>`}<span class="scope-text"><strong>${scope?esc(scope.kind==='app'?scope.app.name:scope.acct.name):'全部应用和账号'}</strong><span class="small">${scope?(scope.kind==='app'?`应用 <span class="mono">${scope.app.eim}</span>`:`账号 <span class="mono">${scope.acct.id}</span>`):`${APPS.length} 个应用，${ACCOUNTS.length} 个账号`}</span></span>${ico('down')}</button>`;
+  document.getElementById('nav').innerHTML=`<div class="root">Inventory</div>
+  <a class="top ${['overall','apps','accounts','account'].includes(route.name)?'active':''}" href="${home()}">${lu('layout-dashboard')}Overall<span class="num">${N(scope?LIVE.filter(inScope).length:LIVE.length)}</span></a>
+  ${MENU.map(([g,ss])=>{const closed=shut.has(g);return `<div class="grp ${route.name==='group'&&route.g===g?'on':''}"><button class="twist" data-grp="${g}" aria-expanded="${!closed}" aria-label="${closed?'展开':'收起'}${g}">${ico(closed?'right':'down')}</button><a href="${gHref(g)}">${g}</a></div>`+(closed?'':ss.map(s=>`<a class="leaf ${cur===s?'active':''}" href="${href({name:'svc',svc:s,tab:SVC[s].types[0]})}">${lu(SI[s])}${SVC[s].label}<span class="num">${N(LIVE.filter(r=>SVC[s].types.includes(r.k)&&inScope(r)).length)}</span></a>`).join(''))}).join('')}
+  <div class="root">扫描管理</div>
+  <a class="top ${scanOn?'active':''}" href="${href({name:'scans'})}">${lu('scan-search')}扫描任务<span class="num">${live?live+' 个进行中':''}</span></a>`}
+
+// ---- shared pieces ----
+const invCrumb=(...parts)=>crumb([['Inventory',allHref()],...(scope?[[scope.kind==='app'?'应用':'账号',scope.kind==='app'?'#/apps':'#/accounts'],[scope.kind==='app'?scope.app.name:scope.acct.name,home()]]:[]),...parts]);
+const crumb=parts=>`<nav class="breadcrumb" aria-label="位置">${parts.map((p,i)=>(i?ico('right'):'')+(Array.isArray(p)?`<a href="${p[1]}">${esc(p[0])}</a>`:`<span>${esc(p)}</span>`)).join('')}</nav>`;
+function bars(id,R,fn,opt={}){const m=new Map();for(const r of R){const l=fn(r),e=m.get(l)||{n:0,r};e.n++;m.set(l,e)}const items=[...m].sort((a,b)=>b[1].n-a[1].n),max=items[0]?.[1].n||1,open=more.has(id),TOP=5;
+  return `<div class="bars">${(open?items:items.slice(0,TOP)).map(([l,{n,r}])=>{const inner=`<span class="bl">${opt.icon?lu(opt.icon(r)):''}<span>${esc(l)}</span>${opt.sub?`<span class="mono muted">${esc(opt.sub(r))}</span>`:''}</span><span class="bn">${N(n)}</span><span class="bar"><i style="width:${n/max*100}%"></i></span>`;
+    if(opt.href)return `<a class="brow" href="${opt.href(r)}">${inner}</a>`;const v=opt.val?opt.val(r):l,on=f[opt.key]===v;
+    return `<button class="brow ${on?'on':''}" data-set-f="${opt.key}" data-v="${esc(v)}" aria-pressed="${on}" title="${on?'取消这个筛选':'只看 '+esc(l)}">${inner}</button>`}).join('')||'<p class="muted">没有符合条件的资源</p>'}${items.length>TOP?`<button class="textbtn" data-more="${id}">${open?'收起':`展开全部 ${items.length} 个`}</button>`:''}</div>`}
+function sel(key,label,options){return `<select data-f="${key}" aria-label="${label}" class="${f[key]?'set':''}"><option value="">${label}</option>${options.map(o=>{const [v,t]=Array.isArray(o)?o:[o,o];return `<option value="${esc(v)}" ${f[key]===v?'selected':''}>${esc(t)}</option>`}).join('')}</select>`}
+// A filter you type into: with 1,000+ accounts a plain dropdown is unusable.
+function combo(key,label,opts,val=f[key]){comboOpts[key]=opts;const cur=opts.find(o=>o[0]===val);return `<input class="combo ${val?'set':''}" data-fc="${key}" list="dl-${key}" aria-label="${label}" placeholder="${label}" value="${cur?esc(cur[1]):''}"><datalist id="dl-${key}">${opts.map(o=>`<option value="${esc(o[1])}">`).join('')}</datalist>`}
+const acctOpts=()=>ACCOUNTS.filter(a=>!scopeApp()||a.eim===scopeApp().eim).map(a=>[a.id,`${a.name} ${a.id}`]);
+const anyFilter=()=>query||sort||Object.values(f).some(Boolean);
+const clearBtn=()=>anyFilter()?'<button class="clear" data-clear>清除筛选</button>':'';
+function filterBar(n,typeOptions){return `<div class="filters" role="search" aria-label="当前资源范围内搜索"><label class="q">${ico('search')}<input id="resource-search" aria-label="搜索当前范围内的资源" placeholder="在当前范围内搜索名称、ID 或 ARN" value="${esc(query)}"></label>
+  ${scope?.kind==='acct'?'':sel('env','环境',['dev','preprod','prod'])}${sel('region','区域',[...REGIONS,['global','全局']])}
+  ${typeOptions?sel('type','资源类型',typeOptions.map(k=>[k,TYPES[k].label])):''}${sel('status','清单状态',[['missing','可能已删除'],['deleted','已删除'],['all','全部，含已删除']])}${clearBtn()}
+  <details class="menu export"><summary>${ico('dl')}导出</summary><div><p class="small">导出符合当前筛选的 ${N(n)} 个资源</p><button data-act="已开始下载">CSV，表格里的这些列</button><button data-act="已开始下载">JSON Lines，每个资源的完整记录</button></div></details></div>`}
+function pager(total,unit){const pages=Math.max(1,Math.ceil(total/size));page=Math.min(page,pages);
+  return `<div class="footer-count"><span>第 ${(page-1)*size+1}–${Math.min(page*size,total)} 项，共 ${N(total)} ${unit}</span><div class="pager"><select data-size aria-label="每页条数">${[10,25,50].map(n=>`<option ${n===size?'selected':''} value="${n}">每页 ${n} 条</option>`).join('')}</select><button data-page="-1" aria-label="上一页" ${page===1?'disabled':''}>${ico('left')}</button><span>${page} / ${pages}</span><button data-page="1" aria-label="下一页" ${page===pages?'disabled':''}>${ico('right')}</button></div></div>`}
+const emptyBox=what=>`<div class="table-wrap"><div class="empty"><h2>没有符合条件的${what}</h2><p class="muted" style="margin:6px 0 14px">换一个筛选条件，或者清除筛选。</p><button data-clear>清除筛选</button></div></div>`;
+const th=(key,label,cls='')=>`<th class="${cls}" aria-sort="${sort===key?'ascending':sort==='-'+key?'descending':'none'}"><button class="sort" data-sort="${key}" title="按${label}排序">${label}${sort===key?ico('up'):sort==='-'+key?ico('down'):''}</button></th>`;
+function sorted(R){if(!sort)return R;const desc=sort[0]==='-',k=sort.replace('-',''),val=r=>k==='name'?r.name:k==='region'?r.region:k==='acct'?r.acct.name:k==='type'?r.type:plain(r.v[+k.slice(1)]);
+  return [...R].sort((a,b)=>String(val(a)).localeCompare(String(val(b)),'zh',{numeric:true})*(desc?-1:1))}
+const resourceTableStart=widths=>`<table style="min-width:${widths.reduce((a,b)=>a+b,0)}px"><colgroup>${widths.map(w=>`<col style="width:${w}px">`).join('')}</colgroup>`;
+function table(R,typed){const T=typed?TYPES[typed]:null;if(!R.length)return emptyBox('资源');const foot=pager(R.length,'个资源'),P=sorted(R).slice((page-1)*size,page*size),account=scope?.kind!=='acct',widths=[260,...(account?[180]:[]),...(!scope?[160]:[]),...(account?[84]:[]),120,...(T?T.cols.map(()=>150):[180])];
+  return `<div class="table-wrap resource-table" tabindex="0" aria-label="资源列表，可横向滚动">${resourceTableStart(widths)}<thead><tr>${th('name','名称 / 资源 ID')}${account?th('acct','账号'):''}${!scope?'<th>应用</th>':''}${account?'<th>环境</th>':''}${th('region','区域')}${T?'':th('type','资源类型')}${T?T.cols.map((c,i)=>th('c'+i,typed==='ec2'&&c==='状态'?'实例状态':c,'own')).join(''):''}</tr></thead>
+  <tbody>${P.map(r=>`<tr data-row="${r.rid}" tabindex="0" aria-label="预览 ${esc(r.name)}"><td class="identity"><div class="identity-name"><a class="name" href="${resourceHref(r.rid)}" title="${esc(r.name)}">${esc(r.name)}</a>${mark(r)}</div><span class="resource-id mono" title="${esc(r.id)}">${esc(r.id)}</span></td>${account?`<td class="account-cell"><a class="account-link" href="${acctHref(r.acct)}" title="${esc(r.acct.name)}">${esc(r.acct.name)}</a><span class="account-id mono"><span>${r.acct.id}</span><button class="cp" data-copy="${r.acct.id}" aria-label="复制账号 ID ${r.acct.id}" title="复制账号 ID">${ico('copy')}</button></span></td>`:''}${!scope?`<td><a class="application-link" href="${appHref(r.acct.eim)}" title="${esc(r.acct.app)}">${esc(r.acct.app)}</a><span class="account-id mono"><span>${esc(r.acct.eim)}</span><button class="cp" data-copy="${esc(r.acct.eim)}" aria-label="复制 EIM ${esc(r.acct.eim)}" title="复制 EIM">${ico('copy')}</button></span></td>`:''}${account?`<td title="${esc(r.acct.env)}">${r.acct.env}</td>`:''}<td class="mono" title="${esc(r.region==='global'?'全局':r.region)}">${r.region==='global'?'全局':r.region}</td>${T?'':`<td title="${esc(r.type)}"><span class="ty">${lu(TI[r.k])}${esc(r.type)}</span></td>`}${T?r.v.map(v=>`<td class="own" title="${esc(plain(v))}">${display(v)}</td>`).join(''):''}</tr>`).join('')}</tbody></table></div>${foot}`}
+const scopeLine=()=>{return [scopeName(),f.env,f.region,f.status==='missing'?'可能已删除':f.status==='deleted'?'已删除':''].filter(Boolean).join('，')};
+const keepOf=()=>({env:f.env,region:f.region,status:f.status,q:query,scan:f.scan});
+const filtered=()=>scope||f.env||f.region||f.type||f.status||query;
+
+// ---- Inventory pages ----
+appRows=[];
+function appPanel(){const q=appq.trim().toLowerCase(),m=new Map();for(const r of appRows){const e=m.get(r.acct.eim)||{n:0,a:r.acct};e.n++;m.set(r.acct.eim,e)}
+  const all=[...m.values()].sort((a,b)=>b.n-a.n||a.a.app.localeCompare(b.a.app)),hit=all.filter(e=>!q||`${e.a.app} ${e.a.eim}`.includes(q)),max=all[0]?.n||1;
+  return hit.slice(0,5).map(e=>`<a class="brow" href="${href(route,{...keepOf(),q:query,s:'app:'+e.a.eim})}" title="只看 ${e.a.app}"><span class="bl"><span>${e.a.app}</span><span class="mono muted">${e.a.eim}</span></span><span class="bn">${N(e.n)}</span><span class="bar"><i style="width:${e.n/max*100}%"></i></span></a>`).join('')+(hit.length?'':'<p class="muted" style="padding:6px 0">没有这个应用</p>')
+    +`<a class="textbtn" href="#/apps${q?'?q='+encodeURIComponent(q):''}">${q?`在应用列表里查看符合的 ${hit.length} 个`:`查看全部 ${N(all.length)} 个应用`}</a>`}
+function pageList(){const g=route.name==='group'?route.g:null,svcs=g?MENU.find(m=>m[0]===g)[1]:Object.keys(SVC),keys=svcs.flatMap(s=>SVC[s].types),keep=keepOf(),A=!g&&scope?.kind==='app'&&scope.app,C=!g&&scope?.kind==='acct'&&scope.acct;
+  const rows=skip=>ALL.filter(r=>keys.includes(r.k)&&(!f.type||r.k===f.type)&&pass(r,skip)),R=rows(),uniq=fn=>new Set(R.map(fn)).size,bad=ACCOUNTS.filter(a=>a.access!=='ok').length;appRows=rows('eim');
+  const cell=(l,n,u,extra='')=>`<div><dt>${l}</dt><dd><strong>${N(n)}</strong> ${u}${extra}</dd></div>`,rest=[f.env,f.region,f.status==='missing'?'可能已删除':f.status==='deleted'?'已删除':''].filter(Boolean).join('，');
+  if(query||f.scan){const scan=f.scan&&SCAN_LIST.find(s=>s.id===+f.scan),title=query?`搜索结果：${esc(query)}`:`扫描 #${esc(f.scan)} 的资源`;
+    return invCrumb(query?'搜索结果':'扫描范围内资源')+`<div class="heading"><div><h1>${title}</h1><p>${scan?esc(scopeText(scan)):scopeName()||'全部应用和账号'} · ${N(R.length)} 个匹配资源${f.status==='all'?'，包含已删除资源':''}</p></div>${scan?`<a class="btn" href="${href({name:'scan',id:scan.id})}">返回扫描 #${scan.id}</a>`:''}</div>${scan?'<p class="scope-note">显示扫描范围内的当前清单，不代表这些资源都在本次扫描中发生了变化。</p>':''}${f.scan&&!scan?'<div class="notice">这次演示扫描已不在当前会话中，请返回扫描列表选择。</div>':''}${filterBar(R.length,keys)}${table(R,null)}`}
+
+  const head=A?crumb([['Inventory',href({name:'overall'},{s:'all'})],['应用','#/apps'],A.name])+`<div class="heading"><div><h1>${A.name}</h1><p>EIM <span class="mono">${A.eim}</span>，BA <span class="mono">${A.ba}</span>，${A.envs.length} 个账号：${A.envs.join('、')}${rest?`，当前只看：${esc(rest)}`:''}</p></div><div class="actions"><a class="btn" href="${href({name:'overall'},{s:'all'})}">查看全部应用和账号</a><button class="primary" data-scan-app="${A.name}">扫描这个应用的账号</button></div></div>`
+    :C?crumb([['Inventory',href({name:'overall'},{s:'all'})],['账号','#/accounts'],C.name])+`<div class="heading"><div><h1>${C.name}</h1><p>账号 <span class="mono">${C.id}</span>，${C.env}，属于应用 <a class="link" href="${href({name:'overall'},{s:'app:'+C.eim})}">${C.app}</a>${rest?`，当前只看：${esc(rest)}`:''}</p></div><div class="actions"><a class="btn" href="${href({name:'overall'},{s:'all'})}">查看全部应用和账号</a><a class="btn" href="#/accounts/${C.id}">扫描情况</a><button class="primary" data-scan-acct="${C.id}">扫描这个账号</button></div></div>${C.access!=='ok'?`<div class="notice"><strong>无法访问这个账号</strong><p>${esc(C.accessError)}。下面是上一次成功扫描时的内容。<a class="link" href="#/accounts/${C.id}">查看扫描情况</a></p></div>`:''}`
+    :(scope&&!g?crumb([['Inventory',allHref()],[scope.kind==='app'?'应用':'账号',scope.kind==='app'?'#/apps':'#/accounts'],scopeName().split(' ')[1]]):invCrumb(g||'Overall'))+`<div class="heading"><div><h1>${g||'Overall'}</h1><p>${g?svcs.map(s=>SVC[s].label).join('、'):'全部应用和账号里的资源'}${scopeLine()?`，当前只看：${esc(scopeLine())}`:''}</p></div></div>`;
+  return head+`<dl class="stats ${A?'four':C?'three':''}" aria-label="概览">${cell('资源',R.length,'个')}${A||C?'':!g&&!filtered()?`<div><dt>应用</dt><dd><a href="#/apps" class="statlink"><strong>${N(APPS.length)}</strong> 个</a></dd></div>`:cell('应用',uniq(r=>r.acct.app),'个')}${!g&&!filtered()?`<div><dt>账号</dt><dd><a href="#/accounts" class="statlink"><strong>${N(ACCOUNTS.length)}</strong> 个${bad?`，<span class="warn">${bad} 个无法访问</span>`:''}</a></dd></div>`:C?'':cell('账号',uniq(r=>r.acct.name),'个有资源')}${cell('资源类型',uniq(r=>r.k),'种')}${cell('区域',uniq(r=>r.region),'个')}</dl>
+  ${A?`<div class="scope-accounts" aria-label="应用账号"><span class="small">按账号查看</span>${byApp(A.name).map(a=>`<a class="account-choice" href="${href({name:'overall'},{...keep,type:f.type,env:'',s:'acct:'+a.id})}"><strong>${a.name}</strong><span class="small">${a.env}</span>${ico('right')}</a>`).join('')}</div>`:''}
+  ${scope?`<details class="distributions" ${more.has('distributions')?'open':''}><summary>资源分布<span class="small">按服务${C?'':'、环境'}和区域查看</span></summary>`:''}<div class="cols4 ${C?'two':''}"><section class="panel"><h2>按服务</h2>${bars('svc',R,r=>SVC[svcOf(r.k)].label,{icon:r=>SI[svcOf(r.k)],href:r=>{const sv=svcOf(r.k);return href({name:'svc',svc:sv,tab:SVC[sv].types.includes(f.type)?f.type:SVC[sv].types[0]},{...keep,q:query})}})}</section>
+  ${C?'':A?`<section class="panel"><h2>按账号</h2>${bars('acct',R,r=>r.acct.name,{href:r=>href(route,{...keep,type:f.type,env:'',q:query,s:'acct:'+r.acct.id})})}</section>`:scope?'':`<section class="panel"><h2>按应用</h2><input id="app-find" class="pfind" aria-label="查找应用" placeholder="搜索应用名或 EIM" value="${esc(appq)}"><div class="bars" id="app-panel">${appPanel()}</div></section>`}
+  ${C?'':`<section class="panel"><h2>按环境</h2>${bars('env',rows('env'),r=>r.acct.env,{key:'env'})}</section>`}
+  <section class="panel"><h2>按区域</h2>${bars('region',rows('region'),r=>r.region,{key:'region'})}</section></div>${scope?'</details>':''}
+  <div class="section-heading"><h2>资源 <span class="small">${N(R.length)} 个</span></h2><span class="small">点击名称查看详情，点击行预览</span></div>${filterBar(R.length,keys)}${table(R,null)}`}
+// ---- applications: a searchable, sortable list, because there are hundreds of them ----
+function pageApps(){const cnt=new Map(),q=query.trim().toLowerCase();LIVE.forEach(r=>cnt.set(r.acct.eim,(cnt.get(r.acct.eim)||0)+1));
+  const key=sort.replace('-',''),val=a=>key==='accts'?a.envs.length:cnt.get(a.eim)||0,dir=sort[0]==='-'?-1:1;
+  const R=APPS.filter(a=>(!q||`${a.name} ${a.eim} ${a.ba}`.toLowerCase().includes(q))&&(!f.env||a.envs.includes(f.env))).sort((a,b)=>!sort?(cnt.get(b.eim)||0)-(cnt.get(a.eim)||0)||a.name.localeCompare(b.name):key==='name'?a.name.localeCompare(b.name)*dir:(val(a)-val(b))*dir||a.name.localeCompare(b.name));
+  const foot=R.length?pager(R.length,'个应用'):'',P=R.slice((page-1)*size,page*size);
+  return crumb([['Inventory',allHref()],'应用'])+`<div class="heading"><div><h1>应用</h1><p>${N(APPS.length)} 个应用（EIM），点一个应用，只看它的账号和资源</p></div></div>
+  <div class="filters" role="search"><label class="q">${ico('search')}<input id="resource-search" aria-label="搜索" placeholder="搜索应用名、EIM 或 BA" value="${esc(query)}"></label>${sel('env','有这种 环境',['dev','preprod','prod'])}${clearBtn()}</div>
+  ${R.length?`<div class="table-wrap"><table><thead><tr>${th('name','应用')}<th>EIM</th><th>BA</th>${th('accts','账号','numcol')}<th>环境</th>${th('res','资源','numcol')}</tr></thead><tbody>${P.map(a=>`<tr><td><a class="name" href="${href({name:'overall'},{s:'app:'+a.eim})}">${a.name}</a></td><td class="mono">${a.eim}</td><td class="mono">${a.ba}</td><td class="numcol">${a.envs.length}</td><td>${a.envs.join('、')}</td><td class="numcol">${N(cnt.get(a.eim)||0)}</td></tr>`).join('')}</tbody></table></div>${foot}`:emptyBox('应用')}`}
+function pageService(){const S=SVC[route.svc],tab=route.tab,T=TYPES[tab],g=groupOf(route.svc),of=skip=>ALL.filter(r=>r.k===tab&&pass(r,skip)),R=of(),keep=keepOf();
+  const pills=(key,fn)=>{const m=new Map();of(key).forEach(r=>m.set(fn(r),(m.get(fn(r))||0)+1));const L=[...m].sort((a,b)=>b[1]-a[1]);
+    return L.slice(0,4).map(([l,n])=>key?`<button class="pill ${f[key]===l?'on':''}" data-set-f="${key}" data-v="${esc(l)}" aria-pressed="${f[key]===l}">${esc(l)} <b>${N(n)}</b></button>`:`<span class="pill plain">${esc(l)} <b>${N(n)}</b></span>`).join('')+(L.length>4?`<span class="small">另有 ${L.length-4} 种</span>`:'')};
+  return invCrumb([g,gHref(g)],S.label)+`<div class="heading"><div><h1>${tile(SI[route.svc])}${S.label}</h1><p>${S.types.map(k=>TYPES[k].label).join('、')}${scopeLine()?`，当前只看：${esc(scopeLine())}`:''}</p></div></div>
+  ${S.types.length>1?`<div class="type-tabs" aria-label="资源类型">${S.types.map(k=>`<a class="${k===tab?'active':''}" ${k===tab?'aria-current="page"':''} href="${href({name:'svc',svc:route.svc,tab:k},keep)}">${lu(TI[k])}${TYPES[k].label}<span class="num">${N(ALL.filter(r=>r.k===k&&pass(r)).length)}</span></a>`).join('')}</div>`:''}
+  <dl class="strip ${scope?.kind==='acct'?'three':''}" aria-label="概览"><div><dt>${T.label}</dt><dd><strong>${N(R.length)}</strong> 个${scope?.kind==='acct'?'':scope?`，${new Set(R.map(r=>r.acct.name)).size} 个账号`:`，${new Set(R.map(r=>r.acct.app)).size} 个应用，${new Set(R.map(r=>r.acct.name)).size} 个账号`}</dd></div><div><dt>${T.cols[0]}</dt><dd>${pills('',r=>plain(r.v[0]))}</dd></div>${scope?.kind==='acct'?'':`<div><dt>环境</dt><dd>${pills('env',r=>r.acct.env)}</dd></div>`}<div><dt>区域</dt><dd>${pills('region',r=>r.region)}</dd></div></dl>
+  ${filterBar(R.length)}${table(R,tab)}`}
+// Relationships: what this resource points at, and what points at it. Only resources in the inventory are links.
+const REFK=[[/^vpc-/,'vpc'],[/^subnet-/,'subnet'],[/^ami-/,'ami'],[/^sg-/,'sg'],[/^MyCluster/,'ecsc'],[/^webapp:/,'ecst'],[/^my-load-balancer$/,'lb'],[/^MyQueue-dlq$/,'sqs']];
+function relOf(r){const T=TYPES[r.k];
+  const out=T.cols.map((c,i)=>[c,r.v[i]]).filter(([,v])=>typeof v==='string'&&REF.test(v)).map(([c,v])=>{const k=REFK.find(([re])=>re.test(v))?.[1];return {rel:c,k,to:ALL.find(x=>x.acct===r.acct&&(x.id===v||x.name===v)&&x!==r)||null,raw:v}});
+  const inn=r.k==='vpc'?ALL.filter(x=>x.acct===r.acct&&x.v.includes(r.id)).map(x=>({rel:TYPES[x.k].label+'的 VPC',k:x.k,to:x})):r.k==='ecsc'?ALL.filter(x=>x.k==='ecss'&&x.acct===r.acct&&x.region===r.region).map(x=>({rel:'所在集群',k:x.k,to:x})):[];
+  return {out,inn}}
+const relRow=x=>`<div class="kv"><dt>${x.rel}</dt><dd>${x.to?`<a class="link ty" href="${resourceHref(x.to.rid)}">${lu(TI[x.to.k])}${esc(x.to.name)}</a> <span class="small">${TYPES[x.to.k].label}</span>`:`<span class="mono muted">${esc(x.raw)}</span> <span class="small">不在清单里</span>`}</dd></div>`;
+function pageResource(){const r=BYID.get(route.id);if(!r)return notFound('资源',route.id,home(),'回到 Overall');
+  const T=TYPES[r.k],s=svcOf(r.k),g=groupOf(s),st=statusOf(r),{out,inn}=relOf(r),tags=[['Name',r.name],['Owner',`${r.acct.app}-team`],['Project',r.acct.app]],scope={name:'svc',svc:s,tab:r.k};
+  const kv=(k,v,mono)=>`<div class="kv"><dt>${k}</dt><dd${mono?' class="mono"':''}>${v}</dd></div>`,pending=ABNORMAL.find(x=>x.candidates.includes(r.rid));
+  return invCrumb([g,gHref(g)],[SVC[s].label,href({name:'svc',svc:s,tab:SVC[s].types[0]})],[T.label,href(scope)],r.name)+
+  `<div class="heading"><div><h1>${tile(TI[r.k])}<span>${esc(r.name)}</span></h1><p>${T.label}，${esc(r.acct.name)}，${r.region}</p></div><div class="actions"><a class="btn" href="${esc(returnTo||href(scope))}">${ico('left')}${returnTo.startsWith('#/scan-scopes/')?'返回待核对资源':/^#\/scans\/\d+/.test(returnTo)?'返回扫描 #'+returnTo.match(/^#\/scans\/(\d+)/)[1]:/^#\/tasks\/\d+/.test(returnTo)?'返回任务 #'+returnTo.match(/^#\/tasks\/(\d+)/)[1]:'返回资源列表'}</a><span id="refresh-slot" class="small" role="status"></span>${st==='deleted'?'':`<button data-refresh>刷新</button>`}<button data-copy="${esc(r.arn)}">复制 ARN</button></div></div>
+  ${pending?`<div class="notice"><strong>所属范围待核对</strong><p>原型演示：${pending.at} 的完整扫描未发现这个资源。范围保护保留了它原来的清单状态，下面展示的是最后保存的内容。<a class="link" href="${href({name:'guard',id:pending.id})}">查看待核对资源</a></p></div>`:''}
+  ${st==='missing'?`<div class="notice"><strong>可能已删除</strong><p>从今天 14:06 起没有再看到这个资源。只有按 ID 读取、AWS 明确回答不存在，才会标为已删除；读取失败不算。下面是最后一次看到时的内容，点「刷新」可以现在就确认一次。</p></div>`:st==='deleted'?`<div class="notice"><strong>已删除</strong><p>${JUST.has(r.rid)?'刚刚':'今天 09:20 '}按 ID 读取，AWS 明确回答这个资源不存在。下面是它最后一次被看到时的内容。</p></div>`:staleOf(r)?`<div class="notice"><strong>内容可能已经过期</strong><p>${esc(r.acct.name)} 在 ${r.region} 的${T.label}超过 12 小时没有成功扫描。<a class="link" href="#/accounts/${r.acct.id}">查看这个账号的扫描情况</a></p></div>`:''}
+  <section class="panel"><dl class="summary five"><div><dt>${T.idCol}</dt><dd class="mono">${esc(r.id)}</dd></div><div><dt>账号</dt><dd><a class="link" href="${acctHref(r.acct)}">${esc(r.acct.name)}</a><br><span class="mono muted">${r.acct.id}</span></dd></div><div><dt>环境</dt><dd>${r.acct.env}</dd></div><div><dt>区域</dt><dd class="mono">${r.region}</dd></div><div><dt>EIM</dt><dd><a class="link" href="${href({name:'overall'},{s:'app:'+r.acct.eim})}">${esc(r.acct.app)}</a><br><span class="mono muted">${r.acct.eim}</span></dd></div></dl></section>
+  <div class="cols2"><div class="stack"><section class="panel"><h2>配置</h2><dl>${T.cols.map((c,i)=>kv(c,display(r.v[i]))).join('')}</dl></section>
+    <section class="panel"><h2>关联资源</h2>${out.length||inn.length?`${out.length?`<p class="sub">这个资源用到的</p><dl>${out.map(relRow).join('')}</dl>`:''}${inn.length?`<p class="sub">用到这个资源的，共 ${inn.length} 个</p><dl>${inn.slice(0,5).map(relRow).join('')}</dl>${inn.length>5?`<p style="margin-top:10px"><a class="link" href="${href({name:'overall'},{s:'acct:'+r.acct.id,region:r.region})}">在列表里查看这个账号在 ${r.region} 的全部资源</a></p>`:''}`:''}`:`<p class="muted">没有记录到和其他资源的关系。</p>`}</section></div>
+  <div class="stack"><section class="panel"><h2>标识与记录</h2><dl>${kv('ARN',esc(r.arn),1)}${kv('类型',CFN[r.k],1)}${kv('BA',r.acct.ba,1)}${kv('首次发现','3 月 14 日 08:02')}${kv('最近变化',st==='active'?'昨天 20:04':'今天 14:06')}</dl></section>
+    <section class="panel"><h2>标签</h2><dl>${tags.map(([k,v])=>kv(k,esc(v))).join('')}</dl></section></div></div>`}
+const notFound=(what,id,back,label)=>`<div class="table-wrap"><div class="empty"><h2>找不到${what} ${esc(id)}</h2><p class="muted" style="margin:6px 0 14px">它可能已经被清理，或者地址写错了。</p><a class="link" href="${back}">${label}</a></div></div>`;
+
+// ---- accounts: who owns it, can we read it, which scopes are behind ----
+function pageAccounts(){const cnt=new Map();LIVE.forEach(r=>cnt.set(r.acct,(cnt.get(r.acct)||0)+1));const key=sort.replace('-',''),dir=sort[0]==='-'?-1:1,q=query.trim().toLowerCase();
+  const R=ACCOUNTS.filter(a=>(!f.env||a.env===f.env)&&(!f.access||a.access===f.access)&&(!f.eim||a.eim===f.eim)&&(!q||`${a.name} ${a.id}`.includes(q))).sort((a,b)=>!sort?a.name.localeCompare(b.name):(key==='res'?(cnt.get(a)||0)-(cnt.get(b)||0):key==='env'?a.env.localeCompare(b.env):key==='access'?a.access.localeCompare(b.access):a.name.localeCompare(b.name))*dir||a.name.localeCompare(b.name));
+  const foot=R.length?pager(R.length,'个账号'):'',P=R.slice((page-1)*size,page*size);
+  return crumb([['Inventory',allHref()],'账号'])+`<div class="heading"><div><h1>账号</h1><p>${N(ACCOUNTS.length)} 个账号，点一个账号，只看它的资源</p></div></div>
+  <div class="filters" role="search"><label class="q">${ico('search')}<input id="resource-search" aria-label="搜索" placeholder="搜索账号名或账号 ID" value="${esc(query)}"></label>${combo('eim','EIM',APPS.map(a=>[a.eim,`${a.name} ${a.eim}`]))}${sel('env','环境',['dev','preprod','prod'])}${sel('access','访问状态',[['ok','正常'],['access_denied','无法访问']])}${clearBtn()}</div>
+  ${R.length?`<div class="table-wrap"><table><thead><tr>${th('name','账号')}<th>账号 ID</th>${th('env','环境')}<th>EIM</th><th>BA</th>${th('access','访问状态')}<th>最近一次成功</th>${th('res','资源','numcol')}<th></th></tr></thead><tbody>${P.map(a=>`<tr><td><a class="name" href="${acctHref(a)}">${a.name}</a></td><td class="mono">${a.id}</td><td>${a.env}</td><td>${a.app} <span class="mono muted">${a.eim}</span></td><td class="mono">${a.ba}</td><td>${a.access==='ok'?'正常':'<span class="warn">无法访问</span>'}</td><td>${a.lastOk}</td><td class="numcol">${N(cnt.get(a)||0)}</td><td class="rowact"><a class="link" href="#/accounts/${a.id}">扫描情况</a></td></tr>`).join('')}</tbody></table></div>${foot}`:emptyBox('账号')}`}
+function pageAccount(){const a=acctById(route.id);if(!a)return notFound('账号',route.id,'#/accounts','回到账号');const n=LIVE.filter(r=>r.acct===a).length,bad=a.access!=='ok';
+  const probs=bad?REGIONS.map(r=>[`${allKeys.length-1} 种类型`,r,'读取失败','3 天前','access_denied']).concat([['Route 53 托管区域','global','读取失败','3 天前','access_denied']]):a===ACCOUNTS[0]?[['SQS 队列','eu-west-1','被拦下，等确认','今天 08:04','']]:a===ACCOUNTS[6]?[['Lambda 函数','us-east-1','超过 12 小时没有成功','昨天 20:04','throttled']]:[];
+  return crumb([['Inventory',allHref()],['账号','#/accounts'],[a.name,acctHref(a)],'扫描情况'])+`<div class="heading"><div><h1>${esc(a.name)} 的扫描情况</h1><p>${a.app} 的 ${a.env} 账号，能不能读取、哪些范围落后</p></div><div class="actions"><a class="btn" href="${href({name:'overall'},{s:'acct:'+a.id})}">查看这个账号的资源</a><button class="primary" data-scan-acct="${a.id}">扫描这个账号</button></div></div>
+  ${bad?`<div class="notice"><strong>无法访问这个账号</strong><p>${esc(a.accessError)}。读不到的范围保持上一次成功扫描时的内容，具体见下面的扫描情况。</p></div>`:''}
+  <section class="panel"><dl class="summary six"><div><dt>账号 ID</dt><dd class="mono">${a.id}</dd></div><div><dt>环境</dt><dd>${a.env}</dd></div><div><dt>EIM</dt><dd><a class="link" href="${href({name:'overall'},{s:'app:'+a.eim})}">${a.app}</a><br><span class="mono muted">${a.eim}</span></dd></div><div><dt>BA</dt><dd class="mono">${a.ba}</dd></div><div><dt>访问状态</dt><dd>${bad?'<span class="warn">无法访问</span>':'正常'}</dd></div><div><dt>资源</dt><dd>${N(n)} 个</dd></div></dl></section>
+  <div class="cols2"><section class="panel"><h2>扫描情况</h2>${probs.length?`<p class="sub">需要注意的范围</p><div class="table-wrap flat"><table><thead><tr><th>资源类型</th><th>区域</th><th>情况</th><th>上次成功</th></tr></thead><tbody>${probs.map(p=>`<tr><td>${p[0]}</td><td class="mono">${p[1]}</td><td><span class="warn">${p[2]}</span>${p[4]?` <span class="small">${ERRS[p[4]].title}</span>`:''}</td><td>${p[3]}</td></tr>`).join('')}</tbody></table></div>${bad?'':`<p class="small" style="margin-top:10px">其余范围（区域 + 类型）都在 12 小时内成功扫描过。</p>`}`:`<p>每个范围（区域 + 类型）都在 12 小时内成功扫描过。</p>`}</section>
+  <section class="panel"><h2>区域</h2><div class="table-wrap flat"><table><thead><tr><th>区域</th><th>能否读取</th><th>Config 记录</th><th class="numcol">资源</th></tr></thead><tbody>${REGIONS.map(r=>`<tr><td class="mono">${r}</td><td>${bad?'<span class="warn">不能</span>':'能'}</td><td>${bad?'未知':'已开启'}</td><td class="numcol"><a class="link" href="${href({name:'overall'},{s:'acct:'+a.id,region:r})}">${N(LIVE.filter(x=>x.acct===a&&x.region===r).length)}</a></td></tr>`).join('')}</tbody></table></div></section></div>`}
+
+// ---- 扫描管理 pages ----
+function pageScans(){const I=SCAN_LIST.map(s=>[s,scanInfo(s)]),sweep=I.find(([s,i])=>s.all&&['运行中','排队中'].includes(i.status)),R=I.filter(([s,i])=>(!f.st||i.status===f.st)&&(!f.kind||s.trig===f.kind));
+  const foot=R.length?pager(R.length,'次扫描'):'',P=R.slice((page-1)*size,page*size),miss=ALL.filter(r=>statusOf(r)==='missing').length;
+  return crumb(['扫描管理','扫描任务'])+`<div class="heading"><div><h1>扫描任务</h1><p>全部账号的扫描记录与异常。资源浏览范围不会筛选此页。</p></div><div class="actions"><button class="primary" id="scan-btn" aria-haspopup="dialog">新扫描</button></div></div>
+  <section class="insights">${sweep?`<a class="insight lead" href="#/scans/${sweep[0].id}"><div class="insight-label">全量扫描</div><div class="insight-value">${sweep[1].acctsDone}<small>/ ${sweep[0].accts.length} 个账号完成</small></div><p class="small">扫描 #${sweep[0].id}，${clock(sweep[0].start)} 开始</p><div class="insight-bottom">预计 14:21 完成</div></a>`:`<article class="insight lead"><div class="insight-label">全量扫描</div><div class="insight-value">0<small>轮在进行</small></div></article>`}
+  <article class="insight"><div class="insight-label">排队的任务</div><div class="insight-value">${sweep?N(sweep[1].wait):0}<small>个</small></div><p class="small">手动发起的 0 个</p><p class="small">定时的 ${sweep?N(sweep[1].wait):0} 个，最早的等了 40 秒</p></article>
+  <article class="insight"><div class="insight-label">最近 24 小时失败</div><div class="insight-value">5<small>个任务</small></div><p class="small">没有读取权限 3 个</p><p class="small">被 AWS 限流 2 个</p></article>
+  <a class="insight" href="${href({name:'overall'},{status:'missing',s:'all'})}"><div class="insight-label">可能已删除</div><div class="insight-value">${miss}<small>个资源</small></div><p class="small">最近没有再看到，还没确认不存在</p><div class="insight-bottom">点开逐个查看</div></a></section>
+  ${ABNORMAL.length?`<div class="section-heading"><h2>待确认的范围</h2><span class="small">先核对本次未发现的资源，再确认是否为预期变化。保护期间保留原状态。</span></div>
+  <div class="table-wrap" style="margin-bottom:26px"><table><thead><tr><th>账号</th><th>区域</th><th>资源类型</th><th>发现时间</th><th class="numcol">本次未发现</th><th class="numcol">清单里现有</th><th></th></tr></thead><tbody>${ABNORMAL.map(x=>`<tr><td><a class="name" href="${acctHref(x.acct)}">${x.acct.name}</a></td><td class="mono">${x.region}</td><td><span class="ty">${lu(TI[x.k])}${TYPES[x.k].label}</span></td><td>${x.at}</td><td class="numcol"><a class="link" href="${href({name:'guard',id:x.id})}" aria-label="核对 ${x.acct.name} 本次未发现的 ${x.cand} 个资源">${x.cand} 个</a></td><td class="numcol"><a class="link" href="${href({name:'svc',svc:svcOf(x.k),tab:x.k},{s:'acct:'+x.acct.id,region:x.region})}">${x.active} 个</a></td><td class="rowact"><a class="btn" data-review-scope="${x.id}" href="${href({name:'guard',id:x.id})}">核对资源</a></td></tr>`).join('')}</tbody></table></div>`:''}
+  <div class="section-heading"><h2>扫描记录</h2></div>
+  <div class="filters">${sel('st','状态',['排队中','运行中','成功','部分失败','失败','已取消'])}${sel('kind','触发方式',[['schedule','定时'],['api','手动']])}${clearBtn()}</div>
+  ${R.length?`<div class="table-wrap"><table><thead><tr><th>扫描 ID</th><th>状态</th><th>范围</th><th>触发方式</th><th>任务</th><th>开始时间</th><th>用时</th><th>结果</th></tr></thead><tbody>${P.map(([s,i])=>`<tr><td><a class="link mono" href="#/scans/${s.id}">#${s.id}</a></td><td>${stat(i.status)}</td><td>${esc(scopeText(s))}</td><td>${TRIG[s.trig]}</td><td>${i.done} / ${i.T.length}</td><td>${s.day} ${clock(s.start)}</td><td>${i.took?dur(i.took):'进行中'}</td><td class="wrapcell">${i.result}${i.bad?`${i.result?'，':''}<span class="warn">失败 ${i.bad}</span>`:''}</td></tr>`).join('')}</tbody></table></div>${foot}`:emptyBox('扫描')}`}
+function pageGuard(){const x=ABNORMAL.find(x=>x.id===route.id);if(!x)return notFound('待确认的范围',route.id,href({name:'scans'}),'返回扫描任务');
+  const candidates=x.candidates.map(id=>BYID.get(id)),q=query.trim().toLowerCase(),R=candidates.filter(r=>!q||[r.name,r.id,r.arn].some(v=>v.toLowerCase().includes(q))),foot=R.length?pager(R.length,'个待核对资源'):'',P=R.slice((page-1)*size,page*size);
+  return crumb([['扫描管理',href({name:'scans'})],['待确认的范围',href({name:'scans'})],'核对资源'])+`<div class="heading"><div><h1>核对未发现的资源</h1><p>${esc(x.acct.name)} · ${x.region} · ${TYPES[x.k].label}</p></div><div class="actions"><a class="btn" href="${href({name:'scans'})}">返回扫描任务</a></div></div>
+  <p class="scope-note">原型演示：以下是模拟的候选明细，用于核对交互；不代表实际 AWS 扫描结果。</p>
+  <section class="panel"><dl class="summary"><div><dt>账号</dt><dd>${esc(x.acct.name)}<br><span class="mono muted">${x.acct.id}</span></dd></div><div><dt>区域 / 资源类型</dt><dd>${x.region}<br>${TYPES[x.k].label}</dd></div><div><dt>检测时间</dt><dd>${x.at}</dd></div><div><dt>本次未发现</dt><dd><strong>${x.cand} 个</strong> / 清单里现有 ${x.active} 个</dd></div></dl></section>
+  <div class="notice"><strong>未发现不等于已删除</strong><p>这次完整扫描没有列出下面这些资源，系统已暂停该范围的删除判断。它们仍保留原来的清单状态；名称、ARN 和配置是最后保存的内容。</p><p>请核对是否有对应的下线或迁移操作。无法确认时可以先返回，保留保护状态。</p></div>
+  <div class="section-heading"><h2>待核对资源 <span class="small">${x.cand} 个</span></h2><a class="link" href="${href({name:'svc',svc:svcOf(x.k),tab:x.k},{s:'acct:'+x.acct.id,region:x.region})}">查看该范围全部资源</a></div>
+  <div class="filters" role="search"><label class="q">${ico('search')}<input id="resource-search" aria-label="搜索待核对资源" placeholder="搜索名称、ID 或 ARN" value="${esc(query)}"></label>${clearBtn()}</div>
+  ${R.length?`<div class="table-wrap resource-table" tabindex="0" aria-label="待核对资源列表，可横向滚动">${resourceTableStart([280,420,140,140])}<thead><tr><th>名称 / 资源 ID</th><th>ARN</th><th>本次扫描</th><th>清单状态</th></tr></thead><tbody>${P.map(r=>`<tr data-row="${r.rid}" tabindex="0" aria-label="预览 ${esc(r.name)}"><td class="identity"><div class="identity-name"><a class="name" href="${resourceHref(r.rid)}" title="${esc(r.name)}">${esc(r.name)}</a></div><span class="resource-id mono" title="${esc(r.id)}">${esc(r.id)}</span></td><td class="guard-arn"><span class="mono" title="${esc(r.arn)}">${esc(r.arn)}</span><button class="textbtn" data-copy="${esc(r.arn)}" aria-label="复制 ${esc(r.name)} 的 ARN">复制 ARN</button></td><td><span class="warn">未发现</span><br><span class="small">${x.at}</span></td><td>保留原状态<br><span class="small">${statusOf(r)==='active'?'活跃':statusOf(r)==='missing'?'可能已删除':'已删除'}</span></td></tr>`).join('')}</tbody></table></div>${foot}`:emptyBox('待核对资源')}
+  <section class="panel guard-decision"><h2>核对后的处理</h2><p>如果上述 ${x.cand} 个资源的消失符合预期，可确认整个范围的变化。确认后重新扫描，仍未发现的资源还需按 ID 明确确认不存在，才会标为已删除。</p><div class="actions"><a class="btn" href="${href({name:'scans'})}">暂不确认</a><button class="primary" data-confirm="${ABNORMAL.indexOf(x)}">确认是真实变化</button></div></section>`}
+function pageScan(){const s=SCAN_LIST.find(s=>s.id===route.id);if(!s)return notFound('扫描','#'+route.id,'#/scans','回到扫描任务');const i=scanInfo(s),live=i.status==='运行中'||i.status==='排队中';
+  const order={失败:0,运行中:1,排队中:2,已取消:3,已跳过:4,成功:5},R=i.T.filter(t=>(!f.st||t.status===f.st)&&(!f.err||t.err===f.err)&&(!f.acct||t.acct.name===f.acct)&&(!f.kind||t.kind===f.kind)).sort((a,b)=>order[a.status]-order[b.status]||a.id-b.id);
+  const foot=R.length?pager(R.length,'个任务'):'',P=R.slice((page-1)*size,page*size),bar=[['成功',i.ok],['失败',i.bad],['运行中',i.run],['排队中',i.wait],['已取消',i.off],['已跳过',i.skip]].filter(([,n])=>n);
+  return crumb([['扫描管理','#/scans'],['扫描任务','#/scans'],`#${s.id}`])+`<div class="heading"><div><h1>扫描 #${s.id}</h1><p>${TRIG[s.trig]}扫描，${esc(scopeText(s))}</p></div><div class="actions">${i.bad&&!i.off?`<button class="primary" data-retry>重试失败的 ${i.bad} 个任务</button>`:''}${live?'<button data-cancel>取消扫描</button>':''}<a class="btn ${i.status==='成功'?'primary':''}" data-scan-resources href="${s.one?resourceHref(s.one.rid):href({name:'overall'},{scan:s.id,s:'all'})}">查看范围内资源</a><button data-copy="${location.origin+location.pathname+href({name:'scan',id:s.id})}">复制链接</button></div></div>
+  ${i.bad?`<div class="notice"><strong>${i.bad} 个任务失败</strong><p>成功的任务和失败前已经写入的内容都保留；没读完的范围不做删除判断。按原因看：${i.codes.map(([c,n])=>`<button class="pill ${f.err===c?'on':''}" data-set-f="err" data-v="${c}">${ERRS[c].title} <b>${n}</b></button>`).join(' ')}</p></div>`:''}
+  <section class="panel"><h2>摘要</h2><div class="prog" role="img" aria-label="成功 ${i.ok}，失败 ${i.bad}，运行中 ${i.run}，共 ${i.T.length} 个任务">${[['ok',i.ok+i.skip],['bad',i.bad],['run',i.run]].map(([c,n])=>n?`<i class="${c}" style="width:${n/i.T.length*100}%"></i>`:'').join('')}</div>
+  <dl class="summary"><div><dt>状态</dt><dd>${stat(i.status)}${live?' <span class="small">页面会自动更新</span>':''}</dd></div><div><dt>进度</dt><dd>${i.done} / ${i.T.length} 个任务</dd></div><div><dt>开始时间</dt><dd>${s.day} ${clockS(s.start)}</dd></div><div><dt>${live?'已运行':'用时'}</dt><dd>${i.status==='排队中'?'还没开始':live?'12 分 40 秒':dur(i.took)}</dd></div>
+  <div><dt>触发方式</dt><dd>${TRIG[s.trig]}${s.by?`，来自 <span class="mono">${s.by}</span>`:''}</dd></div><div><dt>账号</dt><dd>${s.all?`全部账号（${s.accts.length} 个）`:esc(scopeLabel(s.accts))}</dd></div><div><dt>区域</dt><dd>${s.one?s.one.region:s.shard?s.shard[1]:s.regions?s.regions.join('、'):'全部区域'}</dd></div><div><dt>资源类型</dt><dd>${s.one?s.one.type:s.shard?TYPES[s.shard[2]].label:s.types?s.types.map(k=>TYPES[k].label).join('、'):'全部类型'}</dd></div>
+  <div><dt>新增</dt><dd>${N(i.T.reduce((a,t)=>a+(t.stats?.new||0),0))} 个资源</dd></div><div><dt>更新</dt><dd>${N(i.T.reduce((a,t)=>a+(t.stats?.updated||0),0))} 个资源</dd></div><div><dt>可能已删除</dt><dd>${N(i.T.reduce((a,t)=>a+(t.stats?.missing||0),0))} 个资源</dd></div><div><dt>已删除</dt><dd>${N(i.T.reduce((a,t)=>a+(t.stats?.deleted||0),0))} 个资源</dd></div></dl></section>
+  <div class="section-heading"><h2>任务</h2><span class="small">${bar.map(([l,n])=>`${l} ${n}`).join('，')}</span></div>
+  <div class="filters">${sel('st','状态',bar.map(b=>b[0]))}${i.codes.length?sel('err','失败原因',i.codes.map(([c])=>[c,ERRS[c].title])):''}${combo('acct','账号',s.accts.map(a=>[a.name,`${a.name} ${a.id}`]))}${sel('kind','任务范围',[...new Set(i.T.map(t=>t.kind))].map(k=>[k,KIND[k]]))}${clearBtn()}</div>
+  ${R.length?`<div class="table-wrap"><table><thead><tr><th>任务 ID</th><th>状态</th><th>任务范围</th><th>账号</th><th>区域</th><th>资源类型</th><th>尝试</th><th>开始时间</th><th>用时</th><th>结果</th></tr></thead><tbody>${P.map(t=>`<tr><td><a class="link mono" href="#/tasks/${t.id}">#${t.id}</a></td><td>${stat(t.status)}</td><td>${KIND[t.kind]}</td><td>${esc(t.acct.name)}</td><td class="mono">${t.region||'<span class="muted">全部</span>'}</td><td>${t.k?`<span class="ty">${lu(TI[t.k])}${TYPES[t.k].label}</span>`:t.kind==='config_group'?'Config 负责的类型':'<span class="muted">全部</span>'}</td><td>${t.begin?`${t.attempt} / 3`:''}</td><td>${t.begin?clockS(t.begin):''}</td><td>${t.secs?dur(t.secs):''}</td><td>${taskResult(t)}</td></tr>`).join('')}</tbody></table></div>${foot}`:emptyBox('任务')}`}
+const taskResult=t=>t.err?`<span class="warn">${ERRS[t.err].title}</span>`:t.kind==='sweep_account'&&t.status==='成功'?'已创建各区域的任务':t.stats?(STAT.filter(([k])=>k!=='unchanged'&&t.stats[k]).map(([k,l])=>`${l} ${t.stats[k]}`).join('，')||'没有变化'):t.status==='运行中'?'正在读取':t.status==='已跳过'?'这个范围刚扫描过':'';
+const taskScope=t=>[t.acct.name,t.region,t.k?TYPES[t.k].label:t.kind==='config_group'?'Config 负责的类型':null].filter(Boolean).join('，');
+function logLines(t){if(!t.begin)return [];const L=[],b=t.begin,add=(o,lv,m)=>L.push([clockS(b+o),lv,m]),type=t.k?CFN[t.k]:'';
+  add(0,'INFO',`task claimed {"taskId":${t.id},"kind":"${t.kind}","attempt":${t.attempt}}`);add(1,'INFO',`assumed role {"accountId":"${t.acct.id}"}`);
+  if(t.kind==='sweep_account'){add(2,'INFO','regions refreshed {"enabled":3}');add(3,'INFO','config recorder checked {"recording":3}');add(t.secs||4,'INFO',`children enqueued {"count":${t.scan.trig==='schedule'?3:43}}`);add(t.secs||4,'INFO','task succeeded');return L}
+  if(t.kind==='resource'){add(2,'INFO',`get resource {"type":"${type}","id":"${t.scan.one.id}"}`);add(3,'INFO','written {"updated":1}');add(3,'INFO','task succeeded');return L}
+  const pages=t.kind==='config_group'?5:2,stop=t.err?(t.err==='throttled'?2:0):t.status==='运行中'?2:pages;
+  for(let p=0;p<stop;p++){add(2+p*3,'INFO',t.kind==='config_group'?`config page read {"page":${p+1},"items":${5+(t.id+p)%4}}`:`list page read {"type":"${type}","page":${p+1},"items":${1+(t.id+p)%3}}`);add(3+p*3,'INFO',`page written, checkpoint saved {"page":${p+1}}`)}
+  if(t.err){[1,2,3].forEach(n=>add(2+stop*3+n*5,n<3?'WARN':'ERROR',`${ERRS[t.err].msg} {"attempt":${n}}`));add(t.secs,'ERROR',`task failed {"errorCode":"${t.err}","complete":false}`);add(t.secs,'INFO','read was not complete, no resource marked missing')}
+  else if(t.status==='运行中')add(2+stop*3,'INFO',`reading {"page":${stop+1}}`);
+  else{const c=t.stats;add(t.secs-1,'INFO',`read complete {"new":${c.new},"updated":${c.updated},"unchanged":${c.unchanged},"missing":${c.missing}}`);add(t.secs,'INFO','task succeeded')}
+  return L}
+function logHtml(t){const A=logLines(t),L=A.filter(l=>!logq||l.join(' ').toLowerCase().includes(logq.toLowerCase())),cut=!logAll&&!logq&&L.length>8?L.slice(0,8):L;
+  if(!A.length)return {html:t.status==='已跳过'?'这个任务被跳过，没有日志':'任务还没有开始，暂时没有日志',more:false};
+  return {html:cut.length?cut.map(([ts,lv,m])=>`<span class="t">${ts}</span> <span class="${lv==='INFO'?'':'err'}">${lv.padEnd(5)}</span> ${esc(m)}`).join('\n'):'已加载的日志里没有这个词',more:cut.length<L.length}}
+const logBox=t=>{const {html,more}=logHtml(t);return `<pre class="log" id="log" tabindex="0">${html}</pre>${more?'<button class="textbtn" data-log-more style="margin-top:10px">加载更多日志</button>':''}`};
+function pageTask(){const t=findTask(route.id);if(!t)return notFound('任务','#'+route.id,'#/scans','回到扫描任务');const s=t.scan,c=t.stats,E=t.err&&ERRS[t.err];
+  return crumb([['扫描管理','#/scans'],['扫描任务','#/scans'],[`#${s.id}`,`#/scans/${s.id}`],`任务 #${t.id}`])+`<div class="heading"><div><h1>任务 #${t.id}</h1><p>${t.kind==='resource'?`刷新 ${esc(s.one.name)}，`:''}${esc(taskScope(t))}</p></div><div class="actions"><button data-copy="${location.origin+location.pathname}#/tasks/${t.id}">复制链接</button></div></div>
+  ${E?`<div class="notice"><strong>失败：${E.title}</strong><p>读取 ${esc(taskScope(t))} 时出错，试了 ${t.attempt} 次。失败前已经写入的内容保留；这个范围没读完，所以不做删除判断。</p><p>${E.fix} <a class="link" href="${href({name:'scan',id:s.id},{st:'失败'})}">去扫描 #${s.id}</a> · <a class="link" href="${href(t.k?{name:'svc',svc:svcOf(t.k),tab:t.k}:{name:'overall'},{s:'acct:'+t.acct.id,region:t.region})}">${t.k?'查看此类型的资源':'查看此账号和区域的资源'}</a></p></div>`:''}
+  <section class="panel"><h2>摘要</h2><dl class="summary"><div><dt>状态</dt><dd>${stat(t.status)}</dd></div><div><dt>所属扫描</dt><dd><a class="link mono" href="#/scans/${s.id}">#${s.id}</a> ${TRIG[s.trig]}</dd></div><div><dt>任务范围</dt><dd>${KIND[t.kind]}</dd></div><div><dt>数据来源</dt><dd>${t.k==='ami'?'EC2':SRC[t.kind]}</dd></div>
+  <div><dt>账号</dt><dd><a class="link" href="${acctHref(t.acct)}">${esc(t.acct.name)}</a> <span class="mono muted">${t.acct.id}</span></dd></div><div><dt>区域</dt><dd class="mono">${t.region||'全部'}</dd></div><div><dt>资源类型</dt><dd>${t.k?`<span class="ty">${lu(TI[t.k])}${TYPES[t.k].label}</span>`:t.kind==='config_group'?'Config 负责的类型':'全部'}</dd></div><div><dt>尝试</dt><dd>${t.begin?`第 ${t.attempt} 次，最多 3 次`:'还没开始'}</dd></div>
+  <div><dt>创建时间</dt><dd>${s.day} ${clockS(t.queued)}</dd></div><div><dt>开始时间</dt><dd>${t.begin?clockS(t.begin):'还没开始'}</dd></div><div><dt>结束时间</dt><dd>${t.secs?clockS(t.begin+t.secs):'还没结束'}</dd></div><div><dt>用时</dt><dd>${t.secs?dur(t.secs):t.status==='运行中'?'运行中':'—'}</dd></div>${E?`<div style="grid-column:1/-1"><dt>错误信息</dt><dd class="mono">${t.err}: ${esc(E.msg)}</dd></div>`:''}</dl></section>
+  ${c?`<section class="panel"><h2>${t.err?'失败前已写入':'结果'}</h2><dl class="summary six">${STAT.map(([k,l])=>`<div><dt>${l}</dt><dd>${c[k]} 个资源</dd></div>`).join('')}</dl>${t.kind==='resource'?`<p style="margin-top:12px"><a class="link" href="${resourceHref(s.one.rid)}">打开 ${esc(s.one.name)}</a></p>`:`<p style="margin-top:12px"><a class="link" href="${t.k?href({name:'svc',svc:svcOf(t.k),tab:t.k},{s:'acct:'+t.acct.id,region:t.region}):href({name:'overall'},{s:'acct:'+t.acct.id,region:t.region})}">查看 ${esc(taskScope(t))} 的资源</a></p>`}</section>`:''}
+  <section class="panel"><div class="log-head"><h2>日志</h2><input id="log-search" aria-label="在已加载的日志里查找" placeholder="搜索已加载的日志" value="${esc(logq)}"><button data-copy-log>复制</button></div><div id="log-box">${logBox(t)}</div></section>`}
+
+const PAGES={overall:pageList,group:pageList,apps:pageApps,svc:pageService,resource:pageResource,accounts:pageAccounts,account:pageAccount,scans:pageScans,guard:pageGuard,scan:pageScan,task:pageTask};
+const LISTS=['overall','group','svc'];
+
+
+document.getElementById('nav').addEventListener('scroll',e=>e.currentTarget.classList.toggle('scrolled',e.currentTarget.scrollTop>0));
+
+
+// ---- user menu (same menu from the top bar chip and from the floating avatar) ----
+let userFrom=null;
+function toggleUser(on,from,restore=true){const m=document.getElementById('usermenu');if(!on){if(m.hidden)return;m.hidden=true;document.querySelectorAll('[data-user-menu]').forEach(b=>b.setAttribute('aria-expanded','false'));if(restore&&userFrom?.isConnected&&getComputedStyle(userFrom).visibility!=='hidden')userFrom.focus({preventScroll:true});return}
+  userFrom=from;const r=from.getBoundingClientRect();m.style.top=r.bottom+8+'px';m.style.right=Math.max(8,innerWidth-r.right)+'px';m.hidden=false;from.setAttribute('aria-expanded','true');m.querySelector('button').focus()}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-user-menu]'),m=document.getElementById('usermenu');if(t){e.stopPropagation();return toggleUser(m.hidden,t)}if(!m.hidden&&!e.target.closest('#usermenu'))toggleUser(false,null,false);if(e.target.closest('#usermenu [data-logout]')){toggleUser(false);}},true);
+document.addEventListener('keydown',e=>{const m=document.getElementById('usermenu');if(m.hidden||!m.contains(e.target))return;if(e.key==='Escape'){e.preventDefault();e.stopPropagation();toggleUser(false)}else if(['ArrowDown','ArrowUp'].includes(e.key)){e.preventDefault();const B=[...m.querySelectorAll('button')],i=B.indexOf(document.activeElement);B[(i+(e.key==='ArrowDown'?1:-1)+B.length)%B.length].focus()}},true);
+document.addEventListener('focusin',e=>{const m=document.getElementById('usermenu');if(!m.hidden&&!m.contains(e.target)&&!e.target.closest('[data-user-menu]'))toggleUser(false,null,false)});
+addEventListener('scroll',()=>toggleUser(false,null,false),{passive:true});
+if(/[?&]auth=expired/.test(location.search)){document.body.classList.add('auth-expired');const m=document.getElementById('usermenu');m.querySelector('.ustat').innerHTML='<span class="udot"></span>登录已过期，页面内容可能不是最新';m.querySelector('[data-logout]').outerHTML='<button role="menuitem" class="primary" data-logout>重新登录</button>';document.querySelectorAll('.fabs [data-user-menu],.userchip').forEach(b=>{b.title='张敏，登录已过期';b.setAttribute('aria-label','张敏，登录已过期')})}
+// ---- floating global search ----
+function toggleSearch(on,restore=true){const B=document.body,i=document.getElementById('global-search'),button=document.getElementById('search-fab');if(!on){if(!B.classList.contains('bar-open'))return;const focused=document.querySelector('.topbar').contains(document.activeElement);B.classList.remove('bar-open');button.setAttribute('aria-expanded','false');if(restore&&focused&&B.classList.contains('scrolled'))button.focus({preventScroll:true});return}if(document.querySelector('dialog[open]'))return;toggleUser(false,null,false);B.classList.add('bar-open');button.setAttribute('aria-expanded','true');i.focus({preventScroll:true})}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('bar-open')&&!document.querySelector('dialog[open]')&&document.getElementById('usermenu').hidden){e.preventDefault();toggleSearch(false)}});
+document.addEventListener('pointerdown',e=>{if(document.body.classList.contains('bar-open')&&!e.target.closest('.topbar,#usermenu'))toggleSearch(false)});
+document.getElementById('search-fab').addEventListener('click',()=>toggleSearch(true));
+document.getElementById('searchdlg').addEventListener('click',e=>{if(e.target.id==='searchdlg'||e.target.closest('#search-close'))toggleSearch(false)});
+document.getElementById('searchdlg').addEventListener('cancel',e=>{e.preventDefault();toggleSearch(false)});
+addEventListener('scroll',()=>{const B=document.body;B.classList.toggle('scrolled',scrollY>56);if(scrollY<=56)toggleSearch(false,false)},{passive:true});
+document.addEventListener('keydown',e=>{if(e.key!=='/'||e.metaKey||e.ctrlKey||e.altKey||document.querySelector('dialog[open]')||e.target.matches?.('input,textarea,select,[contenteditable]'))return;e.preventDefault();if(document.body.classList.contains('scrolled'))toggleSearch(true);else document.getElementById('global-search').focus()});
+function edgeHints(){document.querySelectorAll('.resource-table').forEach(w=>{w.classList.toggle('scrolled',w.scrollLeft>0);w.classList.toggle('more',w.scrollLeft+w.clientWidth<w.scrollWidth-1)})}
+document.addEventListener('scroll',e=>{if(e.target.classList&&e.target.classList.contains('resource-table'))edgeHints()},true);
+addEventListener('resize',edgeHints);
+new MutationObserver(edgeHints).observe(document.getElementById('main'),{childList:true,subtree:true});
+function render(){renderNav();document.body.classList.toggle('nav-hidden',hidden);document.getElementById('main').innerHTML=PAGES[route.name]();document.querySelector('#nav .active')?.scrollIntoView({block:'nearest'});document.querySelectorAll('a[href^="#/"]').forEach(a=>a.setAttribute('href',contextualHref(a.getAttribute('href'))))}
+function go(h){location.hash=contextualHref(h)}
+
+// ---- preview drawer ----
+let drawerFrom=null,askFrom=null;
+function openDetails(id,trigger){const r=BYID.get(+id);if(!r)return;const T=TYPES[r.k];drawerFrom=trigger||document.querySelector(`tr[data-row="${id}"]`)||document.activeElement;
+  const cp=(v,label)=>`<button class="cp" data-copy="${esc(v)}" aria-label="复制${label}" title="复制${label}">${ico('copy')}</button>`,row=(k,v,c='')=>`<div class="kv"><dt>${k}</dt><dd class="${c}">${v}</dd></div>`,pair=(link,sub,label)=>`${link}<span class="dsub mono">${sub}${cp(sub,label)}</span>`;
+  document.getElementById('drawer').innerHTML=`<div class="dtop"><span class="ty small">${lu(TI[r.k])}${esc(r.type)}</span><button class="iconbtn" id="close-drawer" aria-label="关闭">${ico('close')}</button></div>
+  <h2>${esc(r.name)}${mark(r)}</h2>${r.id!==r.name?`<span class="dsub mono">${esc(r.id)}${cp(r.id,T.idCol)}</span>`:''}
+  <h3>配置</h3><dl>${T.cols.map((c,i)=>row(r.k==='ec2'&&c==='状态'?'实例状态':c,display(r.v[i]))).join('')}</dl>
+  <h3>归属</h3><dl>${row('账号',pair(`<a class="link" href="${acctHref(r.acct)}">${esc(r.acct.name)}</a>`,r.acct.id,'账号 ID'))}${row('应用',pair(`<a class="link" href="${appHref(r.acct.eim)}">${esc(r.acct.app)}</a>`,r.acct.eim,' EIM'))}${row('环境',r.acct.env)}${row('区域',r.region==='global'?'全局':r.region,'mono')}</dl>
+  <h3>标识</h3><dl>${row('ARN',`<span class="darn mono">${esc(r.arn)}</span>${cp(r.arn,' ARN')}`,'dflex')}</dl>
+  <div class="dfoot"><a class="primary btn" href="${resourceHref(r.rid)}">查看详情</a><span class="small">关联资源和标签在详情里</span></div>`;
+  document.getElementById('shade').showModal();document.getElementById('close-drawer').focus()}
+const closeDetails=()=>{const d=document.getElementById('shade');if(!d.open)return;d.close();if(drawerFrom?.isConnected)drawerFrom.focus()};
+
+// ---- new scan follows POST /scans: {all:true}, or accountIds (at most 50) with optional awsRegions and resourceTypes ----
+const MAX_ACCTS=50;
+let picked=new Set(),acctq='',smode='accts',sreg=new Set(),stype=new Set(),addingAccounts=false;
+const selectedAccounts=()=>ACCOUNTS.filter(a=>picked.has(a.id));
+const pickedLabel=()=>{const A=selectedAccounts(),apps=new Set(A.map(a=>a.eim));return !A.length?'尚未选择账号':apps.size===1?`${A[0].app} 的 ${A.length} 个账号`:`${apps.size} 个应用的 ${A.length} 个账号`};
+const pickedReview=()=>picked.size?`<div class="selected-title">已选：${esc(pickedLabel())}</div><div class="selected-list">${selectedAccounts().map(a=>`<div class="selected-row"><span><strong>${esc(a.name)}</strong><span class="small mono">${a.id}</span></span><span class="small">${a.env}</span><button class="iconbtn" data-unpick="${a.id}" aria-label="移除 ${esc(a.name)}">${ico('close')}</button></div>`).join('')}</div>`:'<p class="small">先搜索并选择需要扫描的账号。</p>';
+const acctShown=()=>ACCOUNTS.filter(a=>`${a.name} ${a.id} ${a.app} ${a.eim} ${a.env}`.includes(acctq.trim().toLowerCase()));
+const acctRows=()=>acctShown().map(a=>`<label class="acct-row"><input type="checkbox" data-acct="${a.id}" ${picked.has(a.id)?'checked':''}><span><strong>${a.name}</strong><span class="small mono">${a.id}</span></span><span class="small">${a.app}，${a.env}</span></label>`).join('')||'<p class="muted" style="padding:12px">没有这个账号</p>';
+const chips=(set,attr,items)=>`<div class="chips"><button class="pill ${set.size?'':'on'}" data-${attr}="" aria-pressed="${!set.size}">全部</button>${items.map(([v,l,ic])=>`<button class="pill ${set.has(v)?'on':''}" data-${attr}="${v}" aria-pressed="${set.has(v)}">${ic?lu(ic):''}${l}</button>`).join('')}</div>`;
+const liveSweep=()=>SCAN_LIST.find(x=>x.all&&['运行中','排队中'].includes(scanInfo(x).status));
+function scanBody(){if(smode==='all'){const live=liveSweep();return `<p class="muted pnote">扫描整个组织的 ${ACCOUNTS.length} 个账号，包括所有应用，覆盖全部区域和资源类型。此模式不受资源浏览范围限制，不能再限定区域和类型。</p>${live?`<div class="notice" style="margin:0 6px 4px"><strong>已有一轮在运行</strong><p>扫描 #${live.id} 正在扫描全部账号，不会重复发起，会直接打开它。</p></div>`:''}`}
+  return `<p class="plabel">账号 <span class="small" id="acct-count"></span></p><div id="picked-review">${pickedReview()}</div><details class="add-accounts" ${addingAccounts?'open':''}><summary>添加或查找账号</summary><input id="acct-search" aria-label="查找账号" placeholder="搜索账号名、账号 ID 或应用" value="${esc(acctq)}"><div id="acct-list" class="acct-list">${acctRows()}</div></details>
+  <p class="plabel">区域 <span class="small">不选就是全部区域</span></p>${chips(sreg,'sreg',REGIONS.map(r=>[r,r]))}
+  <p class="plabel">资源类型 <span class="small">不选就是全部类型</span></p>${chips(stype,'stype',allKeys.map(k=>[k,TYPES[k].label,TI[k]]))}`}
+function scanFoot(){const live=smode==='all'&&liveSweep(),over=picked.size>MAX_ACCTS,ok=smode==='all'||(picked.size&&!over);
+  const line=smode==='all'?`全部 ${ACCOUNTS.length} 个账号`:!picked.size?'还没有选账号':over?`一次最多扫描 ${MAX_ACCTS} 个账号，现在选了 ${picked.size} 个`:`${esc(pickedLabel())}，${sreg.size?sreg.size+' 个区域':'全部区域'}，${stype.size?stype.size+' 种类型':'全部类型'}`;
+  return `<span class="small ${over?'warn':''}">${line}</span><button class="primary" id="scan-start" ${ok?'':'disabled'}>${live?`打开扫描 #${live.id}`:'开始扫描'}</button>`}
+function paintScan(keepList){const p=document.getElementById('picker');if(!keepList)p.innerHTML=`<div class="seg" role="tablist" aria-label="扫描范围"><button role="tab" aria-selected="${smode==='accts'}" class="${smode==='accts'?'on':''}" data-smode="accts">指定账号</button><button role="tab" aria-selected="${smode==='all'}" class="${smode==='all'?'on':''}" data-smode="all">全部账号</button></div><div id="scan-body">${scanBody()}</div><div class="foot" id="scan-foot"></div>`;
+  document.getElementById('scan-foot').innerHTML=scanFoot();const c=document.getElementById('acct-count');if(c)c.innerHTML=`最多 ${MAX_ACCTS} 个 ${picked.size?'<button class="textbtn" id="pick-all">清空已选</button>':''}`;const review=document.getElementById('picked-review');if(review)review.innerHTML=pickedReview()}
+let scanFrom=null;
+function toggleScan(on,anchor,preset){const d=document.getElementById('scandlg');if(!on){if(d.open){d.close();if(scanFrom?.isConnected)scanFrom.focus()}return}if(d.open)return;
+  scanFrom=anchor||document.getElementById('scan-btn');picked=new Set(preset||[]);acctq='';addingAccounts=!picked.size;smode='accts';sreg=new Set();stype=new Set();d.showModal();paintScan();document.getElementById(picked.size?'scan-close':'acct-search').focus()}
+function addScan(o){const id=SCAN_LIST[0].id+1;SCAN_LIST.unshift({id,trig:'api',by:'dashboard',day:'今天',start:14*3600+15*60,st:()=>'排队中',...o});go(`#/scans/${id}`)}
+function startScan(){if(smode==='all'){const live=liveSweep();toggleScan(false);return live?go(`#/scans/${live.id}`):addScan({all:true,accts:ACCOUNTS})}
+  const A=ACCOUNTS.filter(a=>picked.has(a.id));if(!A.length||A.length>MAX_ACCTS)return;toggleScan(false);addScan({accts:A,regions:sreg.size?REGIONS.filter(r=>sreg.has(r)):null,types:stype.size?allKeys.filter(k=>stype.has(k)):null})}
+// The one action that asks first: confirming a blocked scope lets the next scan mark resources as gone.
+function askConfirm(i){const x=ABNORMAL[i],el=document.getElementById('ask');askFrom=document.activeElement;
+  el.innerHTML=`<section class="askbox"><div class="shead"><h2>确认这些资源真的没有了？</h2><button class="iconbtn" data-ask-no aria-label="关闭">${ico('close')}</button></div><p>${esc(x.acct.name)} 在 ${x.region} 的 ${TYPES[x.k].label}，上次扫描有 ${x.cand} 个没看到，清单里现有 ${x.active} 个。</p><p>确认后会立即重新扫描这个范围。仍然没看到的资源会逐个按 ID 读取，AWS 明确回答不存在的才标为已删除，读取失败的不算。这一步不能撤回。</p><div class="foot"><button data-ask-no>取消</button><button class="primary" data-ask-yes="${i}">确认是真实变化</button></div></section>`;el.showModal();el.querySelector('.foot [data-ask-no]').focus()}
+const closeAsk=()=>{const el=document.getElementById('ask');if(!el.open)return;el.close();if(askFrom?.isConnected)askFrom.focus()};
+// ---- scope picker: a dialog in the middle of the screen, searchable, keyboard-friendly ----
+let scopeq='',scopeIx=0;
+function scopeList(){const q=scopeq.trim().toLowerCase(),A=APPS.filter(a=>!q||`${a.name} ${a.eim} ${a.ba}`.toLowerCase().includes(q)),C=ACCOUNTS.filter(a=>!q||`${a.name} ${a.id}`.includes(q)),t=INV.includes(route.name)?route:{name:'overall'},TOP=q?8:5;let n=0;
+  const row=(sp,l,sub,right,on)=>{const i=n++;return `<a class="srow ${on?'on':''} ${i===scopeIx?'cur':''}" id="srow-${i}" role="option" aria-selected="${i===scopeIx}" data-srow href="${href(t,{s:sp})}"><span class="avatar">${l[0].toUpperCase()}</span><span class="who"><strong>${l}</strong><span class="small mono">${sub}</span></span><span class="small">${right}</span>${ico('right')}</a>`};
+  return `${q?'':`<a class="srow ${scope?'':'on'} ${n++===scopeIx?'cur':''}" id="srow-0" role="option" aria-selected="${scopeIx===0}" data-srow href="${href(t,{s:'all'})}"><span class="avatar all">${lu('layout-dashboard')}</span><span class="who"><strong>全部应用和账号</strong><span class="small">看总体</span></span><span class="small">${N(APPS.length)} 个应用，${N(ACCOUNTS.length)} 个账号</span>${ico('right')}</a>`}
+  <p class="sgroup">应用<span class="small">${q?`找到 ${A.length} 个`:`共 ${N(APPS.length)} 个`}</span></p>${A.slice(0,TOP).map(a=>row('app:'+a.eim,a.name,`${a.eim}，${a.ba}`,a.envs.join('、'),scope?.app===a)).join('')||'<p class="muted snone">没有这个应用</p>'}${A.length>TOP?`<a class="smore" href="${href({name:'apps'},{q})}">在应用列表里查看全部 ${A.length} 个</a>`:''}
+  <p class="sgroup">账号<span class="small">${q?`找到 ${C.length} 个`:`共 ${N(ACCOUNTS.length)} 个`}</span></p>${C.slice(0,TOP).map(a=>row('acct:'+a.id,a.name,a.id,`${a.app}，${a.env}`,scope?.acct===a)).join('')||'<p class="muted snone">没有这个账号</p>'}${C.length>TOP?`<a class="smore" href="${href({name:'accounts'},{q})}">在账号列表里查看全部 ${C.length} 个</a>`:''}`}
+// The search box owns the keyboard: the highlighted row is announced through aria-activedescendant.
+const paintScope=()=>{const L=document.getElementById('scope-list');L.innerHTML=scopeList();const cur=L.querySelector('.cur');cur?.scrollIntoView({block:'nearest'});document.getElementById('scope-search').setAttribute('aria-activedescendant',cur?.id||'')};
+function toggleScope(on){const d=document.getElementById('scopedlg');if(!on){if(d.open)d.close();return}if(d.open)return;scopeq='';scopeIx=0;
+  d.innerHTML=`<div class="shead"><h2>选择范围</h2><button class="iconbtn" id="scope-close" aria-label="关闭">${ico('close')}</button></div><label class="ssearch">${ico('search')}<input id="scope-search" role="combobox" aria-label="查找应用或账号" aria-expanded="true" aria-controls="scope-list" aria-autocomplete="list" placeholder="搜索应用名、EIM、BA、账号名或账号 ID" autocomplete="off"></label><div id="scope-list" class="slist" role="listbox" aria-label="应用和账号"></div><p class="sfoot small">上下键选择，回车确认，Esc 关闭</p>`;paintScope();d.showModal();d.querySelector('input').focus()}
+const reset=()=>{f=F0();query='';page=1;sort=''};
+const flash=(b,text)=>{const old=b.innerHTML;b.innerHTML=b.classList.contains('cp')?ico('check'):text;b.disabled=true;setTimeout(()=>{b.innerHTML=old;b.disabled=false},1600)};
+
+document.addEventListener('click',e=>{const t=e.target;if(t.closest('#scopedlg a'))toggleScope(false);if(t.id==='shade')return closeDetails();if(t.id==='ask')return closeAsk();
+  const exp=document.querySelector('details.menu[open]');if(exp&&!t.closest('details.menu'))exp.open=false;
+  const row=t.closest('tr[data-row]');if(row&&!t.closest('a,button'))return openDetails(row.dataset.row,row);
+  const tr=t.closest('tbody tr');if(tr&&!t.closest('a,button,input,label')&&!tr.querySelector('button')){const a=tr.querySelector('a.name,a.link');if(a)return go(a.getAttribute('href'))}
+  const setf=t.closest('[data-set-f]');if(setf){const k=setf.dataset.setF;f[k]=f[k]===setf.dataset.v?'':setf.dataset.v;if(k==='eim')f.acct='';page=1;sync();return render()}
+  if(t.id==='scopedlg')return toggleScope(false);
+  if(t.id==='scandlg')return toggleScan(false);
+  const b=t.closest('button');if(!b)return;
+  if(b.id==='scope-btn')return toggleScope(true);
+  if(b.id==='scope-close')return toggleScope(false);
+  if(b.id==='scan-btn')return toggleScan(true);
+  if(b.dataset.scanAcct)return toggleScan(true,b,[b.dataset.scanAcct]);
+  if(b.dataset.scanApp)return toggleScan(true,b,byApp(b.dataset.scanApp).map(a=>a.id));
+  if(b.id==='scan-close')return toggleScan(false);
+  if(b.id==='scan-start')return startScan();
+  if(b.id==='pick-all'){picked.clear();addingAccounts=true;paintScan();return document.getElementById('acct-search').focus()}
+  if(b.dataset.unpick){const next=b.closest('.selected-row').nextElementSibling?.querySelector('button')?.dataset.unpick;picked.delete(b.dataset.unpick);paintScan(true);document.getElementById('acct-list').innerHTML=acctRows();return (document.querySelector(`[data-unpick="${next}"]`)||document.querySelector('.add-accounts summary')).focus()}
+  if(b.dataset.smode){smode=b.dataset.smode;paintScan();return document.querySelector(`[data-smode="${smode}"]`).focus()}
+  for(const [attr,set] of [['sreg',sreg],['stype',stype]])if(b.dataset[attr]!==undefined){const v=b.dataset[attr];v?(set.has(v)?set.delete(v):set.add(v)):set.clear();const y=document.getElementById('acct-list').scrollTop;paintScan();document.getElementById('acct-list').scrollTop=y;document.querySelector(`[data-${attr}="${v}"]`)?.focus();return}
+  if(b.hasAttribute('data-retry')||b.hasAttribute('data-cancel')){const sc=SCAN_LIST.find(x=>x.id===route.id),T=tasksOf(sc),retry=b.hasAttribute('data-retry');let n=0;
+    T.forEach(t=>{if(retry?t.status==='失败':['排队中','运行中'].includes(t.status)){n++;t.status=retry?'排队中':'已取消';if(retry){t.err=null;t.begin=null;t.secs=null;t.stats=null;t.attempt=0}}});
+    reset();sync();render();document.querySelector('.heading p').insertAdjacentHTML('beforeend',`<span class="done-note">${retry?`已把 ${n} 个任务重新放回队列`:`已取消，${n} 个还没完成的任务不再执行`}</span>`);return}
+  if(b.dataset.confirm)return askConfirm(+b.dataset.confirm);
+  if(b.hasAttribute('data-ask-no'))return closeAsk();
+  if(b.dataset.askYes){const x=ABNORMAL.splice(+b.dataset.askYes,1)[0];closeAsk();return addScan({accts:[x.acct],shard:[x.acct,x.region,x.k]})}
+  if(b.hasAttribute('data-nav-toggle')){hidden=!hidden;document.body.classList.toggle('nav-hidden',hidden);return}
+  if(b.id==='close-drawer')return closeDetails();
+  if(b.dataset.grp){shut.has(b.dataset.grp)?shut.delete(b.dataset.grp):shut.add(b.dataset.grp);return renderNav()}
+  if(b.dataset.more){more.has(b.dataset.more)?more.delete(b.dataset.more):more.add(b.dataset.more);return render()}
+  if(b.dataset.sort){const k=b.dataset.sort;sort=sort===k?'-'+k:sort==='-'+k?'':k;page=1;sync();return render()}
+  if(b.hasAttribute('data-clear')){reset();sync();return render()}
+  if(b.dataset.copy){navigator.clipboard?.writeText(b.dataset.copy).catch(()=>{});return flash(b,'已复制')}
+  if(b.hasAttribute('data-copy-log')){navigator.clipboard?.writeText(document.getElementById('log').textContent).catch(()=>{});return flash(b,'已复制')}
+  if(b.hasAttribute('data-log-more')){logAll=true;document.getElementById('log-box').innerHTML=logBox(findTask(route.id));return}
+  if(b.dataset.act){const d=b.closest('details');flash(b,b.dataset.act);if(d)setTimeout(()=>d.open=false,900);return}
+  if(b.hasAttribute('data-refresh')){const r=BYID.get(route.id),slot=document.getElementById('refresh-slot');b.disabled=true;b.textContent='正在刷新';
+    setTimeout(()=>{const current=route.name==='resource'&&route.id===r.rid&&slot.isConnected;b.disabled=false;b.textContent='刷新';if(r.acct.access!=='ok'){if(current)slot.innerHTML='<span class="warn">刷新失败：没有读取权限。</span>下面仍是清单里现有的内容';return}if(statusOf(r)==='missing'){MISSING.delete(r.rid);DELETED.add(r.rid);JUST.add(r.rid);if(current){render();document.getElementById('refresh-slot').textContent='刚刚按 ID 读取，AWS 回答不存在，已标为已删除'}return}if(current)slot.textContent='刚刚刷新过，没有变化'},1200);return}
+  if(b.dataset.page){page+=+b.dataset.page;sync();render()}});
+document.addEventListener('change',e=>{const d=e.target.dataset||{};
+  if(d.acct){e.target.checked?picked.add(d.acct):picked.delete(d.acct);return paintScan(true)}
+  if(d.fc){const o=comboOpts[d.fc].find(o=>o[1]===e.target.value);
+    if(INV.includes(route.name))return go(href(route,{...keepOf(),q:query,s:d.fc==='eim'?(o?'app:'+o[0]:'all'):o?'acct:'+o[0]:scopeApp()?'app:'+scopeApp().eim:'all'}));
+    f[d.fc]=o?o[0]:'';if(d.fc==='eim')f.acct='';page=1;sync();return render()}
+  if('size' in d){size=+e.target.value;page=1;sync();return render()}
+  if(!d.f)return;f[d.f]=e.target.value;page=1;sync();render()});
+document.addEventListener('focusin',e=>{if(e.target.dataset?.fc)e.target.select()});
+document.addEventListener('input',e=>{const id=e.target.id;
+  if(id==='scope-search'){scopeq=e.target.value;scopeIx=0;return paintScope()}
+  if(id==='app-find'){appq=e.target.value;document.getElementById('app-panel').innerHTML=appPanel();return}
+  if(id==='acct-search'){acctq=e.target.value;document.getElementById('acct-list').innerHTML=acctRows();return paintScan(true)}
+  if(id==='log-search'){logq=e.target.value;document.getElementById('log-box').innerHTML=logBox(findTask(route.id));return}
+  if(id==='resource-search'){const pos=e.target.selectionStart;query=e.target.value;page=1;sync();render();const el=document.getElementById(id);el?.focus();el?.setSelectionRange(pos,pos)}});
+// Global search is its own lookup, independent of the list you are on: an exact ARN, resource ID, task or scan ID opens it; anything else lists matches across everything.
+document.addEventListener('toggle',e=>{if(!e.target.isConnected)return;if(e.target.matches('.add-accounts'))addingAccounts=e.target.open;if(e.target.matches('.distributions'))e.target.open?more.add('distributions'):more.delete('distributions')},true);
+for(const [id,close] of [['shade',closeDetails],['ask',closeAsk],['scandlg',()=>toggleScan(false)],['scopedlg',()=>toggleScope(false)]])document.getElementById(id).addEventListener('cancel',e=>{e.preventDefault();close()});
+document.addEventListener('keydown',e=>{const modal=document.querySelector('dialog[open]');if(e.key==='Tab'&&modal){const nodes=[...modal.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select,summary,[tabindex="0"]')].filter(el=>el.getClientRects().length),first=nodes[0],last=nodes.at(-1);if(first&&(e.shiftKey&&document.activeElement===first||!e.shiftKey&&document.activeElement===last)){e.preventDefault();(e.shiftKey?last:first).focus();return}}
+  if(!modal&&e.target.matches?.('tr[data-row]')&&['Enter',' '].includes(e.key)){e.preventDefault();return openDetails(e.target.dataset.row,e.target)}
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();if(document.querySelector('dialog[open]'))return;return toggleScope(true)}
+  if(document.getElementById('scopedlg').open&&e.target.id==='scope-search'&&['ArrowDown','ArrowUp','Enter'].includes(e.key)){const R=[...document.querySelectorAll('#scope-list [data-srow]')];if(!R.length)return;e.preventDefault();
+    if(e.key==='Enter'){toggleScope(false);return go(R[Math.min(scopeIx,R.length-1)].getAttribute('href'))}scopeIx=(scopeIx+(e.key==='ArrowDown'?1:-1)+R.length)%R.length;return paintScope()}
+  if(e.key==='Enter'&&['global-search','float-search'].includes(e.target.id)){const q=e.target.value.trim();if(!q)return;if(e.target.id==='float-search')document.getElementById('searchdlg').close();const hit=ALL.filter(r=>r.arn===q||r.id===q),n=+q.replace(/^#/,'');e.target.value='';
+    if(hit.length===1){scope=null;return go(href({name:'resource',id:hit[0].rid},{back:href({name:'overall'},{q,status:'all',s:'all'})}))}const ap=APPS.find(a=>a.name===q.toLowerCase()||a.eim===q);if(ap)return go(appHref(ap.eim));const ac=ACCOUNTS.find(a=>a.name===q.toLowerCase()||a.id===q);if(ac)return go(acctHref(ac));if(n&&findTask(n))return go(`#/tasks/${n}`);if(SCAN_LIST.some(x=>x.id===n))return go(`#/scans/${n}`);return go(href({name:'overall'},{q,status:'all',s:'all'}))}
+  if(e.key==='Escape'&&document.querySelector('dialog[open]')){e.preventDefault();if(document.getElementById('ask').open)closeAsk();else if(document.getElementById('shade').open)closeDetails();else if(document.getElementById('searchdlg').open)toggleSearch(false);else{toggleScan(false);toggleScope(false)}}
+  if(e.key==='Enter'&&e.target.matches?.('[data-set-f]'))e.target.click()});
+matchMedia('(max-width:800px)').addEventListener('change',e=>{hidden=e.matches;document.body.classList.toggle('nav-hidden',hidden)});
+addEventListener('hashchange',()=>{toggleSearch(false);document.getElementById('searchdlg').open&&document.getElementById('searchdlg').close();closeDetails();closeAsk();toggleScan(false);toggleScope(false);if(matchMedia('(max-width:800px)').matches)hidden=true;parse();render();scrollTo(0,0)});
+// A running scan keeps moving: every few seconds one queued or running task advances, and the open scan page follows.
+setInterval(()=>{let moved=false;for(const sc of SCAN_LIST){const T=tasksOf(sc),run=T.find(t=>t.status==='运行中'),q=T.find(t=>t.status==='排队中');
+    if(run){run.status='成功';run.secs=20+run.id%30;run.stats=run.kind==='sweep_account'?null:{new:0,updated:run.id%5,unchanged:4,restored:0,missing:0,deleted:0};moved=true}
+    if(q&&T.filter(t=>t.status==='运行中').length<4){q.status='运行中';q.attempt=q.attempt||1;q.begin=sc.start+900+q.id%60;moved=true}}
+  const a=document.activeElement;if(moved&&['scan','scans'].includes(route.name)&&!document.querySelector('dialog[open]')&&!(a?.closest('input,select,textarea,button,a,summary,[tabindex]'))){const y=scrollY;render();scrollTo(0,y)}},4000);
+parse();render();
+</script>
+</body>
+</html>

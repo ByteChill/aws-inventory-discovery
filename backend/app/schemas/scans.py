@@ -118,6 +118,7 @@ class TaskLogs(ApiModel):
 
 
 class ScanScopeOut(ApiModel):
+    scan_shard_id: int
     account_id: str
     region: str
     resource_type: str
@@ -125,6 +126,19 @@ class ScanScopeOut(ApiModel):
     guard_detected_at: datetime | None
     candidate_count: int
     active_count: int
+
+
+InventoryStatus = Literal["active", "missing", "deleted", "purged"]
+
+
+class ScopeCandidate(ApiModel):
+    """A resource the guard spared. `purged` means the row is gone from the inventory."""
+
+    id: int | None
+    resource_id: str
+    resource_name: str | None
+    arn: str
+    inventory_status: InventoryStatus
 
 
 class ScanCreated(ApiModel):

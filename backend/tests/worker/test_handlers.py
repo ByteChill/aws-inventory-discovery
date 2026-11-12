@@ -211,9 +211,14 @@ def test_a_complete_scan_marks_the_unseen_resource_missing_and_counts_it(
     scanner: Scanner,
     worker: Worker,
     account_id: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ghost = ghost_queue(aws, account_id, engine, scanner)
     task = add_task(session, account_id, "shard", QUEUE, "cloudcontrol")
+    # The scan queues a confirm_missing task, which this running worker would pick up at once
+    # and use to delete the ghost; skip it so what is checked is what the scan itself left.
+    # The whole chain is in tests/worker/test_end_to_end.py.
+    monkeypatch.setitem(worker.handlers, "confirm_missing", lambda _task, _ctx: None)
 
     done = run_until_settled(worker, session, task)
 
@@ -222,6 +227,12 @@ def test_a_complete_scan_marks_the_unseen_resource_missing_and_counts_it(
     assert (done.stats or {})["new"] == 2 and (done.stats or {})["missing"] == 1
     request = session.get_one(ScanRequest, task.scan_request_id)
     assert (request.counts or {})["resources"]["missing"] == 1
+    confirmation = session.exec(
+        select(ScanTask).where(
+            ScanTask.scan_request_id == task.scan_request_id, ScanTask.kind == "confirm_missing"
+        )
+    ).one()
+    assert (confirmation.account_id, confirmation.resource_type) == (account_id, QUEUE)
 
 
 def test_a_graceful_stop_requeues_the_task_and_keeps_the_pages_already_written(

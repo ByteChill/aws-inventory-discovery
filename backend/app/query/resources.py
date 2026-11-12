@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import ColumnElement, Select, and_, case, func, literal, or_, select, union_all
@@ -173,8 +174,10 @@ def detail_rows(
 # --------------------------------------------------------------------------- list
 
 
-def list_resources(session: Session, registry: TypeRegistry, params: Paging) -> Page[ResourceItem]:
-    condition = where(params, registry)
+def list_resources(
+    session: Session, registry: TypeRegistry, params: Paging, *, task_retention: timedelta
+) -> Page[ResourceItem]:
+    condition = where(params, registry, task_retention=task_retention)
     spec = single_spec(params, registry)
     attr_keys = [column.key for column in spec.columns] if spec else []
     paths = column_paths(spec) if spec else {}
@@ -194,15 +197,17 @@ def list_resources(session: Session, registry: TypeRegistry, params: Paging) -> 
         items=items,
         page=params.page,
         page_size=params.page_size,
-        total=count(session, params, registry),
+        total=count(session, params, registry, task_retention=task_retention),
     )
 
 
-def count(session: Session, f: ResourceFilter, registry: TypeRegistry) -> int:
+def count(
+    session: Session, f: ResourceFilter, registry: TypeRegistry, *, task_retention: timedelta
+) -> int:
     statement = (
         select(func.count())
         .select_from(RESOURCE.join(ACCOUNT, R.account_id == A.account_id))
-        .where(where(f, registry))
+        .where(where(f, registry, task_retention=task_retention))
     )
     return session.execute(statement).scalar_one()
 

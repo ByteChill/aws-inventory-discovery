@@ -89,6 +89,29 @@ def _row(
     }
 
 
+def cloudcontrol_rows(
+    registry: TypeRegistry, listing: dict[str, Any], *, account_id: str, region: str
+) -> list[dict[str, Any]]:
+    """The resources of a Cloud Control list fixture as rows of the given account and region
+    (mapped like the worker maps them)."""
+    spec = registry.get(listing["TypeName"])
+    rows = []
+    for description in listing["ResourceDescriptions"]:
+        properties = json.loads(description["Properties"])
+        item = to_config_item(spec, properties, account_id=account_id, region=region)
+        rows.append(
+            _row(
+                item,
+                spec_registry=registry,
+                source="cloudcontrol",
+                observed_at=OBSERVED,
+                first_seen_at=FIRST_SEEN_DEV,
+                live_raw=properties,
+            )
+        )
+    return rows
+
+
 def resource_rows(registry: TypeRegistry) -> list[dict[str, Any]]:
     rows = []
     # Config items: the main account, us-east-1 (they are already in Config format).
@@ -105,23 +128,11 @@ def resource_rows(registry: TypeRegistry) -> list[dict[str, Any]]:
                 capture_time=CAPTURED,
             )
         )
-    # Cloud Control lists: the dev account, eu-west-1 (mapped like the worker maps them).
+    # Cloud Control lists: the dev account, eu-west-1.
     for path in sorted(AWS_FIXTURES.glob("*/cloudcontrol_list.json")):
-        listing = load_json(path)
-        spec = registry.get(listing["TypeName"])
-        for description in listing["ResourceDescriptions"]:
-            properties = json.loads(description["Properties"])
-            item = to_config_item(spec, properties, account_id=DEV_ACCOUNT, region=DEV_REGION)
-            rows.append(
-                _row(
-                    item,
-                    spec_registry=registry,
-                    source="cloudcontrol",
-                    observed_at=OBSERVED,
-                    first_seen_at=FIRST_SEEN_DEV,
-                    live_raw=properties,
-                )
-            )
+        rows.extend(
+            cloudcontrol_rows(registry, load_json(path), account_id=DEV_ACCOUNT, region=DEV_REGION)
+        )
     # The shared AMI: owned by one account, visible in another with the same ARN.
     image = load_json(AWS_FIXTURES / "aws.ec2.image" / "describe_images_shared.json")["Images"][0]
     spec = registry.get("AWS::EC2::Image")

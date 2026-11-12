@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AWS 资源清单：三个布局方向</title>
+<style>
+@font-face { font-family: "Hanken"; src: url("/frontend/node_modules/@fontsource-variable/hanken-grotesk/files/hanken-grotesk-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; }
+@font-face { font-family: "JBMono"; src: url("/frontend/node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2") format("woff2"); font-weight: 100 800; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { font: 14px/1.5 "Hanken", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; background: #111; color: #222; overflow: hidden; }
+.mono { font-family: "JBMono", ui-monospace, Menlo, monospace; font-size: 12px; }
+svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+
+/* ---------- switcher (not part of any design) ---------- */
+.switch { height: 44px; display: flex; align-items: center; gap: 4px; padding: 0 12px; background: #111; color: #aaa; font-size: 13px; }
+.switch button { height: 30px; padding: 0 14px; border-radius: 6px; color: #bbb; }
+.switch button[aria-selected="true"] { background: #fff; color: #111; font-weight: 600; }
+.switch span { margin-left: auto; color: #777; }
+/* Every direction is drawn at 1440 × 900 and scaled to fit the window. */
+.stage { width: 1440px; height: 900px; position: relative; transform-origin: 0 0; }
+.frame { position: absolute; inset: 0; display: none; overflow: hidden; }
+.frame.on { display: flex; }
+
+/* =====================================================
+   A  工作台 · 群青
+   ===================================================== */
+.A { --ac: #2548c9; --ac-soft: #e9eefc; --ink: #171a22; --mut: #646b7a; --line: #e3e6ec; --bg: #f5f6f8; --card: #fff;
+     background: var(--bg); color: var(--ink); }
+.A .side { width: 216px; flex: none; background: var(--card); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 16px 12px; }
+.A .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 15px; padding: 4px 8px 18px; }
+.A .brand i { width: 22px; height: 22px; border-radius: 6px; background: var(--ac); display: block; position: relative; }
+.A .brand i::after { content: ""; position: absolute; inset: 6px; border-radius: 2px; background: #fff; }
+.A .nav a { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 7px; color: var(--mut); text-decoration: none; }
+.A .nav a b { margin-left: auto; font-weight: 500; font-size: 12px; }
+.A .nav a.on { background: var(--ac-soft); color: var(--ac); font-weight: 600; }
+.A .side .foot { margin-top: auto; padding: 12px 10px 2px; border-top: 1px solid var(--line); color: var(--mut); font-size: 12px; line-height: 1.7; }
+.A .side .foot strong { color: var(--ink); font-weight: 600; display: block; font-size: 13px; }
+.A .main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 20px 28px 0; gap: 16px; }
+.A .head { display: flex; align-items: center; gap: 16px; }
+.A h1 { font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
+.A .find { margin-left: auto; width: 380px; height: 36px; border: 1px solid #c9ced8; border-radius: 8px; background: var(--card); display: flex; align-items: center; gap: 8px; padding: 0 12px; color: var(--mut); }
+.A .find kbd { margin-left: auto; font: 11px "JBMono", monospace; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+.A .btn { height: 36px; padding: 0 14px; border: 1px solid #c9ced8; border-radius: 8px; background: var(--card); display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+.A .btn.pri { background: var(--ac); border-color: var(--ac); color: #fff; }
+.A .sum { display: grid; grid-template-columns: auto auto 1fr; gap: 0; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+.A .sum > div { padding: 14px 22px; border-right: 1px solid var(--line); }
+.A .sum > div:last-child { border-right: 0; }
+.A .sum .n { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.15; }
+.A .sum .l { color: var(--mut); font-size: 12px; }
+.A .split { display: flex; height: 8px; gap: 2px; margin: 6px 0 8px; }
+.A .split span { border-radius: 2px; background: var(--ac); }
+.A .split span:nth-child(2) { opacity: .55; } .A .split span:nth-child(3) { opacity: .25; }
+.A .legend { display: flex; gap: 22px; font-size: 12px; color: var(--mut); }
+.A .legend b { color: var(--ink); font-weight: 600; margin-left: 4px; }
+.A .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.A .pill { height: 30px; padding: 0 10px; border: 1px dashed #b9c0cc; border-radius: 999px; display: inline-flex; align-items: center; gap: 4px; color: var(--mut); background: transparent; }
+.A .pill.on { border: 1px solid var(--ac); background: var(--ac-soft); color: var(--ac); font-weight: 600; }
+.A .filters .count { margin-left: auto; color: var(--mut); }
+.A .tbl { flex: 1; min-height: 0; background: var(--card); border: 1px solid var(--line); border-bottom: 0; border-radius: 12px 12px 0 0; overflow: hidden; }
+.A table { width: 100%; border-collapse: collapse; text-align: left; }
+.A th { font-weight: 500; color: var(--mut); font-size: 12px; padding: 9px 16px; border-bottom: 1px solid var(--line); background: #fafbfc; white-space: nowrap; }
+.A td { padding: 10px 16px; border-bottom: 1px solid #eef0f3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
+.A td.name { font-weight: 600; }
+.A tr.sel td { background: var(--ac-soft); }
+.A .tag { font-size: 12px; padding: 1px 7px; border-radius: 4px; background: #fdf1d7; color: #7a5200; font-weight: 500; margin-left: 8px; }
+.A .env { display: inline-flex; align-items: center; gap: 6px; }
+.A .env::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ac); }
+.A .env.pre::before { opacity: .55; } .A .env.dev::before { opacity: .25; }
+
+/* =====================================================
+   B  检索 · 石绿
+   ===================================================== */
+.B { --ac: #008f79; --ac2: #17b79d; --ink: #10201d; --mut: #5d6b68; --line: #dfe6e4; --bg: #fbfcfb;
+     background: var(--bg); color: var(--ink); flex-direction: column; }
+.B .top { height: 56px; flex: none; display: flex; align-items: center; padding: 0 32px; gap: 28px; }
+.B .brand { font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 9px; }
+.B .brand i { width: 10px; height: 22px; border-radius: 3px; background: var(--ac); display: block; }
+.B .top nav { margin-left: auto; display: flex; gap: 26px; color: var(--mut); }
+.B .top nav a.on { color: var(--ink); font-weight: 600; }
+.B .col { width: 1080px; max-width: calc(100% - 64px); margin: 0 auto; display: flex; flex-direction: column; gap: 22px; padding-top: 34px; }
+.B .ask { font-size: 34px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.2; }
+.B .ask em { font-style: normal; color: var(--ac); }
+.B .box { height: 64px; border: 2px solid var(--ink); border-radius: 14px; background: #fff; display: flex; align-items: center; gap: 12px; padding: 0 20px; font-size: 18px; color: #8a9693; }
+.B .box svg { width: 22px; height: 22px; color: var(--ink); }
+.B .box .go { margin-left: auto; height: 40px; padding: 0 18px; border-radius: 9px; background: var(--ac); color: #fff; font-size: 15px; font-weight: 600; display: inline-flex; align-items: center; }
+.B .hints { display: flex; gap: 10px; flex-wrap: wrap; margin-top: -8px; color: var(--mut); align-items: center; }
+.B .chip { height: 30px; padding: 0 12px; border-radius: 999px; background: #e2f5f1; color: var(--ac); font-weight: 500; display: inline-flex; align-items: center; }
+.B .two { display: grid; grid-template-columns: 1fr 300px; gap: 28px; align-items: start; }
+.B h2 { font-size: 14px; font-weight: 600; margin-bottom: 10px; display: flex; align-items: baseline; gap: 10px; }
+.B h2 span { font-weight: 400; color: var(--mut); }
+.B .map { display: flex; flex-direction: column; gap: 4px; }
+.B .map .r { display: flex; gap: 4px; }
+.B .tile { border-radius: 8px; padding: 10px 12px; color: #fff; background: var(--ac); min-width: 0; display: flex; flex-direction: column; justify-content: space-between; }
+.B .tile span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.B .tile b { font-size: 20px; font-weight: 650; letter-spacing: -0.01em; }
+.B .r.big .tile { height: 82px; }
+.B .r.mid .tile { height: 70px; background: var(--ac2); }
+.B .r.mid .tile:last-child { background: #86dccb; color: var(--ink); }
+.B .list { display: flex; flex-direction: column; }
+.B .list a { display: flex; align-items: baseline; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; }
+.B .list a b { font-size: 20px; font-weight: 650; min-width: 44px; }
+.B .list a small { margin-left: auto; color: var(--mut); font-size: 13px; }
+.B .list a.warn b { color: #b4530a; }
+.B .envs { display: flex; height: 10px; gap: 3px; margin: 4px 0 2px; }
+.B .envs span { border-radius: 3px; background: var(--ac); }
+.B .envs span:nth-child(2) { background: var(--ac2); } .B .envs span:nth-child(3) { background: #86dccb; }
+
+/* =====================================================
+   C  卷宗 · 朱砂
+   ===================================================== */
+.C { --ac: #cf2f24; --ink: #1d1a17; --mut: #6f675d; --line: #e4dccd; --paper: #fbf7ee; --paper2: #f3ecdd;
+     background: var(--paper); color: var(--ink); }
+.C .rail { width: 68px; flex: none; background: var(--ink); color: #a59c8f; display: flex; flex-direction: column; align-items: center; padding: 14px 0; gap: 6px; }
+.C .seal { width: 38px; height: 38px; border-radius: 8px; background: var(--ac); color: #fff; display: grid; place-items: center; font: 600 20px "Songti SC", "STSong", "Noto Serif SC", serif; margin-bottom: 14px; }
+.C .rail a { width: 52px; padding: 8px 0 6px; border-radius: 8px; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 11px; color: inherit; text-decoration: none; }
+.C .rail a svg { width: 19px; height: 19px; }
+.C .rail a.on { background: #34302b; color: #fff; }
+.C .rail .sp { flex: 1; }
+.C .listcol { width: 456px; flex: none; border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+.C .lh { padding: 18px 20px 12px; display: flex; flex-direction: column; gap: 12px; }
+.C .lh .t { display: flex; align-items: baseline; gap: 10px; }
+.C h1 { font: 600 24px/1.2 "Songti SC", "STSong", "Noto Serif SC", serif; letter-spacing: .02em; }
+.C .lh .t span { color: var(--mut); }
+.C .q { height: 38px; border: 1px solid #bfb5a2; border-radius: 8px; background: #fffdf8; display: flex; align-items: center; gap: 8px; padding: 0 12px; color: var(--mut); }
+.C .fs { display: flex; gap: 6px; flex-wrap: wrap; }
+.C .f { height: 28px; padding: 0 10px; border-radius: 6px; background: var(--paper2); display: inline-flex; align-items: center; gap: 4px; color: var(--mut); }
+.C .f.on { background: var(--ink); color: #fff; }
+.C .rows { flex: 1; overflow: hidden; border-top: 1px solid var(--line); }
+.C .row { padding: 11px 20px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; }
+.C .row .n { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.C .row .m { color: var(--mut); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.C .row .r { color: var(--mut); font-size: 12px; text-align: right; }
+.C .row.on { background: var(--ink); color: #fff; }
+.C .row.on .m, .C .row.on .r { color: #b9b0a2; }
+.C .flag { color: var(--ac); font-weight: 600; font-size: 12px; }
+.C .detail { flex: 1; min-width: 0; padding: 22px 36px; display: flex; flex-direction: column; gap: 20px; overflow: hidden; }
+.C .dh { display: flex; align-items: flex-start; gap: 16px; }
+.C .dh h2 { font: 600 30px/1.2 "Songti SC", "STSong", "Noto Serif SC", serif; }
+.C .dh p { color: var(--mut); margin-top: 4px; }
+.C .dh .btn { margin-left: auto; height: 36px; padding: 0 16px; border-radius: 8px; background: var(--ac); color: #fff; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.C .arn { background: var(--paper2); border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; }
+.C .arn span:last-child { margin-left: auto; color: var(--mut); font: 13px "Hanken", "PingFang SC", sans-serif; }
+.C .kv { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 2px solid var(--ink); }
+.C .kv div { padding: 12px 16px 12px 0; border-bottom: 1px solid var(--line); }
+.C .kv dt { color: var(--mut); font-size: 12px; }
+.C .kv dd { font-weight: 600; margin-top: 2px; }
+.C .cols { display: grid; grid-template-columns: 1fr 1.25fr; gap: 32px; min-height: 0; }
+.C h3 { font: 600 16px "Songti SC", "STSong", "Noto Serif SC", serif; margin-bottom: 8px; }
+.C .rel a { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; }
+.C .rel a span:first-child { color: var(--mut); width: 76px; flex: none; }
+.C pre { background: var(--ink); color: #e9e2d5; border-radius: 10px; padding: 14px 16px; line-height: 1.65; overflow: hidden; }
+.C pre i { font-style: normal; color: #f08a7f; }
+</style>
+</head>
+<body>
+<div class="switch" role="tablist">
+  <button role="tab" data-k="A" aria-selected="true">A　工作台 · 群青</button>
+  <button role="tab" data-k="B" aria-selected="false">B　检索 · 石绿</button>
+  <button role="tab" data-k="C" aria-selected="false">C　卷宗 · 朱砂</button>
+  <span>按 1 / 2 / 3 切换</span>
+</div>
+<div class="stage">
+  <div class="frame A on" id="A"></div>
+  <div class="frame B" id="B"></div>
+  <div class="frame C" id="C"></div>
+</div>
+
+<script>
+// One set of product facts for all three directions.
+const TOTAL = { resources: "1,362", accounts: "20" }
+const ENV = [["生产", 408, "prod"], ["预发布", 475, "pre"], ["开发", 479, "dev"]]
+const TYPES = [["安全组",120],["子网",120],["VPC",120],["ECS 集群",120],["ECS 任务定义",120],["负载均衡器",120],["目标组",120],["SQS 队列",120],["AMI",62],["EC2 实例",60],["ECS 服务",60],["Lambda 函数",60],["密钥",60],["SNS 主题",60],["Route 53 托管区域",40]]
+const ROWS = [
+  { n: "Server_1", type: "EC2 实例", id: "i-046b5670986761b07", acct: "onboarding-prod", env: "生产", e: "prod", region: "us-east-1", eim: "10809572", t: "3 分钟前" },
+  { n: "RHEL-8.0.0_HVM-20190618-x86_64-1-Hourly2-GP2", type: "AMI", id: "ami-a6159f1e1defd49b2", acct: "reporting-preprod", env: "预发布", e: "pre", region: "us-east-1", eim: "10809685", t: "27 分钟前" },
+  { n: "my-load-balancer", type: "负载均衡器", id: "app/my-load-balancer/50dc6c495c0c9188", acct: "payments-prod", env: "生产", e: "prod", region: "eu-west-1", eim: "10809007", t: "27 分钟前" },
+  { n: "MyQueue", type: "SQS 队列", id: "MyQueue", acct: "payments-dev", env: "开发", e: "dev", region: "us-east-1", eim: "10809007", t: "27 分钟前", flag: "可能已删除" },
+  { n: "default", type: "安全组", id: "sg-903004f8", acct: "ledger-prod", env: "生产", e: "prod", region: "eu-west-2", eim: "10809120", t: "28 分钟前" },
+  { n: "my-function", type: "Lambda 函数", id: "my-function", acct: "risk-preprod", env: "预发布", e: "pre", region: "us-east-1", eim: "10809233", t: "28 分钟前" },
+  { n: "MyCluster", type: "ECS 集群", id: "MyCluster", acct: "markets-prod", env: "生产", e: "prod", region: "eu-west-1", eim: "10809459", t: "28 分钟前" },
+  { n: "subnet-7eca7cc353887c326", type: "子网", id: "subnet-7eca7cc353887c326", acct: "treasury-dev", env: "开发", e: "dev", region: "eu-west-2", eim: "10809346", t: "昨天 16:12", flag: "数据过期" },
+  { n: "MyTopic", type: "SNS 主题", id: "MyTopic", acct: "onboarding-preprod", env: "预发布", e: "pre", region: "us-east-1", eim: "10809572", t: "28 分钟前" },
+  { n: "vpc-f50a43c183e586dfd", type: "VPC", id: "vpc-f50a43c183e586dfd", acct: "onboarding-prod", env: "生产", e: "prod", region: "us-east-1", eim: "10809572", t: "29 分钟前" },
+  { n: "my-targets", type: "目标组", id: "targetgroup/my-targets/73e2d6bc24d8a067", acct: "ledger-dev", env: "开发", e: "dev", region: "us-east-1", eim: "10809120", t: "29 分钟前" },
+  { n: "example.com", type: "Route 53 托管区域", id: "Z1D633PJN98FT9", acct: "markets-prod", env: "生产", e: "prod", region: "global", eim: "10809459", t: "29 分钟前" },
+  { n: "MySecret", type: "密钥", id: "MySecret-a1b2c3", acct: "risk-prod", env: "生产", e: "prod", region: "eu-west-1", eim: "10809233", t: "30 分钟前" },
+]
+const P = {
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  box: '<path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
+  users: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/>',
+  scan: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16"/>',
+  down: '<path d="m6 9 6 6 6-6"/>',
+  dl: '<path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/>',
+  cols: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v16"/>',
+  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
+}
+const I = (k) => `<svg class="i" viewBox="0 0 24 24">${P[k]}</svg>`
+
+/* ---------- A: sidebar workspace; the resource table is home ---------- */
+document.getElementById("A").innerHTML = `
+  <aside class="side">
+    <div class="brand"><i></i>AWS 资源清单</div>
+    <nav class="nav">
+      <a class="on">${I("box")}资源<b>${TOTAL.resources}</b></a>
+      <a>${I("users")}账号<b>${TOTAL.accounts}</b></a>
+      <a>${I("scan")}扫描</a>
+    </nav>
+    <div class="foot"><strong>全量扫描完成</strong>27 分钟前，20 个账号<br>下一次 18:00</div>
+  </aside>
+  <main class="main">
+    <div class="head">
+      <h1>资源</h1>
+      <div class="find">${I("search")}搜索名称、ID，或粘贴 ARN<kbd>/</kbd></div>
+      <button class="btn">${I("dl")}导出</button>
+      <button class="btn">${I("cols")}列</button>
+    </div>
+    <div class="sum">
+      <div><div class="n">${TOTAL.resources}</div><div class="l">个资源</div></div>
+      <div><div class="n">${TOTAL.accounts}</div><div class="l">个账号，2 个无法访问</div></div>
+      <div>
+        <div class="l">按环境</div>
+        <div class="split">${ENV.map((e) => `<span style="flex:${e[1]}"></span>`).join("")}</div>
+        <div class="legend">${ENV.map((e) => `<span>${e[0]}<b>${e[1]}</b></span>`).join("")}</div>
+      </div>
+    </div>
+    <div class="filters">
+      <button class="pill on">环境：生产 ${I("down")}</button>
+      ${["类型", "账号", "EIM", "BA", "区域", "标签", "状态"].map((f) => `<button class="pill">${f} ${I("down")}</button>`).join("")}
+      <span class="count">共 408 个资源</span>
+    </div>
+    <div class="tbl"><table>
+      <thead><tr><th>名称</th><th>类型</th><th>资源 ID</th><th>账号</th><th>EIM</th><th>环境</th><th>区域</th><th>更新</th></tr></thead>
+      <tbody>${ROWS.concat(ROWS.slice(0, 4)).map((r, i) => `<tr class="${i === 2 ? "sel" : ""}">
+        <td class="name">${r.n}${r.flag ? `<span class="tag">${r.flag}</span>` : ""}</td><td>${r.type}</td><td class="mono">${r.id}</td>
+        <td>${r.acct}</td><td class="mono">${r.eim}</td><td><span class="env ${r.e}">${r.env}</span></td><td class="mono">${r.region}</td><td>${r.t}</td></tr>`).join("")}</tbody>
+    </table></div>
+  </main>`
+
+/* ---------- B: search first; distributions are the way in ---------- */
+const tile = (t) => `<div class="tile" style="flex:${t[1]}"><span>${t[0]}</span><b>${t[1]}</b></div>`
+document.getElementById("B").innerHTML = `
+  <header class="top">
+    <div class="brand"><i></i>AWS 资源清单</div>
+    <nav><a class="on">查找</a><a>资源</a><a>账号</a><a>扫描</a></nav>
+  </header>
+  <div class="col">
+    <div class="ask">在 <em>${TOTAL.accounts} 个账号</em>的 <em>${TOTAL.resources} 个资源</em>里查找</div>
+    <div class="box">${I("search")}名称、资源 ID、标签，或直接粘贴 ARN<span class="go">查找</span></div>
+    <div class="hints">最近查过 <span class="chip">Server_1</span><span class="chip">payments-prod 的负载均衡器</span><span class="chip">缺少 CostCenter 标签</span></div>
+    <div class="two">
+      <section>
+        <h2>按资源类型 <span>点一块，直接看这类资源</span></h2>
+        <div class="map">
+          <div class="r big">${TYPES.slice(0, 4).map(tile).join("")}</div>
+          <div class="r big">${TYPES.slice(4, 8).map(tile).join("")}</div>
+          <div class="r mid">${TYPES.slice(8).map(tile).join("")}</div>
+        </div>
+      </section>
+      <section>
+        <h2>按环境</h2>
+        <div class="envs">${ENV.map((e) => `<span style="flex:${e[1]}"></span>`).join("")}</div>
+        <div class="list">
+          ${ENV.map((e) => `<a><b>${e[1]}</b>${e[0]}<small>${Math.round((e[1] / 1362) * 100)}%</small></a>`).join("")}
+        </div>
+        <h2 style="margin-top:22px">需要看一眼</h2>
+        <div class="list">
+          <a class="warn"><b>2</b>个账号无法访问<small>没有读取权限</small></a>
+          <a class="warn"><b>3</b>个资源可能已删除<small>等待确认</small></a>
+        </div>
+      </section>
+    </div>
+  </div>`
+
+/* ---------- C: list and detail side by side; nothing opens a new page ---------- */
+const sel = ROWS[0]
+document.getElementById("C").innerHTML = `
+  <nav class="rail">
+    <div class="seal">册</div>
+    <a class="on">${I("box")}资源</a><a>${I("users")}账号</a><a>${I("scan")}扫描</a>
+    <div class="sp"></div><a>${I("gear")}设置</a>
+  </nav>
+  <section class="listcol">
+    <div class="lh">
+      <div class="t"><h1>资源</h1><span>${TOTAL.resources} 个，${TOTAL.accounts} 个账号</span></div>
+      <div class="q">${I("search")}搜索名称、ID，或粘贴 ARN</div>
+      <div class="fs"><span class="f on">全部类型 ${I("down")}</span><span class="f">环境 ${I("down")}</span><span class="f">账号 ${I("down")}</span><span class="f">区域 ${I("down")}</span><span class="f">标签 ${I("down")}</span></div>
+    </div>
+    <div class="rows">${ROWS.map((r, i) => `<div class="row ${i === 0 ? "on" : ""}">
+      <div class="n">${r.n}</div><div class="r">${r.t}</div>
+      <div class="m">${r.type}　${r.acct}　<span class="mono">${r.region}</span></div><div class="r">${r.flag ? `<span class="flag">${r.flag}</span>` : r.env}</div></div>`).join("")}</div>
+  </section>
+  <section class="detail">
+    <div class="dh">
+      <div><h2>${sel.n}</h2><p>${sel.type}，更新于 ${sel.t}，来自 AWS Config</p></div>
+      <button class="btn">${I("refresh")}刷新</button>
+    </div>
+    <div class="arn mono">arn:aws:ec2:us-east-1:111122220018:instance/${sel.id}<span>${I("copy")}</span></div>
+    <dl class="kv">
+      <div><dt>账号</dt><dd>${sel.acct}</dd></div><div><dt>环境</dt><dd>${sel.env}</dd></div>
+      <div><dt>区域</dt><dd class="mono">${sel.region}</dd></div><div><dt>首次发现</dt><dd>11 小时前</dd></div>
+      <div><dt>EIM</dt><dd><span class="mono">${sel.eim}</span> onboarding</dd></div><div><dt>BA</dt><dd class="mono">BA2018019</dd></div>
+      <div><dt>实例类型</dt><dd class="mono">t2.micro</dd></div><div><dt>标签</dt><dd>Name=Server_1</dd></div>
+    </dl>
+    <div class="cols">
+      <div class="rel">
+        <h3>关联资源</h3>
+        <a><span>所在子网</span><b class="mono">subnet-7eca7cc353887c326</b></a>
+        <a><span>所在 VPC</span><b class="mono">vpc-f50a43c183e586dfd</b></a>
+        <a><span>安全组</span><b>default</b></a>
+        <a><span>镜像</span><b class="mono">ami-d2fb2eed8bfde97ff</b></a>
+      </div>
+      <div>
+        <h3>配置</h3>
+<pre class="mono">{
+  <i>"state"</i>: { "code": 16, "name": "running" },
+  <i>"vpcId"</i>: "vpc-f50a43c183e586dfd",
+  <i>"imageId"</i>: "ami-d2fb2eed8bfde97ff",
+  <i>"keyName"</i>: "my_keypair",
+  <i>"subnetId"</i>: "subnet-7eca7cc353887c326",
+  <i>"placement"</i>: { "tenancy": "default",
+                 "availabilityZone": "us-east-1c" },
+  <i>"instanceType"</i>: "t2.micro",</pre>
+      </div>
+    </div>
+  </section>`
+
+const stage = document.querySelector(".stage")
+function fit() {
+  const k = Math.min(innerWidth / 1440, (innerHeight - 44) / 900)
+  stage.style.transform = `scale(${k})`
+  stage.style.marginLeft = `${Math.max(0, (innerWidth - 1440 * k) / 2)}px`
+}
+addEventListener("resize", fit)
+fit()
+const tabs = [...document.querySelectorAll(".switch button")]
+function show(k) {
+  for (const b of tabs) b.setAttribute("aria-selected", String(b.dataset.k === k))
+  for (const f of document.querySelectorAll(".frame")) f.classList.toggle("on", f.id === k)
+}
+for (const b of tabs) b.addEventListener("click", () => show(b.dataset.k))
+addEventListener("keydown", (e) => { const k = { 1: "A", 2: "B", 3: "C" }[e.key]; if (k) show(k) })
+</script>
+</body>
+</html>

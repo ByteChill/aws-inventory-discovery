@@ -11,6 +11,7 @@ from app.core.db import get_engine
 from app.core.errors import ApiError
 from app.models import ScanShard
 from app.query import scans as scans_query
+from app.query.paging import PagingParams
 from app.schemas.base import Page
 from app.schemas.scans import (
     ConfirmChangeBody,
@@ -20,6 +21,7 @@ from app.schemas.scans import (
     ScanRequestOut,
     ScanScopeOut,
     ScanSummary,
+    ScopeCandidate,
     TaskLogs,
     TaskOut,
 )
@@ -33,21 +35,14 @@ scopes_router = APIRouter(prefix="/scan-scopes", tags=["scans"])
 CallerId = Annotated[str | None, Header()]
 
 
-class Paged(BaseModel):
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
-
-    page: int = Field(default=1, ge=1)
-    page_size: int = Field(default=50, ge=1, le=200)
-
-
-class ScanListParams(Paged):
+class ScanListParams(PagingParams):
     trigger: Literal["schedule", "api"] | None = None
     status: Literal["queued", "running", "succeeded", "partial", "failed", "cancelled"] | None = (
         None
     )
 
 
-class TaskListParams(Paged):
+class TaskListParams(PagingParams):
     status: str | None = None
     error_code: str | None = None
     account_id: str | None = None
@@ -61,8 +56,12 @@ class LogParams(BaseModel):
     next_token: str | None = None
 
 
-class ScopeParams(Paged):
+class ScopeParams(PagingParams):
     guard_state: Literal["normal", "abnormal", "confirmed"] = "abnormal"
+
+
+class CandidateParams(PagingParams):
+    q: str | None = None
 
 
 @router.get("/summary")
@@ -189,6 +188,15 @@ def list_scan_scopes(
     params: Annotated[ScopeParams, Query()], session: SessionDep
 ) -> Page[ScanScopeOut]:
     return scans_query.list_scopes(session, params.guard_state, params.page, params.page_size)
+
+
+@scopes_router.get("/{scan_shard_id}/candidates")
+def list_scope_candidates(
+    scan_shard_id: int, params: Annotated[CandidateParams, Query()], session: SessionDep
+) -> Page[ScopeCandidate]:
+    return scans_query.scope_candidates(
+        session, scan_shard_id, params.q, params.page, params.page_size
+    )
 
 
 @scopes_router.post("/confirm-change")

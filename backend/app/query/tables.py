@@ -2,7 +2,15 @@
 
 from sqlalchemy import Table
 
-from app.models import Account, AccountRegion, Resource, ResourceRelation, ScanShard
+from app.models import (
+    Account,
+    AccountRegion,
+    Resource,
+    ResourceRelation,
+    ScanRequest,
+    ScanShard,
+    ScanTask,
+)
 
 
 def _table(model: type) -> Table:
@@ -16,6 +24,8 @@ ACCOUNT = _table(Account)
 ACCOUNT_REGION = _table(AccountRegion)
 RELATION = _table(ResourceRelation)
 SHARD = _table(ScanShard)
+SCAN_REQUEST = _table(ScanRequest)
+SCAN_TASK = _table(ScanTask)
 
 R = RESOURCE.c
 A = ACCOUNT.c

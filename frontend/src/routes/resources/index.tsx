@@ -1,75 +1,62 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
-import { Download } from "lucide-react"
 import { useMemo } from "react"
 
 import { useColumns, useFacets, useResources } from "@/api/hooks"
-import type { ResourceItem } from "@/client"
+import type { Column as ApiColumn, ResourceItem } from "@/client"
+import { CopyButton } from "@/components/copy-button"
 import {
   type Column,
   DataTable,
   type Option,
-  OptionList,
   type RowFlag,
   type TableState,
   tableSearchSchema,
   useTableUrlState,
 } from "@/components/data-table"
-import { InlineError } from "@/components/inline-state"
-import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { TagFilter } from "@/features/tag-filter"
-import { type MessageKey, useI18n } from "@/i18n"
+import { Badge } from "@/components/ui/badge"
+import { ResourceFilters } from "@/features/resource-filters"
+import { useI18n } from "@/i18n"
 import { basePath } from "@/lib/base-path"
-import { errorText } from "@/lib/errors"
 import {
   resourceParams,
   singleType,
   toSearchParams,
 } from "@/lib/resource-query"
 import { parseScope, scopeParams } from "@/lib/scope"
+import { cn } from "@/lib/utils"
 
 export const Route = createFileRoute("/resources/")({
   validateSearch: tableSearchSchema,
   component: Resources,
 })
 
-const SIDEBAR_GROUPS = [
-  "accountId",
-  "eimId",
-  "baId",
-  "accountType",
-  "awsRegion",
-  "resourceType",
-] as const
-const ALL_STATUSES = ["active", "missing", "deleted"]
-// Shown after the API's columns; the shortest way to see how connected a resource is.
-const RELATIONSHIP_COLUMN = "relationshipCount"
-// The API's common columns that are rarely needed start hidden.
-const DEFAULT_HIDDEN = [
+/** Columns kept in the columns menu but hidden until the user asks for them. */
+const EXTRA_COLUMNS = [
   "arn",
-  "accountId",
-  "eimApp",
   "baId",
+  "tags",
   "status",
   "configurationItemCaptureTime",
   "firstSeenAt",
+  "lastChangedAt",
   "missingSince",
   "deletedAt",
 ]
 
-// With one type chosen the type's own columns matter more than what the filter already says.
-const TYPE_HIDDEN = [
-  ...DEFAULT_HIDDEN,
-  "resourceType",
-  "eimId",
-  "accountType",
-  "tags",
-]
+const COLUMN_WIDTHS: Record<string, number> = {
+  resourceName: 260,
+  accountId: 180,
+  eimId: 160,
+  accountType: 84,
+  awsRegion: 120,
+  resourceType: 180,
+}
+
+const FLAG_TONE: Record<RowFlag, "warn" | "neutral"> = {
+  missing: "warn",
+  deleted: "neutral",
+  stale: "neutral",
+}
 
 function flags(row: ResourceItem): RowFlag[] {
   const out: RowFlag[] = []
@@ -86,43 +73,20 @@ function cellValue(row: ResourceItem, key: string): unknown {
   return row.attrs[key]
 }
 
-function asList(value: unknown): string[] {
-  return Array.isArray(value) ? (value as string[]) : []
-}
-
 function Resources() {
   const { t, locale } = useI18n()
   const search = Route.useSearch()
   const { state, setState } = useTableUrlState(search)
-  const type = singleType(state)
   const scope = parseScope(search.s)
-  const visibleGroups = SIDEBAR_GROUPS.filter(
-    (key) =>
-      !(scope?.kind === "acct" && key === "accountType") &&
-      !(scope?.kind === "app" && key === "eimId") &&
-      !(scope && key === "accountId"),
-  )
-
+  const type = singleType(state)
   const columnsQuery = useColumns(type)
   const apiColumns = columnsQuery.data
   const ready = !!apiColumns && !columnsQuery.isPlaceholderData
 
-  const columns = useMemo<Column[]>(() => {
-    if (!apiColumns) return []
-    return [
-      ...apiColumns.filter((c) => c.scope === "common"),
-      ...apiColumns.filter((c) => c.scope === "type"),
-      {
-        key: RELATIONSHIP_COLUMN,
-        label: t("resources.relationships"),
-        type: "number",
-        mono: false,
-        sortable: false,
-        filterable: false,
-        scope: "common",
-      },
-    ]
-  }, [apiColumns, t])
+  const columns = useMemo(
+    () => buildColumns(apiColumns ?? [], type, scope !== null, t),
+    [apiColumns, type, scope, t],
+  )
 
   const params = resourceParams(state, apiColumns ?? [], scopeParams(scope))
   const list = useResources(
@@ -137,7 +101,15 @@ function Resources() {
     )
     .map((c) => `attr.${c.key}`)
   const facetQuery = useFacets(
-    [...SIDEBAR_GROUPS, "status", ...attrFacets],
+    [
+      "accountId",
+      "eimId",
+      "baId",
+      "accountType",
+      "awsRegion",
+      "resourceType",
+      ...attrFacets,
+    ],
     params,
     ready,
   )
@@ -148,13 +120,6 @@ function Resources() {
     }
     return out
   }, [facetQuery.data])
-
-  const groupLabel = (key: string) => t(`resources.group.${key}` as MessageKey)
-  const filterLabels = Object.fromEntries(
-    [...SIDEBAR_GROUPS, "status", "tagMissing"].map((k) => [k, groupLabel(k)]),
-  )
-  filterLabels.tag = groupLabel("tags")
-  const includeDeleted = asList(state.filters.status).includes("deleted")
 
   // Type columns exist only while exactly one type is chosen; their filters go with it.
   function changeState(next: TableState) {
@@ -170,13 +135,6 @@ function Resources() {
     setState(next)
   }
 
-  function setFilter(key: string, value: string[] | undefined) {
-    const filters = { ...state.filters }
-    if (value?.length) filters[key] = value
-    else delete filters[key]
-    changeState({ ...state, filters, page: 1 })
-  }
-
   const exportHref = (format: "csv" | "jsonl") =>
     `${basePath}/api/v1/resources/export?${toSearchParams({
       ...params,
@@ -185,154 +143,218 @@ function Resources() {
       ...(state.sort ? { sort: state.sort } : {}),
     })}`
 
+  const total = list.data?.total ?? 0
+  const columnWidths = useMemo(
+    () => ({
+      ...COLUMN_WIDTHS,
+      ...Object.fromEntries(
+        (apiColumns ?? [])
+          .filter((c) => c.scope === "type")
+          .map((c) => [c.key, 150]),
+      ),
+    }),
+    [apiColumns],
+  )
+
   return (
     <div className="flex h-full flex-col gap-4 px-8 py-6 max-[1180px]:px-5 max-[800px]:px-4">
       <h1>{t("resources.title")}</h1>
-      <div className="flex min-h-0 flex-1 gap-6">
-        <aside
-          aria-label={t("resources.filters")}
-          className="flex w-64 shrink-0 flex-col gap-5 overflow-auto pr-1"
-        >
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={includeDeleted}
-              onChange={(e) =>
-                setFilter("status", e.target.checked ? ALL_STATUSES : undefined)
-              }
-              className="accent-[var(--accent)]"
+      <div className="min-h-0 flex-1">
+        <DataTable<ResourceItem>
+          tableId={type ? "resources-type" : "resources"}
+          entity="resources"
+          columns={columns}
+          rows={list.data?.items ?? []}
+          total={total}
+          state={state}
+          onStateChange={changeState}
+          facets={facets}
+          isLoading={columnsQuery.isLoading || list.isLoading || !ready}
+          error={columnsQuery.error ?? list.error}
+          onRetry={() => {
+            columnsQuery.refetch()
+            list.refetch()
+            facetQuery.refetch()
+          }}
+          getRowId={(row) => String(row.id)}
+          getCellValue={cellValue}
+          renderCell={(column, row) => renderCell(column, row, facets, t)}
+          defaultHidden={EXTRA_COLUMNS}
+          columnWidths={columnWidths}
+          stickyFirst
+          filterPopovers={false}
+          toolbar={
+            <ResourceFilters
+              state={state}
+              onStateChange={changeState}
+              facets={facets}
+              columns={apiColumns ?? []}
+              scope={scope}
+              total={total}
+              exportHref={exportHref}
             />
-            {t("resources.includeDeleted")}
-          </label>
-          {facetQuery.error && (
-            <InlineError
-              message={`${t("resources.facetsError")}（${errorText(t, facetQuery.error)}）`}
-              onRetry={() => facetQuery.refetch()}
-            />
-          )}
-          {visibleGroups
-            .filter((k) => facets[k]?.length)
-            .map((key) => (
-              <section key={key} className="flex flex-col gap-1.5">
-                <h3>{groupLabel(key)}</h3>
-                <OptionList
-                  options={facets[key]}
-                  selected={asList(state.filters[key])}
-                  onChange={(next) => setFilter(key, next)}
-                />
-              </section>
-            ))}
-          <section className="flex flex-col gap-1.5">
-            <h3>{groupLabel("tags")}</h3>
-            <TagFilter
-              value={{
-                tag: asList(state.filters.tag),
-                tagMissing: asList(state.filters.tagMissing),
-              }}
-              onChange={(next) => {
-                const filters = { ...state.filters }
-                for (const k of ["tag", "tagMissing"] as const) {
-                  if (next[k].length) filters[k] = next[k]
-                  else delete filters[k]
-                }
-                changeState({ ...state, filters, page: 1 })
-              }}
-            />
-          </section>
-        </aside>
-        <div className="min-w-0 flex-1">
-          <DataTable<ResourceItem>
-            tableId={type ? "resources-type" : "resources"}
-            entity="resources"
-            columns={columns}
-            rows={list.data?.items ?? []}
-            total={list.data?.total ?? 0}
-            state={state}
-            onStateChange={changeState}
-            facets={facets}
-            filterLabels={filterLabels}
-            isLoading={columnsQuery.isLoading || list.isLoading || !ready}
-            error={columnsQuery.error ?? list.error}
-            onRetry={() => {
-              columnsQuery.refetch()
-              list.refetch()
-            }}
-            getRowId={(row) => String(row.id)}
-            getCellValue={cellValue}
-            renderCell={renderCell}
-            getRowFlags={flags}
-            defaultHidden={type ? TYPE_HIDDEN : DEFAULT_HIDDEN}
-            toolbarStart={
-              <input
-                type="search"
-                defaultValue={state.q ?? ""}
-                key={state.q ?? ""}
-                placeholder={t("resources.searchPlaceholder")}
-                aria-label={t("resources.searchPlaceholder")}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter")
-                    changeState({
-                      ...state,
-                      q: e.currentTarget.value.trim() || undefined,
-                      page: 1,
-                    })
-                }}
-                className="h-8 w-64 rounded-md border border-input bg-card px-2.5 placeholder:text-muted-foreground"
-              />
-            }
-            toolbarEnd={
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline">
-                    <Download />
-                    {t("action.export")}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem asChild>
-                    <a href={exportHref("csv")}>{t("action.exportCsv")}</a>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <a href={exportHref("jsonl")}>{t("action.exportJsonl")}</a>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            }
-          />
-        </div>
+          }
+        />
       </div>
     </div>
   )
 }
 
-function renderCell(column: Column, row: ResourceItem) {
+function buildColumns(
+  apiColumns: ApiColumn[],
+  type: string | undefined,
+  scoped: boolean,
+  t: ReturnType<typeof useI18n>["t"],
+): Column[] {
+  const byKey = new Map(apiColumns.map((c) => [c.key, c]))
+  const out: Column[] = []
+
+  const identity = byKey.get("resourceName")
+  if (identity)
+    out.push({
+      ...identity,
+      key: "resourceName",
+      label: t("resources.column.identity"),
+    })
+
+  const account = byKey.get("accountId")
+  if (account)
+    out.push({
+      ...account,
+      key: "accountId",
+      label: t("resources.group.accountId"),
+    })
+
+  const app = byKey.get("eimId")
+  if (app && !scoped)
+    out.push({ ...app, key: "eimId", label: t("resources.column.application") })
+
+  const env = byKey.get("accountType")
+  const region = byKey.get("awsRegion")
+  if (env) out.push({ ...env, label: t("resources.group.accountType") })
+  if (region) out.push({ ...region, label: t("resources.group.awsRegion") })
+
+  const resourceType = byKey.get("resourceType")
+  if (resourceType && !type)
+    out.push({ ...resourceType, label: t("resources.group.resourceType") })
+
+  if (type) out.push(...apiColumns.filter((c) => c.scope === "type"))
+
+  for (const key of EXTRA_COLUMNS) {
+    const column = byKey.get(key)
+    if (column && !out.some((c) => c.key === key)) out.push(column)
+  }
+  return out
+}
+
+function renderCell(
+  column: Column,
+  row: ResourceItem,
+  facets: Record<string, Option[]>,
+  t: ReturnType<typeof useI18n>["t"],
+) {
+  const { account } = row
   switch (column.key) {
     case "resourceName":
+      return <IdentityCell row={row} />
+    case "accountId":
       return (
-        <Link
-          to="/resources/$id"
-          params={{ id: String(row.id) }}
-          className="text-primary hover:underline"
-        >
-          {row.resourceName ?? row.resourceId}
-        </Link>
+        <div className="min-w-0">
+          <Link
+            to="/"
+            search={{ s: `acct:${account.accountId}` }}
+            title={account.accountName}
+            className="block truncate font-medium text-primary hover:underline"
+          >
+            {account.accountName}
+          </Link>
+          <span className="flex min-w-0 items-center gap-0.5 font-mono text-xs text-muted-foreground">
+            <span className="truncate">{account.accountId}</span>
+            <CopyButton value={account.accountId} className="size-5 shrink-0" />
+          </span>
+        </div>
       )
-    case "tags":
+    case "eimId":
       return (
+        <div className="min-w-0">
+          <Link
+            to="/"
+            search={{ s: `app:${account.eimId}` }}
+            title={account.eimApp ?? account.eimId ?? ""}
+            className="block truncate text-primary hover:underline"
+          >
+            {account.eimApp ?? account.eimId ?? ""}
+          </Link>
+          <span className="flex min-w-0 items-center gap-0.5 font-mono text-xs text-muted-foreground">
+            <span className="truncate">{account.eimId}</span>
+            {account.eimId && (
+              <CopyButton value={account.eimId} className="size-5 shrink-0" />
+            )}
+          </span>
+        </div>
+      )
+    case "accountType":
+      return t(`env.${account.accountType}`)
+    case "awsRegion":
+      return row.awsRegion === "global" ? t("region.global") : undefined
+    case "resourceType": {
+      const label =
+        facets.resourceType?.find((o) => o.value === row.resourceType)?.label ??
+        row.resourceType
+      return (
+        <span className="block truncate" title={row.resourceType}>
+          {label}
+        </span>
+      )
+    }
+    case "tags":
+      return row.tags.length ? (
         <ul className="flex flex-col">
           {row.tags.map((tag) => (
-            <li key={tag.key} className="break-all">
+            <li key={tag.key} className="truncate">
               {tag.key}={tag.value}
             </li>
           ))}
         </ul>
+      ) : (
+        <span className="text-muted-foreground">{t("common.none")}</span>
       )
-    case "status":
-      return row.status === "active" ? null : undefined
-    case RELATIONSHIP_COLUMN:
+    default:
       return undefined
   }
-  const value = cellValue(row, column.key)
-  if (Array.isArray(value)) return <>{value.join(", ")}</>
-  return undefined
+}
+
+function IdentityCell({ row }: { row: ResourceItem }) {
+  const { t } = useI18n()
+  return (
+    <div className="min-w-0">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <Link
+          to="/resources/$id"
+          params={{ id: String(row.id) }}
+          title={row.resourceName ?? row.resourceId}
+          className="truncate font-semibold text-primary hover:underline"
+        >
+          {row.resourceName ?? row.resourceId}
+        </Link>
+        {flags(row).map((flag) => (
+          <Badge key={flag} tone={FLAG_TONE[flag]}>
+            {t(`status.${flag}`)}
+          </Badge>
+        ))}
+      </div>
+      <span className="flex min-w-0 items-center gap-0.5">
+        <span
+          title={row.resourceId}
+          className={cn(
+            "truncate font-mono text-xs text-muted-foreground",
+            !row.resourceName && "text-sm text-foreground",
+          )}
+        >
+          {row.resourceId}
+        </span>
+        <CopyButton value={row.resourceId} className="size-5 shrink-0" />
+      </span>
+    </div>
+  )
 }

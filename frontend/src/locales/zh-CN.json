@@ -389,5 +389,14 @@
   "tasks.createdAt": "创建时间",
   "tasks.startedAt": "开始时间",
   "tasks.duration": "耗时",
-  "table.total.candidates": "共 {count} 个待核对资源"
+  "table.total.candidates": "共 {count} 个待核对资源",
+  "resources.filter.searchLabel": "搜索当前范围的资源",
+  "resources.filter.searchPlaceholder": "在当前范围内搜索名称、ID 或 ARN",
+  "resources.filter.more": "更多筛选",
+  "resources.filter.status": "清单状态",
+  "resources.filter.allIncludingDeleted": "全部，含已删除",
+  "resources.filter.exportTip": "导出符合当前筛选的 {count} 个资源",
+  "resources.column.identity": "名称 / 资源 ID",
+  "resources.column.application": "应用",
+  "region.global": "全局"
 }

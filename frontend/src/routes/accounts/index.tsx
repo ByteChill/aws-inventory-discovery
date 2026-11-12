@@ -124,13 +124,12 @@ function Accounts() {
           state={state}
           onStateChange={setState}
           facets={facets}
-          filterLabels={{ removed: t("accounts.removed") }}
           isLoading={query.isLoading}
           error={query.error}
           onRetry={() => query.refetch()}
           getRowId={(row) => row.accountId}
           renderCell={renderCell}
-          toolbarStart={
+          toolbar={
             <>
               <input
                 type="search"

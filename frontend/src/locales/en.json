@@ -389,5 +389,14 @@
   "tasks.createdAt": "Created",
   "tasks.startedAt": "Started",
   "tasks.duration": "Duration",
-  "table.total.candidates": "{count} resource to review | {count} resources to review"
+  "table.total.candidates": "{count} resource to review | {count} resources to review",
+  "resources.filter.searchLabel": "Search the current scope",
+  "resources.filter.searchPlaceholder": "Search name, ID or ARN in this scope",
+  "resources.filter.more": "More filters",
+  "resources.filter.status": "Inventory status",
+  "resources.filter.allIncludingDeleted": "All, including deleted",
+  "resources.filter.exportTip": "Export the {count} matching resource | Export the {count} matching resources",
+  "resources.column.identity": "Name / Resource ID",
+  "resources.column.application": "Application",
+  "region.global": "Global"
 }

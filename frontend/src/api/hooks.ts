@@ -10,8 +10,10 @@ import {
   getRelationships,
   getResource,
   type ListAccountsData,
+  type ListApplicationsData,
   type ListResourcesData,
   listAccounts,
+  listApplications,
   listColumns,
   listResources,
   listResourceTypes,
@@ -31,6 +33,7 @@ import type { Params } from "@/lib/resource-query"
 type ListQuery = NonNullable<ListResourcesData["query"]>
 type FacetQuery = NonNullable<ResourceFacetsData["query"]>
 type AccountQuery = NonNullable<ListAccountsData["query"]>
+type ApplicationQuery = NonNullable<ListApplicationsData["query"]>
 
 /** Columns for the resource list: the common ones, plus the type's when one is chosen. */
 export function useColumns(resourceType: string | undefined) {
@@ -151,6 +154,7 @@ export function useOverview() {
 export function useAccounts(
   params: Record<string, string | string[] | boolean>,
   paging: { page: number; pageSize: number; sort: string | undefined },
+  enabled = true,
 ) {
   return useQuery({
     queryKey: ["accounts", params, paging],
@@ -167,19 +171,21 @@ export function useAccounts(
         })
       ).data,
     placeholderData: keepPreviousData,
+    enabled,
   })
 }
 
-export function useAccount(accountId: string) {
+export function useAccount(accountId: string | undefined) {
   return useQuery({
     queryKey: ["account", accountId],
     queryFn: async () =>
       (
         await getAccount({
-          path: { account_id: accountId },
+          path: { account_id: accountId as string },
           throwOnError: true,
         })
       ).data,
+    enabled: accountId !== undefined,
   })
 }
 
@@ -190,6 +196,75 @@ export function useCoverage(accountId: string) {
       (
         await getCoverage({
           path: { account_id: accountId },
+          throwOnError: true,
+        })
+      ).data,
+  })
+}
+
+/** Applications (one row per EIM), filtered and paged by the API. */
+export function useApplications(
+  query: { q?: string; accountType?: string },
+  paging: { page: number; pageSize: number; sort?: string },
+) {
+  return useQuery({
+    queryKey: ["applications", query, paging],
+    queryFn: async () =>
+      (
+        await listApplications({
+          query: {
+            ...query,
+            page: paging.page,
+            pageSize: paging.pageSize,
+            sort: paging.sort,
+          } as ApplicationQuery,
+          throwOnError: true,
+        })
+      ).data,
+    placeholderData: keepPreviousData,
+  })
+}
+
+/** The applications matching a search, for the scope switcher. */
+export function useApplicationSearch(q: string) {
+  return useQuery({
+    queryKey: ["applications-search", q],
+    queryFn: async () =>
+      (
+        await listApplications({
+          query: { q, pageSize: 20 } as ApplicationQuery,
+          throwOnError: true,
+        })
+      ).data,
+  })
+}
+
+/** The application behind an EIM in the URL scope. */
+export function useApplication(eim: string | undefined) {
+  return useQuery({
+    queryKey: ["application", eim],
+    queryFn: async () => {
+      const data = (
+        await listApplications({
+          query: { q: eim, pageSize: 20 } as ApplicationQuery,
+          throwOnError: true,
+        })
+      ).data
+      return data.items.find((a) => a.eimId === eim) ?? null
+    },
+    enabled: eim !== undefined,
+    staleTime: 5 * 60_000,
+  })
+}
+
+/** Account and application search for the scope switcher. */
+export function useAccountSearch(q: string) {
+  return useQuery({
+    queryKey: ["accounts-search", q],
+    queryFn: async () =>
+      (
+        await listAccounts({
+          query: { q, pageSize: 20 } as AccountQuery,
           throwOnError: true,
         })
       ).data,

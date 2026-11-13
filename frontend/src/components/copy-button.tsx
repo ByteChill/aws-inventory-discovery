@@ -8,9 +8,12 @@ import { cn } from "@/lib/utils"
 export function CopyButton({
   value,
   className,
+  text,
 }: {
   value: string
   className?: string
+  /** Show this label beside the icon instead of an icon-only button. */
+  text?: string
 }) {
   const { t } = useI18n()
   const [copied, setCopied] = useState(false)
@@ -21,12 +24,15 @@ export function CopyButton({
     return () => clearTimeout(id)
   }, [copied])
 
-  const label = copied ? t("action.copied") : t("action.copy")
+  const label = copied ? t("action.copied") : (text ?? t("action.copy"))
   return (
     <Button
-      variant="ghost"
-      size="icon"
-      className={cn("size-6 text-muted-foreground", className)}
+      variant={text ? "outline" : "ghost"}
+      size={text ? "default" : "icon"}
+      className={cn(
+        text ? "gap-1.5" : "size-6 text-muted-foreground",
+        className,
+      )}
       aria-label={label}
       title={label}
       onClick={() => {
@@ -34,6 +40,7 @@ export function CopyButton({
       }}
     >
       {copied ? <Check /> : <Copy />}
+      {text && <span>{label}</span>}
     </Button>
   )
 }

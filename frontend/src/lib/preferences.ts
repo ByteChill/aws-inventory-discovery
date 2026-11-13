@@ -1,11 +1,9 @@
 import { useSyncExternalStore } from "react"
 
 export type Theme = "system" | "light" | "dark"
-export type Palette = "dai-lv" | "dai-lan" | "yan-zhi"
 export type Locale = "zh-CN" | "en"
 
 export const THEMES: Theme[] = ["system", "light", "dark"]
-export const PALETTES: Palette[] = ["dai-lv", "dai-lan", "yan-zhi"]
 export const LOCALES: Locale[] = ["zh-CN", "en"]
 
 export function readStorage(key: string): string | null {
@@ -66,25 +64,13 @@ function applyTheme(theme: Theme) {
 }
 
 const themeStore = createStore<Theme>("theme", THEMES, "system", applyTheme)
-const paletteStore = createStore<Palette>(
-  "palette",
-  PALETTES,
-  "dai-lv",
-  (p) => {
-    document.documentElement.dataset.palette = p
-  },
-)
 const localeStore = createStore<Locale>("locale", LOCALES, "zh-CN", (l) => {
   document.documentElement.lang = l
 })
 
-/** Apply stored preferences; `?palette=<id>` overrides and is remembered. */
+/** Apply the stored theme and language before the first render. */
 export function initPreferences() {
-  const fromUrl = new URLSearchParams(window.location.search).get("palette")
-  if (PALETTES.includes(fromUrl as Palette))
-    paletteStore.set(fromUrl as Palette)
   applyTheme(themeStore.get())
-  document.documentElement.dataset.palette = paletteStore.get()
   document.documentElement.lang = localeStore.get()
   media?.addEventListener("change", () => applyTheme(themeStore.get()))
 }

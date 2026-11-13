@@ -1,10 +1,12 @@
 import { Link } from "@tanstack/react-router"
-import { Fragment } from "react"
+import { ChevronRight } from "lucide-react"
+import { Fragment, type ReactNode } from "react"
 
-import type { ScanDetail, ScanRequestOut } from "@/client"
+import type { ScanDetail, ScanRequestOut, TaskOut } from "@/client"
+import { useNow } from "@/hooks/use-now"
 import { type MessageKey, type TFunction, useI18n } from "@/i18n"
 import { errorText } from "@/lib/errors"
-import { formatCount } from "@/lib/format"
+import { formatCount, formatDuration } from "@/lib/format"
 
 type Scan = ScanRequestOut | ScanDetail
 
@@ -65,85 +67,206 @@ export function refreshReason(t: TFunction, error: unknown): string {
 }
 
 /**
- * The numbers of a scan. Each links to the resources it touched (filtered by
- * the scan's time range and status) or, for failures, to the failed tasks.
+ * The numbers of a scan. They are statistics only: the inventory keeps current
+ * state, so there is no list of what changed in one scan (DESIGN D-07). Only
+ * the failure number links, to this scan's failed tasks.
  */
 export function ScanResult({ scan }: { scan: Scan }) {
   const { t } = useI18n()
   const r = scan.counts.resources
   const failed = scan.counts.tasks.failed ?? 0
-  const range = {
-    gte: scan.startedAt ?? scan.createdAt,
-    ...(scan.finishedAt ? { lte: scan.finishedAt } : {}),
+  const parts: { key: string; label: MessageKey; count: number }[] = []
+  const add = (key: string, label: MessageKey, count: number | undefined) => {
+    if (count) parts.push({ key, label, count })
   }
-  const scope = {
-    ...(scan.scope?.accountIds?.length
-      ? { accountId: scan.scope.accountIds }
-      : {}),
-    ...(scan.scope?.awsRegions?.length
-      ? { awsRegion: scan.scope.awsRegions }
-      : {}),
-    ...(scan.scope?.resourceTypes?.length
-      ? { resourceType: scan.scope.resourceTypes }
-      : {}),
-  }
-  const parts: { key: string; node: React.ReactNode }[] = []
-  const add = (
-    key: string,
-    label: MessageKey,
-    count: number | undefined,
-    f: Record<string, unknown>,
-  ) => {
-    if (!count) return
-    parts.push({
-      key,
-      node: (
-        <Link
-          to="/resources"
-          search={{ f: { ...scope, ...f } } as never}
-          className="hover:text-primary hover:underline"
-        >
-          {t(label, { count })}
-        </Link>
-      ),
-    })
-  }
-  add("new", "scans.result.added", r.new, { firstSeenAt: range })
-  add("updated", "scans.result.updated", r.updated, { lastChangedAt: range })
-  add("missing", "scans.result.missing", r.missing, {
-    status: ["missing"],
-    missingSince: range,
-  })
-  add("deleted", "scans.result.deleted", r.deleted, {
-    status: ["deleted"],
-    deletedAt: range,
-  })
-  if (failed)
-    parts.push({
-      key: "failed",
-      node: (
-        <Link
-          to="/scans/$id"
-          params={{ id: String(scan.id) }}
-          search={{ f: { status: ["failed"] } } as never}
-          className="hover:text-primary hover:underline"
-        >
-          {t("scans.result.failed", { count: failed })}
-        </Link>
-      ),
-    })
-  if (parts.length === 0)
+  add("new", "scans.result.added", r.new)
+  add("updated", "scans.result.updated", r.updated)
+  add("missing", "scans.result.missing", r.missing)
+  add("deleted", "scans.result.deleted", r.deleted)
+
+  if (parts.length === 0 && !failed)
     return (
       <span className="text-muted-foreground">{t("scans.result.none")}</span>
     )
   return (
-    <>
+    <span>
       {parts.map((p, i) => (
         <Fragment key={p.key}>
           {i > 0 && t("common.separator")}
-          {p.node}
+          {t(p.label, { count: p.count })}
         </Fragment>
       ))}
-    </>
+      {failed > 0 && (
+        <Fragment key="failed">
+          {parts.length > 0 && t("common.separator")}
+          <Link
+            to="/scans/$id"
+            params={{ id: String(scan.id) }}
+            search={{ f: { status: ["failed"] } } as never}
+            className="hover:text-primary hover:underline"
+          >
+            {t("scans.result.failed", { count: failed })}
+          </Link>
+        </Fragment>
+      )}
+    </span>
+  )
+}
+
+export function ScanBreadcrumbs({
+  scanId,
+  taskId,
+}: {
+  scanId: number
+  taskId?: number
+}) {
+  const { t } = useI18n()
+  return (
+    <nav
+      aria-label={t("scans.breadcrumb")}
+      className="mb-3.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
+    >
+      <Link to="/scans" className="hover:text-primary">
+        {t("nav.scanManagement")}
+      </Link>
+      <ChevronRight aria-hidden="true" className="size-3" />
+      <Link to="/scans" className="hover:text-primary">
+        {t("scans.title")}
+      </Link>
+      <ChevronRight aria-hidden="true" className="size-3" />
+      {taskId === undefined ? (
+        <span aria-current="page">#{scanId}</span>
+      ) : (
+        <>
+          <Link
+            to="/scans/$id"
+            params={{ id: String(scanId) }}
+            className="hover:text-primary"
+          >
+            #{scanId}
+          </Link>
+          <ChevronRight aria-hidden="true" className="size-3" />
+          <span aria-current="page">
+            {t("tasks.detail.title")} #{taskId}
+          </span>
+        </>
+      )}
+    </nav>
+  )
+}
+
+export function SummaryField({
+  label,
+  children,
+}: {
+  label: string
+  children: ReactNode
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="mb-1 text-xs text-muted-foreground">{label}</dt>
+      <dd className="break-words [overflow-wrap:anywhere]">{children}</dd>
+    </div>
+  )
+}
+
+/** A running duration advances with the same clock as relative timestamps. */
+export function ScanDuration({
+  startedAt,
+  finishedAt,
+  status,
+}: Pick<TaskOut, "startedAt" | "finishedAt" | "status">) {
+  const { t } = useI18n()
+  const now = useNow()
+  if (!startedAt) return <>{t("scans.detail.notStarted" as MessageKey)}</>
+  if (!finishedAt && status !== "running") return <>—</>
+  const end = finishedAt ? new Date(finishedAt).getTime() : now
+  return (
+    <>{formatDuration(Math.max(0, end - new Date(startedAt).getTime()), t)}</>
+  )
+}
+
+const RESULT_FIELDS = [
+  ["new", "scans.metric.added", "scans.result.added"],
+  ["updated", "scans.metric.updated", "scans.result.updated"],
+  ["missing", "status.missing", "scans.result.missing"],
+  ["deleted", "status.deleted", "scans.result.deleted"],
+  ["unchanged", "scans.metric.unchanged", "scans.result.unchanged"],
+  ["restored", "scans.metric.restored", "scans.result.restored"],
+] as const
+
+export function hasResourceCounts(counts: Record<string, unknown>): boolean {
+  return RESULT_FIELDS.some(([key]) => typeof counts[key] === "number")
+}
+
+export function ResourceMetrics({
+  counts,
+  includeUnchanged = false,
+}: {
+  counts: Record<string, unknown>
+  includeUnchanged?: boolean
+}) {
+  const { t } = useI18n()
+  return RESULT_FIELDS.filter(
+    ([key]) => includeUnchanged || (key !== "unchanged" && key !== "restored"),
+  ).map(([key, label]) => {
+    const count = counts[key]
+    if (typeof count !== "number") return null
+    return (
+      <SummaryField key={key} label={t(label as MessageKey)}>
+        {formatCount(t, "resources", count)}
+      </SummaryField>
+    )
+  })
+}
+
+export function TaskResult({ task }: { task: TaskOut }) {
+  const { t } = useI18n()
+  if (task.errorCode || task.errorMessage)
+    return (
+      <span className="text-warn" title={task.errorMessage ?? undefined}>
+        {task.errorCode
+          ? reasonText(t, task.errorCode).title
+          : task.errorMessage}
+      </span>
+    )
+  const counts = task.stats
+  const results = RESULT_FIELDS.filter(
+    ([key]) =>
+      key !== "unchanged" &&
+      typeof counts?.[key] === "number" &&
+      Number(counts[key]) > 0,
+  )
+  if (results.length)
+    return (
+      <span className="flex flex-col gap-0.5">
+        {results.map(([key, , label]) => (
+          <span key={key}>
+            {t(label as MessageKey, { count: Number(counts?.[key]) })}
+          </span>
+        ))}
+      </span>
+    )
+  const hasCounts = RESULT_FIELDS.some(
+    ([key]) => typeof counts?.[key] === "number",
+  )
+  if (hasCounts)
+    return (
+      <span className="text-muted-foreground">{t("scans.result.none")}</span>
+    )
+  return <span className="text-muted-foreground">—</span>
+}
+
+/** The current inventory inside this scan's scope, not what changed in it. */
+export function CurrentScopeResources({ scan }: { scan: Scan }) {
+  const { t } = useI18n()
+  return (
+    <Link
+      to="/resources"
+      search={{ scanRequestId: scan.id }}
+      className="text-primary hover:underline"
+    >
+      {t("scans.viewScopeResources")}
+    </Link>
   )
 }

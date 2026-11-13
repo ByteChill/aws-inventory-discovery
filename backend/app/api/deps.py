@@ -15,7 +15,7 @@ from app.query.applications import ApplicationFilter
 from app.query.columns import Language, pick_language
 from app.query.export import ExportParams
 from app.query.facets import FacetParams
-from app.query.filters import Paging
+from app.query.filters import Paging, ResourceFilter
 from app.types.registry import TypeRegistry
 
 # Writes (scan requests, guard confirmation) go to the primary.
@@ -66,6 +66,7 @@ LanguageDep = Annotated[Language, Depends(get_language)]
 
 # Filters shared by list, facets and export (DESIGN 8.2), each with its own extras.
 ResourceListDep = Annotated[Paging, Query()]
+ResourceFilterDep = Annotated[ResourceFilter, Query()]
 FacetParamsDep = Annotated[FacetParams, Query()]
 ExportParamsDep = Annotated[ExportParams, Query()]
 AccountFilterDep = Annotated[AccountFilter, Query()]

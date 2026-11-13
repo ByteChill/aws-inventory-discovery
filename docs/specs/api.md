@@ -117,6 +117,11 @@ type ScopeCandidate = {
 - 返回：`{ [field: string]: FacetBucket[] }`，每个字段最多 200 个选项，按数量倒序；`label` 按 `Accept-Language`：账号是账号名称，EIM 是 EIM 应用名，类型是类型的显示名，状态和环境是本地化的词，`global` 区域显示为「全局」，布尔是「是 / 否」。
 - 缓存：Redis，key `aws-inventory-discovery:facets:<筛选条件和语言的哈希>`，60 秒。
 
+### `GET /resources/summary`
+- 参数：筛选参数（同 `GET /resources`）。
+- 返回：`{ resources, accounts, applications, resourceTypes, regions }`，分别是当前筛选条件下的资源数、账号数、EIM 应用数、资源类型数和区域数，用 `count(distinct …)` 在 SQL 里计算，不受分类计数最多 200 个选项的限制。`resources` 与列表的 `total` 一致；没有 EIM 的账号不计入 `applications`。
+- 缓存：不缓存。
+
 ### `GET /resources/export`
 - 参数：`format=csv|jsonl`（默认 `csv`）、`columns`（CSV 用，逗号分隔的列键，通用列写 `key`，类型专属列写 `attr.<key>`；默认是全部通用列，指定了单一类型时再加上它的全部专属列；不认识的列返回 422 `validation_error`）、`lang`（`zh-CN` 或 `en`，指定表头用的语言，优先于 `Accept-Language`，方便直接在浏览器地址里下载）、筛选参数、排序。
 - CSV：UTF-8 带 BOM（方便 Excel 打开），换行 `\r\n`，第一行是列名；标签写成 `k=v;k=v`，布尔值写 `true` / `false`，时间是 UTC 的 ISO 8601；以 `=`、`+`、`-`、`@`、制表符、回车开头的单元格前面会补一个 `'`，避免被表格程序当作公式执行。

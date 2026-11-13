@@ -9,7 +9,7 @@ import {
   useColumns,
   useFacets,
   useOverview,
-  useResources,
+  useResourceSummary,
 } from "@/api/hooks"
 import type { AccountSummary } from "@/client"
 import {
@@ -58,13 +58,9 @@ function Overview() {
   const columns = useColumns(singleType(state))
   const params = resourceParams(state, columns.data ?? [], scopeParams(scope))
   const ready = !!columns.data && !columns.isPlaceholderData
-  const current = useResources(
-    params,
-    { page: 1, pageSize: 1, sort: undefined },
-    ready,
-  )
+  const summary = useResourceSummary(params, ready)
   const facets = useFacets(
-    ["resourceType", "accountType", "awsRegion", "accountId", "eimId"],
+    ["resourceType", "accountType", "awsRegion", "accountId"],
     params,
     ready,
   )
@@ -99,17 +95,19 @@ function Overview() {
   const byType = facets.data?.resourceType ?? []
   const byEnv = facets.data?.accountType ?? []
   const byRegion = facets.data?.awsRegion ?? []
-  const resourceTotal = current.data?.total ?? 0
-  const typeTotal = matchingBuckets("resourceType").length
-  const regionTotal = matchingBuckets("awsRegion").length
+  const resourceTotal = summary.data?.resources ?? 0
+  const typeTotal = summary.data?.resourceTypes ?? 0
+  const regionTotal = summary.data?.regions ?? 0
   const services = serviceBars(byType)
   const filtered = !!state.q || Object.keys(state.filters).length > 0
+  // The summary counts in SQL; facet buckets stop at 200 and would under-report a
+  // large organization's applications and accounts.
   const appsCount = filtered
-    ? matchingBuckets("eimId").length
+    ? (summary.data?.applications ?? 0)
     : (appsTotal.data?.total ?? 0)
   const accountsCount =
     filtered || scope !== null
-      ? matchingBuckets("accountId").length
+      ? (summary.data?.accounts ?? 0)
       : (overview.data?.accountTotal ?? 0)
   const unreachable =
     scope === null

@@ -20,7 +20,9 @@ import {
   lookupResource,
   overview,
   type ResourceFacetsData,
+  type ResourceSummaryData,
   resourceFacets,
+  resourceSummary,
 } from "@/client"
 import type { Column } from "@/components/data-table"
 import { useI18n } from "@/i18n"
@@ -32,6 +34,7 @@ import type { Params } from "@/lib/resource-query"
 
 type ListQuery = NonNullable<ListResourcesData["query"]>
 type FacetQuery = NonNullable<ResourceFacetsData["query"]>
+type SummaryQuery = NonNullable<ResourceSummaryData["query"]>
 type AccountQuery = NonNullable<ListAccountsData["query"]>
 type ApplicationQuery = NonNullable<ListApplicationsData["query"]>
 
@@ -89,6 +92,21 @@ export function useFacets(fields: string[], params: Params, enabled = true) {
       (
         await resourceFacets({
           query: { ...params, field: fields } as FacetQuery,
+          throwOnError: true,
+        })
+      ).data,
+    placeholderData: keepPreviousData,
+    enabled,
+  })
+}
+
+export function useResourceSummary(params: Params, enabled = true) {
+  return useQuery({
+    queryKey: ["resource-summary", params],
+    queryFn: async () =>
+      (
+        await resourceSummary({
+          query: params as SummaryQuery,
           throwOnError: true,
         })
       ).data,

@@ -15,6 +15,7 @@ from app.api.deps import (
     LanguageDep,
     ReadSessionDep,
     RegistryDep,
+    ResourceFilterDep,
     ResourceListDep,
     SessionDep,
 )
@@ -25,7 +26,13 @@ from app.query import export as export_query
 from app.query import facets as facets_query
 from app.query import resources as resources_query
 from app.schemas.base import Page
-from app.schemas.resources import FacetBucket, RelationshipEntry, ResourceDetail, ResourceItem
+from app.schemas.resources import (
+    FacetBucket,
+    RelationshipEntry,
+    ResourceDetail,
+    ResourceItem,
+    ResourceSummary,
+)
 from app.schemas.scans import (
     RefreshAccepted,
     RefreshByArn,
@@ -71,6 +78,13 @@ def resource_facets(
     return facets_query.facets(
         session, registry, cache, params, language, task_retention=task_retention()
     )
+
+
+@router.get("/summary")
+def resource_summary(
+    params: ResourceFilterDep, session: ReadSessionDep, registry: RegistryDep
+) -> ResourceSummary:
+    return resources_query.summary(session, params, registry, task_retention=task_retention())
 
 
 @router.get("/export")

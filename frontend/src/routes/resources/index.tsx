@@ -6,6 +6,7 @@ import {
   useApplication,
   useColumns,
   useFacets,
+  useResourceSummary,
   useResources,
   useResourceTypes,
 } from "@/api/hooks"
@@ -141,6 +142,8 @@ function Resources() {
     { page: state.page, pageSize: state.pageSize, sort: state.sort },
     ready,
   )
+  // Facets cap every field at 200 buckets; the stats need the real totals.
+  const summary = useResourceSummary(params, ready)
 
   const attrFacets = (apiColumns ?? [])
     .filter(
@@ -422,6 +425,8 @@ function Resources() {
         <GroupOverview
           group={group}
           total={total}
+          appCount={summary.data?.applications ?? 0}
+          accountCount={summary.data?.accounts ?? 0}
           facets={facets}
           state={state}
           onChange={changeState}
@@ -431,8 +436,8 @@ function Resources() {
       {service && (
         <TypeStrip
           total={total}
-          accountCount={facets.accountId?.length ?? 0}
-          appCount={facets.eimId?.length ?? 0}
+          accountCount={summary.data?.accounts ?? 0}
+          appCount={summary.data?.applications ?? 0}
           showAppCount={scope === null}
           statusLabel={stripColumn?.label}
           statusFilterKey={stripColumn?.key}
@@ -518,12 +523,16 @@ function Resources() {
 function GroupOverview({
   group,
   total,
+  appCount,
+  accountCount,
   facets,
   state,
   onChange,
 }: {
   group: NavGroup
   total: number
+  appCount: number
+  accountCount: number
   facets: Record<string, Option[]>
   state: TableState
   onChange: (next: TableState) => void
@@ -544,8 +553,6 @@ function GroupOverview({
     }))
     .sort((a, b) => b.count - a.count)
   const maxService = Math.max(0, ...byService.map((item) => item.count))
-  const appCount = facets.eimId?.length ?? 0
-  const accountCount = facets.accountId?.length ?? 0
 
   function toggle(key: "accountType" | "awsRegion", value: string) {
     const values = asList(state.filters[key])

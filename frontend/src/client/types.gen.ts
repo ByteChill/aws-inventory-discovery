@@ -990,6 +990,34 @@ export type ResourceItem = {
 };
 
 /**
+ * ResourceSummary
+ *
+ * Distinct counts under a filter, computed in SQL (facets cap their buckets at 200).
+ */
+export type ResourceSummary = {
+    /**
+     * Resources
+     */
+    resources: number;
+    /**
+     * Accounts
+     */
+    accounts: number;
+    /**
+     * Applications
+     */
+    applications: number;
+    /**
+     * Resourcetypes
+     */
+    resourceTypes: number;
+    /**
+     * Regions
+     */
+    regions: number;
+};
+
+/**
  * ResourceTypeInfo
  */
 export type ResourceTypeInfo = {
@@ -1736,6 +1764,116 @@ export type ResourceFacetsResponses = {
 };
 
 export type ResourceFacetsResponse = ResourceFacetsResponses[keyof ResourceFacetsResponses];
+
+export type ResourceSummaryData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Accountid
+         */
+        accountId?: Array<string>;
+        /**
+         * Eimid
+         */
+        eimId?: Array<string>;
+        /**
+         * Baid
+         */
+        baId?: Array<string>;
+        /**
+         * Accounttype
+         */
+        accountType?: Array<string>;
+        /**
+         * Awsregion
+         */
+        awsRegion?: Array<string>;
+        /**
+         * Resourcetype
+         */
+        resourceType?: Array<string>;
+        /**
+         * Status
+         */
+        status?: Array<'active' | 'missing' | 'deleted'>;
+        /**
+         * Scanrequestid
+         */
+        scanRequestId?: number | null;
+        /**
+         * Q
+         */
+        q?: string | null;
+        /**
+         * Tag
+         */
+        tag?: Array<string>;
+        /**
+         * Tagmissing
+         */
+        tagMissing?: Array<string>;
+        /**
+         * Configurationitemcapturetime.Gte
+         */
+        'configurationItemCaptureTime.gte'?: string | null;
+        /**
+         * Configurationitemcapturetime.Lte
+         */
+        'configurationItemCaptureTime.lte'?: string | null;
+        /**
+         * Firstseenat.Gte
+         */
+        'firstSeenAt.gte'?: string | null;
+        /**
+         * Firstseenat.Lte
+         */
+        'firstSeenAt.lte'?: string | null;
+        /**
+         * Lastchangedat.Gte
+         */
+        'lastChangedAt.gte'?: string | null;
+        /**
+         * Lastchangedat.Lte
+         */
+        'lastChangedAt.lte'?: string | null;
+        /**
+         * Missingsince.Gte
+         */
+        'missingSince.gte'?: string | null;
+        /**
+         * Missingsince.Lte
+         */
+        'missingSince.lte'?: string | null;
+        /**
+         * Deletedat.Gte
+         */
+        'deletedAt.gte'?: string | null;
+        /**
+         * Deletedat.Lte
+         */
+        'deletedAt.lte'?: string | null;
+    };
+    url: '/api/v1/resources/summary';
+};
+
+export type ResourceSummaryErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ResourceSummaryError = ResourceSummaryErrors[keyof ResourceSummaryErrors];
+
+export type ResourceSummaryResponses = {
+    /**
+     * Successful Response
+     */
+    200: ResourceSummary;
+};
+
+export type ResourceSummaryResponse = ResourceSummaryResponses[keyof ResourceSummaryResponses];
 
 export type ExportResourcesData = {
     body?: never;

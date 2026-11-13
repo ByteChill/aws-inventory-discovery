@@ -78,6 +78,16 @@ class FacetBucket(ApiModel):
     count: int
 
 
+class ResourceSummary(ApiModel):
+    """Distinct counts under a filter, computed in SQL (facets cap their buckets at 200)."""
+
+    resources: int
+    accounts: int
+    applications: int
+    resource_types: int
+    regions: int
+
+
 class ResourceTypeInfo(ApiModel):
     type_name: str
     label: str

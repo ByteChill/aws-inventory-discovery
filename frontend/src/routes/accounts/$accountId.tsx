@@ -7,7 +7,6 @@ import type { AccountDetail } from "@/client"
 import { InlineError, QueryRegion } from "@/components/inline-state"
 import { Page, PageHeader, Section } from "@/components/layout/page"
 import { Time } from "@/components/time"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CoverageGrid } from "@/features/coverage-grid"
 import { type MessageKey, useI18n } from "@/i18n"
@@ -67,12 +66,20 @@ function Detail({ account: a }: { account: AccountDetail }) {
 
   return (
     <>
-      <div className="flex flex-col gap-2">
-        <PageHeader
-          title={a.accountName}
-          actions={
+      <PageHeader
+        title={a.accountName}
+        description={t("accounts.description", {
+          app: a.eimApp ?? a.eimId ?? t("common.none"),
+          env: t(`env.${a.accountType}`),
+        })}
+        actions={
+          <>
+            <Button asChild variant="outline">
+              <Link to="/resources" search={{ s: `acct:${a.accountId}` }}>
+                {t("accounts.viewResources")}
+              </Link>
+            </Button>
             <Button
-              variant="outline"
               disabled={create.isPending}
               onClick={() =>
                 create.mutate(
@@ -87,46 +94,60 @@ function Detail({ account: a }: { account: AccountDetail }) {
                 )
               }
             >
-              {t("action.scan")}
+              {t("accounts.scanThis")}
             </Button>
-          }
-        />
-        {create.error && <InlineError message={errorText(t, create.error)} />}
-        {(a.accessStatus !== "ok" || purgeDays !== null) && (
-          <div className="flex flex-wrap gap-2">
-            {a.accessStatus !== "ok" && (
-              <Badge tone="danger">
-                {t(`access.${a.accessStatus}` as MessageKey)}
-              </Badge>
-            )}
-            {purgeDays !== null && (
-              <Badge>{t("account.purgeIn", { days: purgeDays })}</Badge>
-            )}
-          </div>
-        )}
-      </div>
+          </>
+        }
+      />
+      {create.error && <InlineError message={errorText(t, create.error)} />}
 
-      <Section title={t("accounts.basic")}>
-        <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1.5">
+      <section className="rounded-lg border bg-card p-4">
+        <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
           <Field label={t("accounts.column.id")}>
             <span className="font-mono">{a.accountId}</span>
           </Field>
           <Field label={t("detail.env")}>{t(`env.${a.accountType}`)}</Field>
-          {a.eimId && (
-            <Field label={t("detail.eim")}>
-              <span className="font-mono">{a.eimId}</span>
-              {a.eimApp && ` ${a.eimApp}`}
-            </Field>
-          )}
-          {a.baId && (
-            <Field label={t("detail.ba")}>
-              <span className="font-mono">{a.baId}</span>
-            </Field>
-          )}
+          <Field label="EIM">
+            {a.eimId ? (
+              <>
+                <Link
+                  to="/"
+                  search={{ s: `app:${a.eimId}` }}
+                  className="text-primary hover:underline"
+                >
+                  {a.eimApp ?? a.eimId}
+                </Link>
+                {a.eimApp && (
+                  <span className="mt-0.5 block font-mono text-xs text-muted-foreground">
+                    {a.eimId}
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="text-muted-foreground">{t("common.none")}</span>
+            )}
+          </Field>
+          <Field label="BA">
+            <span className="font-mono">{a.baId ?? t("common.none")}</span>
+          </Field>
+          <Field label={t("accounts.column.status")}>
+            {a.accessStatus === "ok" ? (
+              t("access.ok")
+            ) : (
+              <span className="text-warn">
+                {t(`access.${a.accessStatus}` as MessageKey)}
+              </span>
+            )}
+            {purgeDays !== null && (
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                {t("account.purgeIn", { days: purgeDays })}
+              </span>
+            )}
+          </Field>
           <Field label={t("accounts.column.resources")}>
             <Link
               to="/resources"
-              search={{ f: { accountId: [a.accountId] } }}
+              search={{ s: `acct:${a.accountId}` }}
               className="text-primary hover:underline"
             >
               {formatCount(t, "resources", a.resourceCount)}
@@ -138,7 +159,7 @@ function Detail({ account: a }: { account: AccountDetail }) {
             </Field>
           )}
         </dl>
-      </Section>
+      </section>
 
       <Section title={t("accounts.regions")}>
         <QueryRegion
@@ -191,9 +212,9 @@ function RegionList({ regions }: { regions: string[] }) {
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <>
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="min-w-0">{children}</dd>
-    </>
+    <div>
+      <dt className="text-xs font-semibold text-muted-foreground">{label}</dt>
+      <dd className="mt-1 min-w-0">{children}</dd>
+    </div>
   )
 }

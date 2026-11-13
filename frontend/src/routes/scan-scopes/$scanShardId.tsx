@@ -1,9 +1,23 @@
-import { createFileRoute, Link } from "@tanstack/react-router"
+import {
+  createFileRoute,
+  Link,
+  useLocation,
+  useNavigate,
+} from "@tanstack/react-router"
 import { ChevronLeft, ChevronRight } from "lucide-react"
-import { type ReactNode, useMemo } from "react"
+import { type ReactNode, useMemo, useState } from "react"
 
-import { useAccount, useResourceTypes } from "@/api/hooks"
-import { useAbnormalScopes, useScopeCandidates } from "@/api/scans"
+import {
+  useAccount,
+  useColumns,
+  useResource,
+  useResourceTypes,
+} from "@/api/hooks"
+import {
+  useAbnormalScopes,
+  useConfirmChange,
+  useScopeCandidates,
+} from "@/api/scans"
 import type { ScanScopeOut } from "@/client"
 import { CopyButton } from "@/components/copy-button"
 import { tableSearchSchema, useTableUrlState } from "@/components/data-table"
@@ -11,9 +25,12 @@ import { EmptyState, InlineError, QueryRegion } from "@/components/inline-state"
 import { Page, PageHeader } from "@/components/layout/page"
 import { Time } from "@/components/time"
 import { Button } from "@/components/ui/button"
+import { Dialog } from "@/components/ui/dialog"
+import { ResourcePreview } from "@/features/resource-preview"
 import { type MessageKey, useI18n } from "@/i18n"
 import { errorText } from "@/lib/errors"
 import { formatNumber } from "@/lib/format"
+import { cn } from "@/lib/utils"
 
 export const Route = createFileRoute("/scan-scopes/$scanShardId")({
   validateSearch: tableSearchSchema,
@@ -62,6 +79,9 @@ function ScopePage() {
 function Detail({ scope }: { scope: ScanScopeOut }) {
   const { t, locale } = useI18n()
   const { state, setState } = useTableUrlState(Route.useSearch())
+  const navigate = useNavigate()
+  const [confirming, setConfirming] = useState(false)
+  const confirm = useConfirmChange()
   const account = useAccount(scope.accountId)
   const types = useResourceTypes()
   const typeLabel = useMemo(
@@ -77,6 +97,12 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
   const total = candidates.data?.total ?? 0
   const pages = Math.max(1, Math.ceil(total / state.pageSize))
   const accountName = account.data?.accountName ?? scope.accountId
+  // Candidates carry only identity; the preview reads the full row by id.
+  const [previewId, setPreviewId] = useState<number>()
+  const preview = useResource(previewId)
+  const columns = useColumns(scope.resourceType)
+  const location = useLocation()
+  const back = `${location.pathname}${location.searchStr}`
 
   return (
     <>
@@ -205,7 +231,7 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
       ) : (
         <>
           <div className="overflow-auto rounded-lg border bg-card">
-            <table className="w-full border-collapse text-left">
+            <table className="w-full min-w-[760px] border-collapse text-left">
               <thead>
                 <tr className="border-b bg-subtle text-xs text-muted-foreground">
                   <th scope="col" className="px-3.5 py-2 font-medium">
@@ -226,13 +252,39 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
                 {candidates.data?.items.map((candidate) => (
                   <tr
                     key={`${candidate.resourceId}|${candidate.arn}`}
-                    className="border-b last:border-b-0 hover:bg-subtle"
+                    tabIndex={candidate.id !== null ? 0 : undefined}
+                    aria-label={
+                      candidate.id !== null
+                        ? t("preview.row", {
+                            name:
+                              candidate.resourceName ?? candidate.resourceId,
+                          })
+                        : undefined
+                    }
+                    onClick={(e) => {
+                      if (candidate.id === null) return
+                      if ((e.target as HTMLElement).closest("a,button")) return
+                      setPreviewId(candidate.id)
+                    }}
+                    onKeyDown={(e) => {
+                      if (candidate.id === null) return
+                      if (e.target !== e.currentTarget) return
+                      if (e.key !== "Enter" && e.key !== " ") return
+                      e.preventDefault()
+                      setPreviewId(candidate.id)
+                    }}
+                    className={cn(
+                      "border-b last:border-b-0 hover:bg-subtle",
+                      candidate.id !== null &&
+                        "cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary",
+                    )}
                   >
                     <td className="px-3.5 py-2.5">
                       {candidate.id !== null ? (
                         <Link
                           to="/resources/$id"
                           params={{ id: String(candidate.id) }}
+                          search={{ back }}
                           className="font-semibold text-primary hover:underline"
                         >
                           {candidate.resourceName ?? candidate.resourceId}
@@ -242,7 +294,10 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
                           {t("scanScope.purged")}
                         </span>
                       )}
-                      <span className="mt-0.5 block font-mono text-xs text-muted-foreground">
+                      <span
+                        className="mt-0.5 block max-w-[28rem] truncate font-mono text-xs text-muted-foreground"
+                        title={candidate.resourceId}
+                      >
                         {candidate.resourceId}
                       </span>
                     </td>
@@ -307,6 +362,66 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
           </div>
         </>
       )}
+
+      <section className="flex flex-col gap-3 border-t pt-4">
+        <h2>{t("scanScope.decisionTitle")}</h2>
+        <p className="max-w-[780px] text-muted-foreground">
+          {t("scanScope.decisionBody", { count: scope.candidateCount })}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link to="/scans">{t("scanScope.hold")}</Link>
+          </Button>
+          <Button onClick={() => setConfirming(true)}>
+            {t("action.confirmChange")}
+          </Button>
+        </div>
+      </section>
+
+      <Dialog
+        open={confirming}
+        onClose={() => setConfirming(false)}
+        title={t("action.confirmChange")}
+      >
+        <p>{t("scanScope.confirmNote")}</p>
+        {confirm.error && <InlineError message={errorText(t, confirm.error)} />}
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setConfirming(false)}>
+            {t("action.cancel")}
+          </Button>
+          <Button
+            disabled={confirm.isPending}
+            onClick={() =>
+              confirm.mutate(
+                {
+                  accountId: scope.accountId,
+                  awsRegion: scope.region,
+                  resourceType: scope.resourceType,
+                },
+                {
+                  onSuccess: (scan) => {
+                    setConfirming(false)
+                    navigate({
+                      to: "/scans/$id",
+                      params: { id: String(scan.scanRequestId) },
+                    })
+                  },
+                },
+              )
+            }
+          >
+            {t("action.confirm")}
+          </Button>
+        </div>
+      </Dialog>
+
+      <ResourcePreview
+        resource={previewId !== undefined ? (preview.data ?? null) : null}
+        typeColumns={(columns.data ?? []).filter((c) => c.scope === "type")}
+        typeLabel={typeLabel}
+        back={back}
+        onClose={() => setPreviewId(undefined)}
+      />
     </>
   )
 }

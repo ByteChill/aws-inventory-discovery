@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { useMemo } from "react"
 
+import { useResourceTypes } from "@/api/hooks"
 import {
   useCancelScan,
   useRetryFailed,
@@ -21,6 +22,7 @@ import { Time } from "@/components/time"
 import { Button } from "@/components/ui/button"
 import { useTaskColumns } from "@/features/columns"
 import {
+  CurrentScopeResources,
   reasonText,
   ScanResult,
   scanStatusText,
@@ -29,6 +31,8 @@ import {
 } from "@/features/scan-parts"
 import { type MessageKey, useI18n } from "@/i18n"
 import { errorText } from "@/lib/errors"
+import { selectActive, selectClass } from "@/lib/filter-select"
+import { cn } from "@/lib/utils"
 
 export const Route = createFileRoute("/scans/$id")({
   validateSearch: tableSearchSchema,
@@ -143,7 +147,10 @@ function Detail({ scan }: { scan: ScanDetail }) {
         <p>{scopeText(t, scan)}</p>
       </Section>
 
-      <Section title={t("scans.detail.counts")}>
+      <Section
+        title={t("scans.detail.counts")}
+        actions={<CurrentScopeResources scan={scan} />}
+      >
         <p>
           <ScanResult scan={scan} />
         </p>
@@ -193,6 +200,7 @@ function Detail({ scan }: { scan: ScanDetail }) {
 function TaskList({ scanId }: { scanId: number }) {
   const { t } = useI18n()
   const columns = useTaskColumns()
+  const types = useResourceTypes()
   const { state, setState } = useTableUrlState(Route.useSearch())
   const params: Record<string, string> = {}
   for (const key of ["status", "kind", "errorCode"]) {
@@ -242,6 +250,17 @@ function TaskList({ scanId }: { scanId: number }) {
         return (
           <>{t("tasks.attempt", { n: row.attempt, max: row.maxAttempts })}</>
         )
+      case "resourceType": {
+        if (!row.resourceType) return null
+        const label =
+          types.data?.find((x) => x.typeName === row.resourceType)?.label ??
+          row.resourceType
+        return (
+          <span className="block truncate" title={row.resourceType}>
+            {label}
+          </span>
+        )
+      }
       case "errorCode":
         return <>{row.errorCode ? reasonText(t, row.errorCode).title : ""}</>
       case "finishedAt":
@@ -249,6 +268,15 @@ function TaskList({ scanId }: { scanId: number }) {
     }
     return undefined
   }
+
+  function setFilter(key: string, value: string | undefined) {
+    const filters = { ...state.filters }
+    if (value) filters[key] = [value]
+    else delete filters[key]
+    setState({ ...state, filters, page: 1 })
+  }
+
+  const hasFilters = Object.keys(params).length > 0
 
   return (
     <div className="h-[34rem]">
@@ -266,6 +294,51 @@ function TaskList({ scanId }: { scanId: number }) {
         onRetry={() => query.refetch()}
         getRowId={(row) => String(row.id)}
         renderCell={renderCell}
+        columnWidths={{
+          id: 90,
+          kind: 110,
+          accountId: 160,
+          region: 130,
+          resourceType: 170,
+          status: 90,
+          attempt: 80,
+          errorCode: 150,
+          finishedAt: 130,
+        }}
+        filterPopovers={false}
+        toolbar={
+          <search
+            className="flex flex-wrap items-center gap-2"
+            aria-label={t("scans.detail.tasks")}
+          >
+            {(["kind", "status", "errorCode"] as const).map((key) => (
+              <select
+                key={key}
+                value={params[key] ?? ""}
+                onChange={(e) => setFilter(key, e.target.value || undefined)}
+                aria-label={columns.find((c) => c.key === key)?.label}
+                className={cn(selectClass, params[key] && selectActive)}
+              >
+                <option value="">
+                  {columns.find((c) => c.key === key)?.label}
+                </option>
+                {facets[key].map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            ))}
+            {hasFilters && (
+              <Button
+                variant="link"
+                onClick={() => setState({ ...state, filters: {}, page: 1 })}
+              >
+                {t("action.clearFilters")}
+              </Button>
+            )}
+          </search>
+        }
       />
     </div>
   )

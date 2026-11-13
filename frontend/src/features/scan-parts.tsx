@@ -65,74 +65,24 @@ export function refreshReason(t: TFunction, error: unknown): string {
 }
 
 /**
- * The numbers of a scan. Each links to the resources it touched (filtered by
- * the scan's time range and status) or, for failures, to the failed tasks.
+ * The numbers of a scan. They are statistics only: the inventory keeps current
+ * state, so there is no list of what changed in one scan (DESIGN D-07). Only
+ * the failure number links, to this scan's failed tasks.
  */
 export function ScanResult({ scan }: { scan: Scan }) {
   const { t } = useI18n()
   const r = scan.counts.resources
   const failed = scan.counts.tasks.failed ?? 0
-  const range = {
-    gte: scan.startedAt ?? scan.createdAt,
-    ...(scan.finishedAt ? { lte: scan.finishedAt } : {}),
+  const parts: { key: string; label: MessageKey; count: number }[] = []
+  const add = (key: string, label: MessageKey, count: number | undefined) => {
+    if (count) parts.push({ key, label, count })
   }
-  const scope = {
-    ...(scan.scope?.accountIds?.length
-      ? { accountId: scan.scope.accountIds }
-      : {}),
-    ...(scan.scope?.awsRegions?.length
-      ? { awsRegion: scan.scope.awsRegions }
-      : {}),
-    ...(scan.scope?.resourceTypes?.length
-      ? { resourceType: scan.scope.resourceTypes }
-      : {}),
-  }
-  const parts: { key: string; node: React.ReactNode }[] = []
-  const add = (
-    key: string,
-    label: MessageKey,
-    count: number | undefined,
-    f: Record<string, unknown>,
-  ) => {
-    if (!count) return
-    parts.push({
-      key,
-      node: (
-        <Link
-          to="/resources"
-          search={{ f: { ...scope, ...f } } as never}
-          className="hover:text-primary hover:underline"
-        >
-          {t(label, { count })}
-        </Link>
-      ),
-    })
-  }
-  add("new", "scans.result.added", r.new, { firstSeenAt: range })
-  add("updated", "scans.result.updated", r.updated, { lastChangedAt: range })
-  add("missing", "scans.result.missing", r.missing, {
-    status: ["missing"],
-    missingSince: range,
-  })
-  add("deleted", "scans.result.deleted", r.deleted, {
-    status: ["deleted"],
-    deletedAt: range,
-  })
-  if (failed)
-    parts.push({
-      key: "failed",
-      node: (
-        <Link
-          to="/scans/$id"
-          params={{ id: String(scan.id) }}
-          search={{ f: { status: ["failed"] } } as never}
-          className="hover:text-primary hover:underline"
-        >
-          {t("scans.result.failed", { count: failed })}
-        </Link>
-      ),
-    })
-  if (parts.length === 0)
+  add("new", "scans.result.added", r.new)
+  add("updated", "scans.result.updated", r.updated)
+  add("missing", "scans.result.missing", r.missing)
+  add("deleted", "scans.result.deleted", r.deleted)
+
+  if (parts.length === 0 && !failed)
     return (
       <span className="text-muted-foreground">{t("scans.result.none")}</span>
     )
@@ -141,9 +91,36 @@ export function ScanResult({ scan }: { scan: Scan }) {
       {parts.map((p, i) => (
         <Fragment key={p.key}>
           {i > 0 && t("common.separator")}
-          {p.node}
+          {t(p.label, { count: p.count })}
         </Fragment>
       ))}
+      {failed > 0 && (
+        <Fragment key="failed">
+          {parts.length > 0 && t("common.separator")}
+          <Link
+            to="/scans/$id"
+            params={{ id: String(scan.id) }}
+            search={{ f: { status: ["failed"] } } as never}
+            className="hover:text-primary hover:underline"
+          >
+            {t("scans.result.failed", { count: failed })}
+          </Link>
+        </Fragment>
+      )}
     </>
+  )
+}
+
+/** The current inventory inside this scan's scope, not what changed in it. */
+export function CurrentScopeResources({ scan }: { scan: Scan }) {
+  const { t } = useI18n()
+  return (
+    <Link
+      to="/resources"
+      search={{ scanRequestId: scan.id }}
+      className="text-primary hover:underline"
+    >
+      {t("scans.viewScopeResources")}
+    </Link>
   )
 }

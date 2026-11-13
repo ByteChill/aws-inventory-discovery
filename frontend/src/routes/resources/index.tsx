@@ -361,6 +361,7 @@ function Resources() {
         resource={preview}
         typeColumns={typeColumns}
         typeLabel={previewTypeLabel}
+        back={back}
         onClose={() => setPreview(null)}
       />
     </div>

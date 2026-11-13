@@ -3,7 +3,7 @@ import { type ReactNode, useMemo, useState } from "react"
 import { useResourceTypes } from "@/api/hooks"
 import {
   useAbnormalScopes,
-  useConfirmChange,
+  useAllAccounts,
   useCreateScan,
   useMissingResources,
   useRefreshResource,
@@ -22,10 +22,10 @@ import { InlineError } from "@/components/inline-state"
 import { Page, PageHeader, Section } from "@/components/layout/page"
 import { Time } from "@/components/time"
 import { Button } from "@/components/ui/button"
-import { Dialog } from "@/components/ui/dialog"
 import { useScanColumns } from "@/features/columns"
 import { ScanDialog } from "@/features/scan-dialog"
 import {
+  CurrentScopeResources,
   reasonText,
   refreshReason,
   ScanResult,
@@ -35,7 +35,9 @@ import {
 } from "@/features/scan-parts"
 import { type MessageKey, useI18n } from "@/i18n"
 import { errorText } from "@/lib/errors"
+import { selectActive, selectClass } from "@/lib/filter-select"
 import { formatDate, formatDuration, formatNumber } from "@/lib/format"
+import { cn } from "@/lib/utils"
 
 export const Route = createFileRoute("/scans/")({
   validateSearch: tableSearchSchema,
@@ -104,12 +106,24 @@ function Scans() {
         )
       case "trigger":
         return <>{triggerText(t, row)}</>
-      case "scope":
-        return <>{scopeText(t, row)}</>
+      case "scope": {
+        // A single-resource scope carries the whole resource id; keep it on one line.
+        const text = scopeText(t, row)
+        return (
+          <span className="block truncate" title={text}>
+            {text}
+          </span>
+        )
+      }
       case "status":
         return <>{scanStatusText(t, row.status)}</>
       case "result":
-        return <ScanResult scan={row} />
+        return (
+          <div className="flex flex-col gap-0.5">
+            <ScanResult scan={row} />
+            <CurrentScopeResources scan={row} />
+          </div>
+        )
     }
     return undefined
   }
@@ -239,6 +253,7 @@ function Scans() {
     <Page>
       <PageHeader
         title={t("scans.title")}
+        description={t("scans.subtitle")}
         actions={
           <Button onClick={() => setFormOpen(true)}>{t("action.scan")}</Button>
         }
@@ -265,7 +280,71 @@ function Scans() {
             error={scans.error}
             onRetry={() => scans.refetch()}
             getRowId={(row) => String(row.id)}
+            columnWidths={{
+              createdAt: 170,
+              trigger: 110,
+              scope: 280,
+              status: 100,
+              result: 280,
+            }}
+            filterPopovers={false}
             renderCell={renderCell}
+            toolbar={
+              <search
+                className="flex flex-wrap items-center gap-2"
+                aria-label={t("scans.historyFilters")}
+              >
+                <select
+                  value={first(state.filters.trigger) ?? ""}
+                  onChange={(e) => {
+                    const filters = { ...state.filters }
+                    if (e.target.value) filters.trigger = [e.target.value]
+                    else delete filters.trigger
+                    setState({ ...state, filters, page: 1 })
+                  }}
+                  aria-label={t("scans.column.trigger")}
+                  className={cn(
+                    selectClass,
+                    first(state.filters.trigger) && selectActive,
+                  )}
+                >
+                  <option value="">{t("scans.column.trigger")}</option>
+                  <option value="schedule">
+                    {t("scans.trigger.scheduled")}
+                  </option>
+                  <option value="api">{t("scans.trigger.manual")}</option>
+                </select>
+                <select
+                  value={first(state.filters.status) ?? ""}
+                  onChange={(e) => {
+                    const filters = { ...state.filters }
+                    if (e.target.value) filters.status = [e.target.value]
+                    else delete filters.status
+                    setState({ ...state, filters, page: 1 })
+                  }}
+                  aria-label={t("scans.column.status")}
+                  className={cn(
+                    selectClass,
+                    first(state.filters.status) && selectActive,
+                  )}
+                >
+                  <option value="">{t("scans.column.status")}</option>
+                  {STATUSES.map((v) => (
+                    <option key={v} value={v}>
+                      {scanStatusText(t, v)}
+                    </option>
+                  ))}
+                </select>
+                {(state.filters.trigger || state.filters.status) && (
+                  <Button
+                    variant="link"
+                    onClick={() => setState({ ...state, filters: {}, page: 1 })}
+                  >
+                    {t("action.clearFilters")}
+                  </Button>
+                )}
+              </search>
+            }
           />
         </div>
       </Section>
@@ -370,19 +449,29 @@ function MissingRow({
 }
 
 function AnomalyBlock() {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const query = useAbnormalScopes()
   const types = useResourceTypes()
+  const accounts = useAllAccounts(true)
   const labels = useMemo(
     () => new Map(types.data?.map((x) => [x.typeName, x.label])),
     [types.data],
   )
-  const [confirming, setConfirming] = useState<ScanScopeOut | null>(null)
-  const confirm = useConfirmChange()
+  const names = useMemo(
+    () => new Map(accounts.data?.map((a) => [a.accountId, a.accountName])),
+    [accounts.data],
+  )
   const rescan = useRescan()
 
   return (
-    <Section title={t("scans.anomalies")}>
+    <Section
+      title={t("scans.anomalies")}
+      actions={
+        <span className="text-muted-foreground">
+          {t("scans.anomaliesHint")}
+        </span>
+      }
+    >
       {query.error && (
         <InlineError
           message={errorText(t, query.error)}
@@ -390,70 +479,114 @@ function AnomalyBlock() {
         />
       )}
       {rescan.error && <InlineError message={errorText(t, rescan.error)} />}
-      <ul className="flex flex-col">
-        {query.data?.items.map((s) => (
-          <li
-            key={`${s.accountId}|${s.region}|${s.resourceType}`}
-            className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b py-1.5"
-          >
-            <span className="font-mono">{s.accountId}</span>
-            <span className="font-mono text-muted-foreground">{s.region}</span>
-            <span>{labels.get(s.resourceType) ?? s.resourceType}</span>
-            <span className="text-muted-foreground">
-              {t("scans.anomalyRow", {
-                active: s.activeCount,
-                candidates: s.candidateCount,
-              })}
-            </span>
-            <div className="ml-auto flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={rescan.isPending}
-                onClick={() => rescan.mutate(s)}
-              >
-                {t("action.rescan")}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setConfirming(s)}
-              >
-                {t("action.confirmChange")}
-              </Button>
-            </div>
-          </li>
-        ))}
-      </ul>
-      <Dialog
-        open={confirming !== null}
-        onClose={() => setConfirming(null)}
-        title={t("action.confirmChange")}
-      >
-        <p>{t("scans.anomalyConfirm")}</p>
-        {confirm.error && <InlineError message={errorText(t, confirm.error)} />}
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={() => setConfirming(null)}>
-            {t("action.cancel")}
-          </Button>
-          <Button
-            disabled={confirm.isPending}
-            onClick={() =>
-              confirming &&
-              confirm.mutate(
-                {
-                  accountId: confirming.accountId,
-                  awsRegion: confirming.region,
-                  resourceType: confirming.resourceType,
-                },
-                { onSuccess: () => setConfirming(null) },
+      <div className="relative overflow-auto rounded-lg border bg-card">
+        <table className="w-full min-w-[820px] border-collapse text-left whitespace-nowrap">
+          <thead>
+            <tr className="border-b bg-subtle text-xs text-muted-foreground">
+              <th scope="col" className="px-3.5 py-2 font-medium">
+                {t("scanScope.account")}
+              </th>
+              <th scope="col" className="px-3.5 py-2 font-medium">
+                {t("scans.anomalyColumn.region")}
+              </th>
+              <th scope="col" className="px-3.5 py-2 font-medium">
+                {t("scanScope.regionType")}
+              </th>
+              <th scope="col" className="px-3.5 py-2 font-medium">
+                {t("scanScope.detectedAt")}
+              </th>
+              <th scope="col" className="px-3.5 py-2 text-right font-medium">
+                {t("scanScope.candidates")}
+              </th>
+              <th scope="col" className="px-3.5 py-2 text-right font-medium">
+                {t("scanScope.active")}
+              </th>
+              <th scope="col" className="px-3.5 py-2">
+                <span className="sr-only">{t("scans.reviewResources")}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {query.data?.items.map((s) => {
+              const name = names.get(s.accountId)
+              return (
+                <tr
+                  key={s.scanShardId}
+                  className="border-b last:border-b-0 hover:bg-subtle"
+                >
+                  <td className="px-3.5 py-2.5">
+                    <Link
+                      to="/accounts/$accountId"
+                      params={{ accountId: s.accountId }}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {name ?? s.accountId}
+                    </Link>
+                    {name && (
+                      <span className="mt-0.5 block font-mono text-xs text-muted-foreground">
+                        {s.accountId}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3.5 py-2.5 font-mono text-muted-foreground">
+                    {s.region}
+                  </td>
+                  <td className="px-3.5 py-2.5">
+                    {labels.get(s.resourceType) ?? s.resourceType}
+                  </td>
+                  <td className="px-3.5 py-2.5 text-muted-foreground">
+                    <Time value={s.guardDetectedAt} />
+                  </td>
+                  <td className="px-3.5 py-2.5 text-right tabular-nums">
+                    <Link
+                      to="/scan-scopes/$scanShardId"
+                      params={{ scanShardId: String(s.scanShardId) }}
+                      className="text-primary hover:underline"
+                    >
+                      {formatNumber(s.candidateCount, locale)}
+                    </Link>
+                  </td>
+                  <td className="px-3.5 py-2.5 text-right tabular-nums">
+                    <Link
+                      to="/resources"
+                      search={{
+                        s: `acct:${s.accountId}`,
+                        f: {
+                          resourceType: [s.resourceType],
+                          awsRegion: [s.region],
+                        },
+                      }}
+                      className="text-primary hover:underline"
+                    >
+                      {formatNumber(s.activeCount, locale)}
+                    </Link>
+                  </td>
+                  <td className="px-3.5 py-2.5 text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={rescan.isPending}
+                        onClick={() => rescan.mutate(s)}
+                      >
+                        {t("action.rescan")}
+                      </Button>
+                      <Button asChild variant="outline" size="sm">
+                        <Link
+                          to="/scan-scopes/$scanShardId"
+                          params={{ scanShardId: String(s.scanShardId) }}
+                        >
+                          {t("scans.reviewResources")}
+                        </Link>
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
               )
-            }
-          >
-            {t("action.confirm")}
-          </Button>
-        </div>
-      </Dialog>
+            })}
+          </tbody>
+        </table>
+      </div>
     </Section>
   )
 }

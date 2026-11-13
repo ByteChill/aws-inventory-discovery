@@ -18,12 +18,15 @@ export function ResourcePreview({
   resource,
   typeColumns,
   typeLabel,
+  back,
   onClose,
 }: {
   resource: ResourceItem | null
   /** The API's type columns, used as labels for the configuration rows. */
   typeColumns: Column[]
   typeLabel: string
+  /** The page the preview was opened on, for the detail's back link. */
+  back?: string
   onClose: () => void
 }) {
   const { t } = useI18n()
@@ -149,7 +152,11 @@ export function ResourcePreview({
 
           <div className="flex flex-wrap items-center gap-3 border-t px-6 py-4">
             <Button asChild>
-              <Link to="/resources/$id" params={{ id: String(resource.id) }}>
+              <Link
+                to="/resources/$id"
+                params={{ id: String(resource.id) }}
+                search={{ back }}
+              >
                 {t("preview.viewDetail")}
               </Link>
             </Button>

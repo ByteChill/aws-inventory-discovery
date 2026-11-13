@@ -1,10 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
-import {
-  type ComponentType,
-  type ReactNode,
-  useDeferredValue,
-  useState,
-} from "react"
+import { type ComponentType, type ReactNode, useState } from "react"
 
 import {
   useAccount,
@@ -26,7 +21,6 @@ import {
 import { Breadcrumb } from "@/components/layout/crumbs"
 import { Page, PageHeader, Panel } from "@/components/layout/page"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { NAV_GROUPS } from "@/features/inventory-nav"
 import { OverviewResources } from "@/features/overview-resources"
 import { ScanDialog } from "@/features/scan-dialog"
@@ -92,14 +86,6 @@ function Overview() {
     !!appEim,
   )
   const appsTotal = useApplications({}, { page: 1, pageSize: 1 })
-
-  const [appQuery, setAppQuery] = useState("")
-  const appSearch = useDeferredValue(appQuery.trim())
-  const appMatches = (facets.data?.eimId ?? []).filter((item) =>
-    `${item.label} ${item.value}`
-      .toLowerCase()
-      .includes(appSearch.toLowerCase()),
-  )
 
   function matchingBuckets(key: string) {
     const values = state.filters[key]
@@ -390,11 +376,14 @@ function Overview() {
             "grid items-start gap-4 min-[801px]:grid-cols-2",
             scope?.kind === "acct"
               ? "min-[1301px]:grid-cols-2"
-              : "min-[1301px]:grid-cols-4",
+              : scope?.kind === "app"
+                ? "min-[1301px]:grid-cols-4"
+                : "min-[1301px]:grid-cols-3",
           )}
         >
           <Panel title={t("overview.byService")}>
             <Bars
+              collapse={4}
               items={services.map((service) => ({
                 key: service.key,
                 label: service.label,
@@ -407,28 +396,6 @@ function Overview() {
               }))}
             />
           </Panel>
-
-          {scope === null && (
-            <Panel title={t("overview.byApp")}>
-              <Input
-                value={appQuery}
-                onChange={(e) => setAppQuery(e.target.value)}
-                placeholder={t("overview.appSearch")}
-                aria-label={t("overview.appSearch")}
-                className="mb-2"
-              />
-              <AppBars
-                apps={appMatches.slice(0, 5).map((item) => ({
-                  eimId: item.value,
-                  eimApp: item.label,
-                  resourceCount: item.count,
-                }))}
-                total={appMatches.length}
-                query={appSearch}
-                searchFor={(eim) => scopeSearch("app", eim)}
-              />
-            </Panel>
-          )}
 
           {scope?.kind === "app" && (
             <Panel title={t("overview.byAccount")}>
@@ -454,6 +421,7 @@ function Overview() {
           {scope?.kind !== "acct" && (
             <Panel title={t("overview.byEnv")}>
               <Bars
+                collapse={4}
                 items={byEnv.map((item) => ({
                   key: item.value,
                   label: item.label,
@@ -467,6 +435,7 @@ function Overview() {
 
           <Panel title={t("overview.byRegion")}>
             <Bars
+              collapse={4}
               items={byRegion.map((item) => ({
                 key: item.value,
                 label: item.label,
@@ -634,60 +603,6 @@ function Bar({ value, max }: { value: number; max: number }) {
   )
 }
 
-function AppBars({
-  apps,
-  total,
-  query,
-  searchFor,
-}: {
-  apps: { eimId: string; eimApp: string; resourceCount: number }[]
-  total: number
-  query: string
-  searchFor: (eim: string) => TableSearch
-}) {
-  const { t, locale } = useI18n()
-  const max = Math.max(0, ...apps.map((app) => app.resourceCount))
-  return (
-    <div className="flex flex-col">
-      {apps.length === 0 ? (
-        <Empty />
-      ) : (
-        <ul className="flex flex-col">
-          {apps.map((app) => (
-            <li key={app.eimId}>
-              <Link
-                to="/resources"
-                search={searchFor(app.eimId)}
-                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-1.5 hover:bg-subtle"
-              >
-                <span className="flex min-w-0 items-baseline gap-2">
-                  <span className="truncate text-sm">{app.eimApp}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {app.eimId}
-                  </span>
-                </span>
-                <span className="text-sm tabular-nums">
-                  {formatNumber(app.resourceCount, locale)}
-                </span>
-                <Bar value={app.resourceCount} max={max} />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-      <Link
-        to="/apps"
-        search={query ? { q: query } : {}}
-        className="mt-1 px-2 text-sm text-primary hover:underline"
-      >
-        {query
-          ? t("overview.viewMatchingApps", { count: total })
-          : t("overview.viewAllApps", { count: total })}
-      </Link>
-    </div>
-  )
-}
-
 function AccountBars({
   accounts,
   searchFor,
@@ -696,31 +611,47 @@ function AccountBars({
   searchFor: (id: string) => TableSearch
 }) {
   const { t, locale } = useI18n()
+  const [expanded, setExpanded] = useState(false)
   const max = Math.max(0, ...accounts.map((account) => account.resourceCount))
   if (accounts.length === 0) return <Empty />
+  const hidden = Math.max(0, accounts.length - 4)
+  const shown = hidden > 0 && !expanded ? accounts.slice(0, 4) : accounts
   return (
-    <ul className="flex flex-col">
-      {accounts.map((account) => (
-        <li key={account.accountId}>
-          <Link
-            to="/resources"
-            search={searchFor(account.accountId)}
-            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-1.5 hover:bg-subtle"
-          >
-            <span className="flex min-w-0 items-baseline gap-2">
-              <span className="truncate text-sm">{account.accountName}</span>
-              <span className="text-xs text-muted-foreground">
-                {t(`env.${account.accountType}`)}
+    <div className="flex flex-col">
+      <ul className="flex flex-col">
+        {shown.map((account) => (
+          <li key={account.accountId}>
+            <Link
+              to="/resources"
+              search={searchFor(account.accountId)}
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-1.5 hover:bg-subtle"
+            >
+              <span className="flex min-w-0 items-baseline gap-2">
+                <span className="truncate text-sm">{account.accountName}</span>
+                <span className="text-xs text-muted-foreground">
+                  {t(`env.${account.accountType}`)}
+                </span>
               </span>
-            </span>
-            <span className="text-sm tabular-nums">
-              {formatNumber(account.resourceCount, locale)}
-            </span>
-            <Bar value={account.resourceCount} max={max} />
-          </Link>
-        </li>
-      ))}
-    </ul>
+              <span className="text-sm tabular-nums">
+                {formatNumber(account.resourceCount, locale)}
+              </span>
+              <Bar value={account.resourceCount} max={max} />
+            </Link>
+          </li>
+        ))}
+      </ul>
+      {hidden > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="mt-1 w-fit px-2 text-sm font-medium text-primary hover:underline"
+        >
+          {expanded
+            ? t("overview.showLess")
+            : t("overview.showAll", { count: accounts.length })}
+        </button>
+      )}
+    </div>
   )
 }
 

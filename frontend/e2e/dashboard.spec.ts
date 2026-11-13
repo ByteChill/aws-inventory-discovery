@@ -62,7 +62,26 @@ test("概览：统计数字和按服务分布打开对应的资源列表", async
   const services = page.locator("section").filter({
     has: page.getByRole("heading", { name: t("overview.byService") }),
   })
-  await services
+  // A visible bar opens its list directly.
+  const visibleBar = services.getByRole("link").first()
+  const visibleService = (await visibleBar.innerText()).split("\n")[0].trim()
+  await visibleBar.click()
+  await expect(page).toHaveURL(/\/resources\?/)
+  await expect(
+    page.getByRole("heading", { name: visibleService, level: 1 }),
+  ).toBeVisible()
+
+  // Panels show four rows; the rest sit behind the expand control.
+  await page.goto("./")
+  const byService = page.locator("section").filter({
+    has: page.getByRole("heading", { name: t("overview.byService") }),
+  })
+  await byService
+    .getByRole("button", {
+      name: new RegExp(t("overview.showAll", { count: "\\d+" })),
+    })
+    .click()
+  await byService
     .getByRole("link", { name: new RegExp(`^${SQS.label}\\b`) })
     .click()
   await expect(page).toHaveURL(/\/resources\?/)

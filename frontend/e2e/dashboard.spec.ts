@@ -136,6 +136,34 @@ test("资源：筛选行、类型专属列、更多筛选和导出链接", async
   }
 })
 
+test("筛选：改变筛选后停在原位置，不跳回顶部", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 })
+  await page.goto(
+    `resources?pageSize=50&f=${encodeURIComponent(JSON.stringify({ resourceType: [SQS.type] }))}`,
+  )
+  await expect(
+    page.getByRole("button", { name: /^eu-west-1/ }).first(),
+  ).toBeVisible()
+
+  // A little way down the page: the region pills stay on screen, so opening
+  // the filter does not itself scroll.
+  await page.mouse.wheel(0, 120)
+  await page.waitForTimeout(300)
+  const before = await page.evaluate(() => window.scrollY)
+  expect(before).toBeGreaterThan(0)
+
+  await page
+    .getByRole("button", { name: /^eu-west-1/ })
+    .first()
+    .click()
+  await expect(page).toHaveURL(/awsRegion/)
+  await expect
+    .poll(async () =>
+      Math.abs((await page.evaluate(() => window.scrollY)) - before),
+    )
+    .toBeLessThan(4)
+})
+
 test("资源预览和详情：整行打开预览，详情回到原列表，刷新更新时间", async ({
   page,
 }) => {
@@ -271,7 +299,9 @@ test("扫描：从表单发起单个账号的扫描，详情成功，当前范�
   ).toBeVisible()
 })
 
-test("账号：搜索后整行进入详情，覆盖表和账号范围的资源", async ({ page }) => {
+test("账号：搜索后整行进入资源范围，覆盖表和账号范围的资源", async ({
+  page,
+}) => {
   const account = (await api<Page_<Account>>(page, "/accounts?pageSize=1"))
     .items[0]
   const owned = await api<Page_<Resource>>(
@@ -286,21 +316,35 @@ test("账号：搜索后整行进入详情，覆盖表和账号范围的资源",
   await expect(
     page.getByText(t("table.total.accounts", { count: 1 })),
   ).toBeVisible()
-  await page
-    .getByRole("row", {
-      name: t("accounts.openRow", { name: account.accountName }),
-    })
-    .getByRole("cell")
-    .nth(1)
-    .click()
+  const row = page.getByRole("row", {
+    name: t("accounts.openRow", { name: account.accountName }),
+  })
+  await row.getByRole("cell").nth(1).click()
 
-  await expect(page).toHaveURL(new RegExp(`/accounts/${account.accountId}$`))
+  // The row opens the account's own resource scope, not the coverage page.
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("s"))
+    .toBe(`acct:${account.accountId}`)
   await expect(
     page.getByRole("heading", { name: account.accountName, level: 1 }),
   ).toBeVisible()
-  const grid = section(page, t("accounts.matrix"))
+
+  // Coverage stays one click away, in the accounts list's 扫描情况 column.
+  await page.goBack()
+  await row.getByRole("link", { name: t("accounts.coverage") }).click()
   await expect(
-    grid.getByRole("img", { name: t("accounts.cell.ok") }).first(),
+    page.getByRole("heading", {
+      name: t("accounts.coverageTitle", { name: account.accountName }),
+      level: 1,
+    }),
+  ).toBeVisible()
+  // The matrix is a secondary block, collapsed until asked for.
+  await page
+    .locator("summary")
+    .filter({ hasText: t("accounts.matrix") })
+    .click()
+  await expect(
+    page.getByRole("img", { name: t("accounts.cell.ok") }).first(),
   ).toBeVisible()
 
   await page.getByRole("link", { name: t("accounts.viewResources") }).click()

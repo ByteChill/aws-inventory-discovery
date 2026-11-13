@@ -1,9 +1,15 @@
 import { useNavigate } from "@tanstack/react-router"
+import { X } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
 import { useFacets, useResourceTypes } from "@/api/hooks"
-import { newIdempotencyKey, useAllAccounts, useCreateScan } from "@/api/scans"
-import { InlineError } from "@/components/inline-state"
+import {
+  newIdempotencyKey,
+  useAllAccounts,
+  useCreateScan,
+  useScanSummary,
+} from "@/api/scans"
+import { InlineError, QueryRegion } from "@/components/inline-state"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
 import { useI18n } from "@/i18n"
@@ -13,149 +19,139 @@ import { cn } from "@/lib/utils"
 
 const MAX_ACCOUNTS = 50
 
-type Item = { value: string; label: string; detail?: string }
+type Preset = { accountIds?: string[]; eimId?: string }
+type Item = { value: string; label: string }
 
-/** A checkbox list in a bordered box, optionally searchable. */
-function CheckList({
+function Choices({
+  label,
+  allLabel,
   items,
   selected,
   onChange,
-  search,
-  searchPlaceholder,
-  empty,
-  disabled,
 }: {
+  label: string
+  allLabel: string
   items: Item[]
   selected: Set<string>
   onChange: (next: Set<string>) => void
-  search?: (item: Item, q: string) => boolean
-  searchPlaceholder?: string
-  empty: string
-  disabled?: boolean
 }) {
-  const [q, setQ] = useState("")
-  const shown = useMemo(() => {
-    const needle = q.trim().toLowerCase()
-    return needle && search ? items.filter((i) => search(i, needle)) : items
-  }, [items, q, search])
   return (
-    <div
-      className={cn(
-        "flex flex-col rounded-lg border bg-card",
-        disabled && "opacity-50",
-      )}
-    >
-      {search && (
-        <input
-          type="search"
-          value={q}
-          disabled={disabled}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={searchPlaceholder}
-          aria-label={searchPlaceholder}
-          className="h-8 rounded-t-lg border-b bg-transparent px-2.5 placeholder:text-muted-foreground"
-        />
-      )}
-      <ul className="max-h-40 overflow-auto p-1">
-        {shown.length === 0 && (
-          <li className="px-2 py-1 text-muted-foreground">{empty}</li>
-        )}
-        {shown.map((item) => (
-          <li key={item.value}>
-            <label className="flex items-center gap-2 rounded-sm px-2 py-1 hover:bg-subtle">
-              <input
-                type="checkbox"
-                disabled={disabled}
-                checked={selected.has(item.value)}
-                onChange={(e) => {
-                  const next = new Set(selected)
-                  if (e.target.checked) next.add(item.value)
-                  else next.delete(item.value)
-                  onChange(next)
-                }}
-                className="accent-[var(--accent)]"
-              />
-              <span>{item.label}</span>
-              {item.detail && (
-                <span className="ml-auto font-mono text-muted-foreground">
-                  {item.detail}
-                </span>
+    <fieldset>
+      <legend className="mb-2 font-semibold">{label}</legend>
+      <div className="flex flex-wrap gap-1.5">
+        {[{ value: "", label: allLabel }, ...items].map((item) => {
+          const active = item.value
+            ? selected.has(item.value)
+            : selected.size === 0
+          return (
+            <button
+              key={item.value}
+              type="button"
+              aria-pressed={active}
+              onClick={() => {
+                const next = new Set(selected)
+                if (!item.value) next.clear()
+                else if (next.has(item.value)) next.delete(item.value)
+                else next.add(item.value)
+                onChange(next)
+              }}
+              className={cn(
+                "rounded-full border px-3 py-1 text-xs",
+                active
+                  ? "border-primary bg-primary-soft text-primary"
+                  : "hover:bg-subtle",
               )}
-            </label>
-          </li>
-        ))}
-      </ul>
-    </div>
+            >
+              {item.label}
+            </button>
+          )
+        })}
+      </div>
+    </fieldset>
   )
 }
 
-/** The form behind the 扫描 button on the scans page. */
+/** A selected-account review stays visible while the account search changes. */
 export function ScanDialog({
   open,
   onClose,
+  preset,
 }: {
   open: boolean
   onClose: () => void
+  preset?: Preset
 }) {
   const { t } = useI18n()
   const navigate = useNavigate()
   const accounts = useAllAccounts(open)
   const facets = useFacets(["awsRegion"], {}, open)
   const types = useResourceTypes()
+  const summary = useScanSummary(open)
   const create = useCreateScan()
-
   const [all, setAll] = useState(false)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [regions, setRegions] = useState<Set<string>>(new Set())
   const [resourceTypes, setResourceTypes] = useState<Set<string>>(new Set())
+  const [q, setQ] = useState("")
   const [key, setKey] = useState(newIdempotencyKey)
+  const [presetApplied, setPresetApplied] = useState(false)
+  // Controlled: picking the first account must not close the picker.
+  const [pickerOpen, setPickerOpen] = useState(true)
 
-  // A fresh form, and a fresh idempotency key, every time the dialog opens.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on open only
+  // Reset once on opening, then apply an application preset after accounts arrive.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: opening starts a fresh form
   useEffect(() => {
     if (!open) return
     setAll(false)
-    setPicked(new Set())
+    setPicked(new Set(preset?.accountIds))
     setRegions(new Set())
     setResourceTypes(new Set())
+    setQ("")
     setKey(newIdempotencyKey())
+    setPresetApplied(!preset?.eimId)
+    setPickerOpen(!preset?.accountIds?.length)
     create.reset()
   }, [open])
+  useEffect(() => {
+    if (!open || presetApplied || !accounts.data || !preset?.eimId) return
+    setPicked(
+      new Set(
+        accounts.data
+          .filter((a) => a.eimId === preset.eimId)
+          .map((a) => a.accountId),
+      ),
+    )
+    setPresetApplied(true)
+  }, [open, presetApplied, accounts.data, preset?.eimId])
 
-  const accountItems = useMemo<Item[]>(
-    () =>
-      (accounts.data ?? []).map((a) => ({
-        value: a.accountId,
-        label: a.accountName,
-        detail: a.accountId,
-        // Searchable text beyond the label and ID.
-        search: [a.eimId, a.eimApp, a.baId].filter(Boolean).join(" "),
-      })) as Item[],
-    [accounts.data],
-  )
-  const regionItems = useMemo<Item[]>(
-    () =>
-      (facets.data?.awsRegion ?? []).map((b) => ({
-        value: b.value,
-        label: b.value,
-      })),
-    [facets.data],
-  )
-  const typeItems = useMemo<Item[]>(
-    () =>
-      (types.data ?? []).map((x) => ({
-        value: x.typeName,
-        label: x.label,
-        detail: x.typeName,
-      })),
-    [types.data],
-  )
-
-  const accountCount = all ? (accounts.data?.length ?? 0) : picked.size
-  const regionCount = regions.size || regionItems.length
-  const typeCount = resourceTypes.size || typeItems.length
+  const shown = useMemo(() => {
+    const needle = q.trim().toLowerCase()
+    return (accounts.data ?? []).filter(
+      (a) =>
+        !needle ||
+        [a.accountName, a.accountId, a.eimId, a.eimApp, a.baId]
+          .join(" ")
+          .toLowerCase()
+          .includes(needle),
+    )
+  }, [accounts.data, q])
+  const selected = (accounts.data ?? []).filter((a) => picked.has(a.accountId))
+  const regionItems = (facets.data?.awsRegion ?? [])
+    .filter((b) => b.value !== "global")
+    .map((b) => ({ value: b.value, label: b.label }))
+  const typeItems = (types.data ?? []).map((item) => ({
+    value: item.typeName,
+    label: item.label,
+  }))
+  const sweep = summary.data?.sweep
   const tooMany = !all && picked.size > MAX_ACCOUNTS
-  const canSubmit = (all || picked.size > 0) && !tooMany && !create.isPending
+  // An application preset needs the account list to turn into accounts, but an
+  // all-accounts scan does not, so a failed account fetch cannot block it.
+  const canSubmit =
+    (all || picked.size > 0) &&
+    !tooMany &&
+    !create.isPending &&
+    (presetApplied || !preset?.eimId)
 
   function submit() {
     create.mutate(
@@ -174,10 +170,7 @@ export function ScanDialog({
       {
         onSuccess: (scan) => {
           onClose()
-          navigate({
-            to: "/scans/$id",
-            params: { id: String(scan.id) },
-          })
+          navigate({ to: "/scans/$id", params: { id: String(scan.id) } })
         },
       },
     )
@@ -185,91 +178,191 @@ export function ScanDialog({
 
   return (
     <Dialog open={open} onClose={onClose} title={t("action.scan")}>
-      <div className="flex flex-col gap-4">
-        <fieldset className="flex flex-col gap-1.5">
-          <legend className="mb-1.5">{t("scans.form.accounts")}</legend>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={all}
-              onChange={(e) => setAll(e.target.checked)}
-              className="accent-[var(--accent)]"
-            />
-            {t("scans.form.allAccounts")}
-          </label>
-          <CheckList
-            items={accountItems}
-            selected={picked}
-            onChange={setPicked}
-            disabled={all}
-            searchPlaceholder={t("scans.form.accountsSearch")}
-            empty={t("scans.form.noAccounts")}
-            search={(i, q) =>
-              `${i.label} ${i.detail ?? ""} ${(i as Item & { search?: string }).search ?? ""}`
-                .toLowerCase()
-                .includes(q)
-            }
-          />
+      <div className="flex min-w-0 flex-col gap-4">
+        <fieldset className="flex gap-1 rounded-lg bg-subtle p-1">
+          <legend className="sr-only">{t("scans.form.accounts")}</legend>
+          {[false, true].map((value) => (
+            <button
+              key={String(value)}
+              type="button"
+              aria-pressed={all === value}
+              onClick={() => setAll(value)}
+              className={cn(
+                "flex-1 rounded-md px-3 py-2 font-semibold",
+                all === value
+                  ? "bg-card text-primary"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {t(
+                value
+                  ? "scans.form.allAccounts"
+                  : "scans.form.specificAccounts",
+              )}
+            </button>
+          ))}
         </fieldset>
-        {!all && (
+        {all ? (
           <>
-            <fieldset className="flex flex-col gap-1.5">
-              <legend className="mb-1.5">
-                {t("scans.form.regions")}
-                {regions.size === 0 && (
-                  <span className="ml-2 text-muted-foreground">
-                    {t("scans.form.allRegions")}
-                  </span>
+            <p className="text-muted-foreground">
+              {t("scans.form.organizationNote", {
+                count: accounts.data?.length ?? 0,
+              })}
+            </p>
+            {sweep && (
+              <div className="rounded-lg border bg-subtle p-3">
+                {t("scans.form.existingSweep", { id: sweep.scanRequestId })}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <QueryRegion
+              isLoading={accounts.isLoading}
+              error={accounts.error}
+              onRetry={() => accounts.refetch()}
+              isEmpty={false}
+              emptyMessage={t("scans.form.noAccounts")}
+            >
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h3>{t("scans.form.selected", { count: picked.size })}</h3>
+                  {picked.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setPicked(new Set())}
+                      className="text-primary hover:underline"
+                    >
+                      {t("scans.form.clearAccounts")}
+                    </button>
+                  )}
+                </div>
+                {selected.length ? (
+                  <ul className="max-h-48 overflow-auto rounded-lg border">
+                    {selected.map((a) => (
+                      <li
+                        key={a.accountId}
+                        className="flex items-center gap-2 border-b px-3 py-2 last:border-b-0"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <span className="block truncate">
+                            {a.accountName}
+                          </span>
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {a.accountId}
+                          </span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {t(`env.${a.accountType}`)}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={t("scans.form.removeAccount", {
+                            name: a.accountName,
+                          })}
+                          onClick={() =>
+                            setPicked((current) => {
+                              const next = new Set(current)
+                              next.delete(a.accountId)
+                              return next
+                            })
+                          }
+                        >
+                          <X />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-muted-foreground">
+                    {t("scans.form.pickAccounts")}
+                  </p>
                 )}
-              </legend>
-              <CheckList
-                items={regionItems}
-                selected={regions}
-                onChange={setRegions}
-                empty={t("scans.form.noAccounts")}
-              />
-            </fieldset>
-            <fieldset className="flex flex-col gap-1.5">
-              <legend className="mb-1.5">
-                {t("scans.form.types")}
-                {resourceTypes.size === 0 && (
-                  <span className="ml-2 text-muted-foreground">
-                    {t("scans.form.allTypes")}
-                  </span>
-                )}
-              </legend>
-              <CheckList
-                items={typeItems}
-                selected={resourceTypes}
-                onChange={setResourceTypes}
-                empty={t("scans.form.noAccounts")}
-              />
-            </fieldset>
+                <details
+                  className="mt-2"
+                  open={pickerOpen}
+                  onToggle={(event) => setPickerOpen(event.currentTarget.open)}
+                >
+                  <summary className="cursor-pointer py-1 text-primary">
+                    {t("scans.form.addAccounts")}
+                  </summary>
+                  <input
+                    type="search"
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder={t("scans.form.accountsSearch")}
+                    aria-label={t("scans.form.accountsSearch")}
+                    className="my-2 h-9 w-full rounded-md border border-input bg-card px-3"
+                  />
+                  <ul className="max-h-44 overflow-auto rounded-lg border p-1">
+                    {shown.length === 0 && (
+                      <li className="px-2 py-2 text-muted-foreground">
+                        {t("scans.form.noAccounts")}
+                      </li>
+                    )}
+                    {shown.map((a) => (
+                      <li key={a.accountId}>
+                        <label className="flex items-center gap-2 rounded-md px-2 py-2 hover:bg-subtle">
+                          <input
+                            type="checkbox"
+                            checked={picked.has(a.accountId)}
+                            onChange={(e) =>
+                              setPicked((current) => {
+                                const next = new Set(current)
+                                if (e.target.checked) next.add(a.accountId)
+                                else next.delete(a.accountId)
+                                return next
+                              })
+                            }
+                            className="accent-[var(--accent)]"
+                          />
+                          <span className="min-w-0 flex-1 truncate">
+                            {a.accountName}
+                          </span>
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {a.accountId}
+                          </span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              </div>
+            </QueryRegion>
+            <Choices
+              label={t("scans.form.regions")}
+              allLabel={t("scans.form.allRegions")}
+              items={regionItems}
+              selected={regions}
+              onChange={setRegions}
+            />
+            <Choices
+              label={t("scans.form.types")}
+              allLabel={t("scans.form.allTypes")}
+              items={typeItems}
+              selected={resourceTypes}
+              onChange={setResourceTypes}
+            />
           </>
         )}
         {create.error && <InlineError message={errorText(t, create.error)} />}
-        <div className="flex flex-col gap-2 border-t pt-4">
+        <div className="sticky bottom-0 -mx-5 -mb-5 flex flex-col gap-3 border-t bg-card px-5 pt-3 pb-5">
           <p>
-            {t("scans.form.scope", {
-              accounts: formatCount(t, "accounts", accountCount),
-              regions: formatCount(
-                t,
-                "regions",
-                all ? regionItems.length : regionCount,
-              ),
-              types: formatCount(
-                t,
-                "types",
-                all ? typeItems.length : typeCount,
-              ),
-            })}
+            {all
+              ? t("scans.form.allScope")
+              : t("scans.form.scope", {
+                  accounts: formatCount(t, "accounts", picked.size),
+                  regions: regions.size
+                    ? formatCount(t, "regions", regions.size)
+                    : t("scans.form.allRegions"),
+                  types: resourceTypes.size
+                    ? formatCount(t, "types", resourceTypes.size)
+                    : t("scans.form.allTypes"),
+                })}
           </p>
-          <div className="flex items-center justify-end gap-3">
-            {tooMany && (
-              <span className="text-muted-foreground">
-                {t("scans.form.limit")}
-              </span>
-            )}
+          {tooMany && <p className="text-warn">{t("scans.form.limit")}</p>}
+          <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={onClose}>
               {t("action.cancel")}
             </Button>

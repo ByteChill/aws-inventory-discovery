@@ -3,7 +3,6 @@ import {
   type ComponentType,
   type ReactNode,
   useDeferredValue,
-  useMemo,
   useState,
 } from "react"
 
@@ -12,10 +11,12 @@ import {
   useAccounts,
   useApplication,
   useApplications,
+  useColumns,
   useFacets,
   useOverview,
+  useResources,
 } from "@/api/hooks"
-import type { AccountSummary, Application } from "@/client"
+import type { AccountSummary } from "@/client"
 import {
   stateToSearch,
   type TableSearch,
@@ -28,9 +29,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NAV_GROUPS } from "@/features/inventory-nav"
 import { OverviewResources } from "@/features/overview-resources"
+import { ScanDialog } from "@/features/scan-dialog"
 import { SERVICE_ICON } from "@/features/service-icons"
 import { type MessageKey, useI18n } from "@/i18n"
 import { formatNumber } from "@/lib/format"
+import { resourceParams, singleType } from "@/lib/resource-query"
 import { parseScope, scopeParams, scopeValue, withScope } from "@/lib/scope"
 import { cn } from "@/lib/utils"
 
@@ -56,16 +59,26 @@ function Overview() {
   const appEim = scope?.kind === "app" ? scope.eim : undefined
   const accountId = scope?.kind === "acct" ? scope.id : undefined
 
+  const [scanOpen, setScanOpen] = useState(false)
   const overview = useOverview()
+  const columns = useColumns(singleType(state))
+  const params = resourceParams(state, columns.data ?? [], scopeParams(scope))
+  const ready = !!columns.data && !columns.isPlaceholderData
+  const current = useResources(
+    params,
+    { page: 1, pageSize: 1, sort: undefined },
+    ready,
+  )
   const facets = useFacets(
-    ["resourceType", "accountType", "awsRegion"],
-    scopeParams(scope),
+    ["resourceType", "accountType", "awsRegion", "accountId", "eimId"],
+    params,
+    ready,
   )
   const app = useApplication(appEim)
   const account = useAccount(accountId)
   const appAccounts = useAccounts(
     appEim ? { eimId: [appEim] } : {},
-    { page: 1, pageSize: 8, sort: "-resourceCount" },
+    { page: 1, pageSize: 200, sort: "-resourceCount" },
     !!appEim,
   )
   const appUnreachable = useAccounts(
@@ -82,26 +95,36 @@ function Overview() {
 
   const [appQuery, setAppQuery] = useState("")
   const appSearch = useDeferredValue(appQuery.trim())
-  const appMatches = useApplications(
-    { q: appSearch || undefined },
-    { page: 1, pageSize: 5, sort: "-resourceCount" },
+  const appMatches = (facets.data?.eimId ?? []).filter((item) =>
+    `${item.label} ${item.value}`
+      .toLowerCase()
+      .includes(appSearch.toLowerCase()),
   )
 
+  function matchingBuckets(key: string) {
+    const values = state.filters[key]
+    const selected = Array.isArray(values) ? values : values ? [values] : []
+    return (facets.data?.[key] ?? []).filter(
+      (item) => !selected.length || selected.includes(item.value),
+    )
+  }
+  // A facet leaves out its own filter, so each distribution keeps every bucket
+  // (the selected one is highlighted); only the stats follow the selection.
   const byType = facets.data?.resourceType ?? []
   const byEnv = facets.data?.accountType ?? []
   const byRegion = facets.data?.awsRegion ?? []
-  const resourceTotal = byType.reduce((sum, item) => sum + item.count, 0)
-  const typeTotal = byType.length
-  const regionTotal = byRegion.length
-  const services = useMemo(() => serviceBars(byType), [byType])
-
-  const appsCount = scope === null ? (appsTotal.data?.total ?? 0) : 0
+  const resourceTotal = current.data?.total ?? 0
+  const typeTotal = matchingBuckets("resourceType").length
+  const regionTotal = matchingBuckets("awsRegion").length
+  const services = serviceBars(byType)
+  const filtered = !!state.q || Object.keys(state.filters).length > 0
+  const appsCount = filtered
+    ? matchingBuckets("eimId").length
+    : (appsTotal.data?.total ?? 0)
   const accountsCount =
-    scope === null
-      ? (overview.data?.accountTotal ?? 0)
-      : scope.kind === "app"
-        ? (appAccounts.data?.total ?? app.data?.accountCount ?? 0)
-        : 1
+    filtered || scope !== null
+      ? matchingBuckets("accountId").length
+      : (overview.data?.accountTotal ?? 0)
   const unreachable =
     scope === null
       ? (overview.data?.accountUnreachable ?? 0)
@@ -190,7 +213,8 @@ function Overview() {
                 ? t("overview.appSubtitle", {
                     eim: scope.eim,
                     ba: app.data?.baId ?? t("common.none"),
-                    accounts: accountsCount,
+                    accounts:
+                      appAccounts.data?.total ?? app.data?.accountCount ?? 0,
                     envs:
                       app.data?.environments
                         .map((env) => t(`env.${env}`))
@@ -209,9 +233,30 @@ function Overview() {
           }
           actions={
             scope && (
-              <Button variant="outline" asChild>
-                <Link to="/">{t("overview.allScope")}</Link>
-              </Button>
+              <>
+                <Button variant="outline" asChild>
+                  <Link to="/" search={{ s: undefined }}>
+                    {t("overview.allScope")}
+                  </Link>
+                </Button>
+                {scope.kind === "acct" && (
+                  <Button variant="outline" asChild>
+                    <Link
+                      to="/accounts/$accountId"
+                      params={{ accountId: scope.id }}
+                    >
+                      {t("overview.viewAccount")}
+                    </Link>
+                  </Button>
+                )}
+                <Button onClick={() => setScanOpen(true)}>
+                  {t(
+                    scope.kind === "app"
+                      ? "overview.scanApp"
+                      : "accounts.scanThis",
+                  )}
+                </Button>
+              </>
             )
           }
         />
@@ -296,7 +341,32 @@ function Overview() {
         </Stat>
       </dl>
 
+      {scope?.kind === "app" && (
+        <section
+          className="flex flex-wrap items-center gap-2"
+          aria-label={t("overview.appAccounts")}
+        >
+          <span className="text-xs text-muted-foreground">
+            {t("overview.byAccount")}
+          </span>
+          {(appAccounts.data?.items ?? []).map((item) => (
+            <Link
+              key={item.accountId}
+              to="/"
+              search={scopeSearch("acct", item.accountId)}
+              className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2 hover:border-primary"
+            >
+              <strong className="font-semibold">{item.accountName}</strong>
+              <span className="text-xs text-muted-foreground">
+                {t(`env.${item.accountType}`)}
+              </span>
+            </Link>
+          ))}
+        </section>
+      )}
+
       <details
+        key={search.s ?? "all"}
         className="group flex flex-col"
         open={scope === null ? true : undefined}
       >
@@ -317,8 +387,10 @@ function Overview() {
         </summary>
         <div
           className={cn(
-            "grid items-start gap-x-8 gap-y-6 md:grid-cols-2",
-            scope?.kind === "acct" ? "xl:grid-cols-2" : "xl:grid-cols-4",
+            "grid items-start gap-4 min-[801px]:grid-cols-2",
+            scope?.kind === "acct"
+              ? "min-[1301px]:grid-cols-2"
+              : "min-[1301px]:grid-cols-4",
           )}
         >
           <Panel title={t("overview.byService")}>
@@ -346,8 +418,12 @@ function Overview() {
                 className="mb-2"
               />
               <AppBars
-                apps={appMatches.data?.items ?? []}
-                total={appMatches.data?.total ?? 0}
+                apps={appMatches.slice(0, 5).map((item) => ({
+                  eimId: item.value,
+                  eimApp: item.label,
+                  resourceCount: item.count,
+                }))}
+                total={appMatches.length}
                 query={appSearch}
                 searchFor={(eim) => scopeSearch("app", eim)}
               />
@@ -357,7 +433,19 @@ function Overview() {
           {scope?.kind === "app" && (
             <Panel title={t("overview.byAccount")}>
               <AccountBars
-                accounts={appAccounts.data?.items ?? []}
+                accounts={(appAccounts.data?.items ?? [])
+                  .filter((item) =>
+                    matchingBuckets("accountId").some(
+                      (bucket) => bucket.value === item.accountId,
+                    ),
+                  )
+                  .map((item) => ({
+                    ...item,
+                    resourceCount:
+                      facets.data?.accountId?.find(
+                        (bucket) => bucket.value === item.accountId,
+                      )?.count ?? 0,
+                  }))}
                 searchFor={(id) => scopeSearch("acct", id)}
               />
             </Panel>
@@ -397,6 +485,19 @@ function Overview() {
         scope={scope}
         fallbackTotal={resourceTotal}
       />
+      {scanOpen && (
+        <ScanDialog
+          open={scanOpen}
+          onClose={() => setScanOpen(false)}
+          preset={
+            scope?.kind === "app"
+              ? { eimId: scope.eim }
+              : scope?.kind === "acct"
+                ? { accountIds: [scope.id] }
+                : undefined
+          }
+        />
+      )}
     </Page>
   )
 }
@@ -539,7 +640,7 @@ function AppBars({
   query,
   searchFor,
 }: {
-  apps: Application[]
+  apps: { eimId: string; eimApp: string; resourceCount: number }[]
   total: number
   query: string
   searchFor: (eim: string) => TableSearch
@@ -555,7 +656,7 @@ function AppBars({
           {apps.map((app) => (
             <li key={app.eimId}>
               <Link
-                to="/"
+                to="/resources"
                 search={searchFor(app.eimId)}
                 className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-1.5 hover:bg-subtle"
               >
@@ -602,7 +703,7 @@ function AccountBars({
       {accounts.map((account) => (
         <li key={account.accountId}>
           <Link
-            to="/"
+            to="/resources"
             search={searchFor(account.accountId)}
             className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-1.5 hover:bg-subtle"
           >

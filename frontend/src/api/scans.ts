@@ -35,11 +35,12 @@ type TasksQuery = NonNullable<Parameters<typeof listScanTasks>[0]["query"]>
 
 // Status blocks poll so a running scan moves on its own.
 
-export function useScanSummary() {
+export function useScanSummary(enabled = true) {
   return useQuery({
     queryKey: ["scan-summary"],
     queryFn: async () => (await scanSummary({ throwOnError: true })).data,
     refetchInterval: 5_000,
+    enabled,
   })
 }
 

@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import { useResourceTypes } from "@/api/hooks"
 import {
+  useAllAccounts,
   useCancelScan,
   useRetryFailed,
   useScan,
@@ -223,14 +224,42 @@ function Detail({ scan }: { scan: ScanDetail }) {
 
       <section className="rounded-xl border bg-background px-5 py-4">
         <h2 className="mb-3">{t("scans.detail.summary" as MessageKey)}</h2>
-        {active && (
-          <progress
-            aria-label={t("scans.detail.progress" as MessageKey)}
-            value={done}
-            max={Math.max(1, total)}
-            className="mb-4 block h-1.5 w-full overflow-hidden rounded bg-subtle accent-primary [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:bg-subtle [&::-webkit-progress-value]:bg-primary"
-          />
-        )}
+        <div
+          role="img"
+          aria-label={TASK_STATUSES.map(
+            (status) =>
+              `${t(`tasks.status.${status}` as MessageKey)} ${scan.counts.tasks[status] ?? 0}`,
+          ).join(t("common.separator"))}
+          className="mb-4 flex h-1.5 w-full gap-0.5 overflow-hidden rounded bg-subtle"
+        >
+          {[
+            {
+              key: "succeeded",
+              count:
+                (scan.counts.tasks.succeeded ?? 0) +
+                (scan.counts.tasks.skipped ?? 0),
+              className: "bg-primary",
+            },
+            { key: "failed", count: failedTasks, className: "bg-warn" },
+            {
+              key: "running",
+              count: scan.counts.tasks.running ?? 0,
+              className: "bg-primary/40",
+            },
+          ].map(
+            (segment) =>
+              segment.count > 0 && (
+                <span
+                  key={segment.key}
+                  title={`${t(`tasks.status.${segment.key}` as MessageKey)} ${segment.count}`}
+                  className={segment.className}
+                  style={{
+                    width: `${(segment.count / Math.max(1, total)) * 100}%`,
+                  }}
+                />
+              ),
+          )}
+        </div>
         <dl className="grid grid-cols-2 gap-x-6 gap-y-4 min-[1180px]:grid-cols-4">
           <SummaryField label={t("scans.column.status")}>
             <span>{scanStatusText(t, scan.status)}</span>
@@ -292,10 +321,31 @@ function Detail({ scan }: { scan: ScanDetail }) {
   )
 }
 
+/** What the account filter input shows for an applied filter. */
+function accountLabel(names: Map<string, string>, id: string | undefined) {
+  return id ? `${names.get(id) ?? ""} ${id}`.trim() : ""
+}
+
 function TaskList({ scanId }: { scanId: number }) {
   const { t } = useI18n()
   const types = useResourceTypes()
+  const accounts = useAllAccounts(true)
+  const names = useMemo(
+    () =>
+      new Map(
+        accounts.data?.map((account) => [
+          account.accountId,
+          account.accountName,
+        ]),
+      ),
+    [accounts.data],
+  )
   const { state, setState } = useTableUrlState(Route.useSearch())
+  const accountId = first(state.filters.accountId)
+  const [accountDraft, setAccountDraft] = useState(accountId ?? "")
+  useEffect(() => {
+    setAccountDraft(accountLabel(names, accountId))
+  }, [accountId, names])
   const params: Record<string, string> = {}
   for (const key of ["status", "kind", "accountId", "errorCode"]) {
     const value = first(state.filters[key])
@@ -370,11 +420,12 @@ function TaskList({ scanId }: { scanId: number }) {
       case "accountId":
         return (
           <Link
-            to="/accounts/$accountId"
-            params={{ accountId: row.accountId }}
+            to="/"
+            search={{ s: `acct:${row.accountId}` }}
+            title={row.accountId}
             className="hover:text-primary hover:underline"
           >
-            {row.accountId}
+            {names.get(row.accountId) ?? row.accountId}
           </Link>
         )
       case "region":
@@ -476,14 +527,50 @@ function TaskList({ scanId }: { scanId: number }) {
           >
             {filter("status")}
             <Input
-              value={params.accountId ?? ""}
-              onChange={(event) =>
-                setFilter("accountId", event.target.value || undefined)
-              }
+              list="scan-task-accounts"
+              value={accountDraft}
+              onChange={(event) => {
+                const value = event.target.value
+                setAccountDraft(value)
+                const account = accounts.data?.find(
+                  (item) =>
+                    value === item.accountId ||
+                    value === `${item.accountName} ${item.accountId}`,
+                )
+                if (!value || account)
+                  setFilter("accountId", account?.accountId)
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return
+                const value = accountDraft.trim()
+                const matches = (accounts.data ?? []).filter(
+                  (item) =>
+                    item.accountName
+                      .toLowerCase()
+                      .includes(value.toLowerCase()) ||
+                    item.accountId.includes(value) ||
+                    `${item.accountName} ${item.accountId}` === value,
+                )
+                const account = matches.length === 1 ? matches[0] : undefined
+                if (!value || account || /^\d{12}$/.test(value))
+                  setFilter(
+                    "accountId",
+                    account?.accountId ?? (value || undefined),
+                  )
+              }}
+              onBlur={() => setAccountDraft(accountLabel(names, accountId))}
               aria-label={t("tasks.column.account")}
-              placeholder={t("tasks.filter.account" as MessageKey)}
-              className="h-8 w-48 max-w-full"
+              placeholder={t("tasks.filter.accountName" as MessageKey)}
+              className="h-9 w-56 max-w-full"
             />
+            <datalist id="scan-task-accounts">
+              {accounts.data?.map((account) => (
+                <option
+                  key={account.accountId}
+                  value={`${account.accountName} ${account.accountId}`}
+                />
+              ))}
+            </datalist>
             {filter("kind")}
             {filter("errorCode")}
             {Object.keys(params).length > 0 && (

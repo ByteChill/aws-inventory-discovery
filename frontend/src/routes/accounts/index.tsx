@@ -112,8 +112,8 @@ function Accounts() {
       case "accountName":
         return (
           <Link
-            to="/accounts/$accountId"
-            params={{ accountId: row.accountId }}
+            to="/"
+            search={{ s: `acct:${row.accountId}` }}
             title={row.accountName}
             className="block truncate font-semibold text-primary hover:underline"
           >
@@ -250,8 +250,8 @@ function Accounts() {
           filterPopovers={false}
           onRowActivate={(row) =>
             navigate({
-              to: "/accounts/$accountId",
-              params: { accountId: row.accountId },
+              to: "/",
+              search: { s: `acct:${row.accountId}` },
             })
           }
           rowLabel={(row) => t("accounts.openRow", { name: row.accountName })}

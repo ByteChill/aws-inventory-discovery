@@ -71,6 +71,7 @@ export function useTableUrlState(search: TableSearch) {
   const navigate = useNavigate() as unknown as (opts: {
     search: (prev: Record<string, unknown>) => Record<string, unknown>
     replace?: boolean
+    resetScroll?: boolean
   }) => void
   const state = searchToState(search)
   return {
@@ -79,6 +80,9 @@ export function useTableUrlState(search: TableSearch) {
       navigate({
         search: (prev) => ({ ...prev, ...stateToSearch(next) }),
         replace: true,
+        // A filter or page change keeps the reader where they were: the table
+        // updates in place, and jumping to the top hides the control just used.
+        resetScroll: false,
       })
     },
   }

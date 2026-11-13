@@ -5,7 +5,7 @@ import {
   useNavigate,
 } from "@tanstack/react-router"
 import { ChevronLeft, ChevronRight } from "lucide-react"
-import { type ReactNode, useMemo, useState } from "react"
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react"
 
 import {
   useAccount,
@@ -77,11 +77,38 @@ function ScopePage() {
   )
 }
 
+function moreToRight(element: HTMLDivElement) {
+  return element.scrollLeft + element.clientWidth < element.scrollWidth - 1
+}
+
 function Detail({ scope }: { scope: ScanScopeOut }) {
   const { t, locale } = useI18n()
   const { state, setState } = useTableUrlState(Route.useSearch())
   const navigate = useNavigate()
   const [confirming, setConfirming] = useState(false)
+  const [draft, setDraft] = useState(state.q ?? "")
+  const [overflowing, setOverflowing] = useState(false)
+  const tableWrap = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const element = tableWrap.current
+    if (!element) return
+    const update = () => setOverflowing(moreToRight(element))
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+  useEffect(() => {
+    setDraft(state.q ?? "")
+  }, [state.q])
+  // Wait briefly after typing instead of rerendering the table on every key.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const q = draft.trim() || undefined
+      if (q !== state.q) setState({ ...state, q, page: 1 })
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [draft, state, setState])
   const confirm = useConfirmChange()
   const account = useAccount(scope.accountId)
   const types = useResourceTypes()
@@ -193,24 +220,19 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
       <search className="flex flex-wrap items-center gap-2">
         <input
           type="search"
-          defaultValue={state.q ?? ""}
-          key={state.q ?? ""}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
           placeholder={t("scanScope.searchPlaceholder")}
           aria-label={t("scanScope.searchPlaceholder")}
-          onKeyDown={(e) => {
-            if (e.key === "Enter")
-              setState({
-                ...state,
-                q: e.currentTarget.value.trim() || undefined,
-                page: 1,
-              })
-          }}
           className="h-9 w-[min(380px,100%)] rounded-md border border-input bg-card px-2.5 placeholder:text-muted-foreground"
         />
         {state.q && (
           <Button
             variant="link"
-            onClick={() => setState({ ...state, q: undefined, page: 1 })}
+            onClick={() => {
+              setDraft("")
+              setState({ ...state, q: undefined, page: 1 })
+            }}
           >
             {t("action.clearFilters")}
           </Button>
@@ -244,11 +266,30 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
         />
       ) : (
         <>
-          <div className="overflow-auto rounded-lg border bg-card">
-            <table className="w-full min-w-[760px] border-collapse text-left">
+          <div
+            ref={tableWrap}
+            onScroll={(event) =>
+              setOverflowing(moreToRight(event.currentTarget))
+            }
+            className={cn(
+              "overflow-auto rounded-lg border bg-card",
+              overflowing &&
+                "[mask-image:linear-gradient(to_right,#000_calc(100%-48px),transparent)]",
+            )}
+          >
+            <table className="w-full min-w-[980px] table-fixed border-collapse text-left whitespace-nowrap">
+              <colgroup>
+                <col className="w-[280px]" />
+                <col className="w-[420px]" />
+                <col className="w-[140px]" />
+                <col className="w-[140px]" />
+              </colgroup>
               <thead>
                 <tr className="border-b bg-subtle text-xs text-muted-foreground">
-                  <th scope="col" className="px-3.5 py-2 font-medium">
+                  <th
+                    scope="col"
+                    className="sticky left-0 z-[1] bg-subtle px-3.5 py-2 font-medium"
+                  >
                     {t("scanScope.column.name")}
                   </th>
                   <th scope="col" className="px-3.5 py-2 font-medium">
@@ -293,7 +334,7 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
                         "cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary",
                     )}
                   >
-                    <td className="px-3.5 py-2.5">
+                    <td className="sticky left-0 z-[1] bg-card px-3.5 py-2.5">
                       {candidate.id !== null ? (
                         <Link
                           to="/resources/$id"
@@ -349,10 +390,33 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
               </tbody>
             </table>
           </div>
-
           <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-            <span>{t("table.total.candidates", { count: total })}</span>
+            <span>
+              {t("table.range.candidates", {
+                from: total === 0 ? 0 : (state.page - 1) * state.pageSize + 1,
+                to: Math.min(state.page * state.pageSize, total),
+                count: total,
+              })}
+            </span>
             <div className="flex items-center gap-2">
+              <select
+                value={state.pageSize}
+                onChange={(e) =>
+                  setState({
+                    ...state,
+                    pageSize: Number(e.target.value),
+                    page: 1,
+                  })
+                }
+                aria-label={t("table.pageSize")}
+                className="h-8 rounded-md border border-input bg-card px-2"
+              >
+                {[10, 25, 50].map((n) => (
+                  <option key={n} value={n}>
+                    {t("table.pageSizeOption", { count: n })}
+                  </option>
+                ))}
+              </select>
               <span>{t("table.page", { page: state.page, pages })}</span>
               <Button
                 variant="outline"
@@ -398,6 +462,16 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
         onClose={() => setConfirming(false)}
         title={t("action.confirmChange")}
       >
+        <p>
+          {t("scanScope.confirmScope" as MessageKey, {
+            count: scope.candidateCount,
+            account: accountName,
+            region: scope.region,
+            type: typeLabel,
+            candidates: formatNumber(scope.candidateCount, locale),
+            active: formatNumber(scope.activeCount, locale),
+          })}
+        </p>
         <p>{t("scanScope.confirmNote")}</p>
         {confirm.error && <InlineError message={errorText(t, confirm.error)} />}
         <div className="flex justify-end gap-2">

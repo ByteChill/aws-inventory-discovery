@@ -435,10 +435,10 @@ function displayValue(
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <>
+    <div className="grid grid-cols-[140px_minmax(0,1fr)] gap-2.5 border-b py-2 last:border-b-0 max-[800px]:grid-cols-[90px_minmax(0,1fr)]">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className="min-w-0">{children}</dd>
-    </>
+      <dd className="min-w-0 [overflow-wrap:anywhere]">{children}</dd>
+    </div>
   )
 }
 

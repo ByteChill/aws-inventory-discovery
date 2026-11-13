@@ -90,8 +90,8 @@ function Detail({ task }: { task: TaskOut }) {
       </div>
 
       {(reason || task.errorMessage) && (
-        <section className="rounded-xl border bg-subtle px-5 py-4">
-          <h2>
+        <section className="rounded-lg border border-warn/30 bg-warn-soft px-4 py-3">
+          <h2 className="text-warn">
             {reason
               ? `${t("tasks.status.failed")}：${reason.title}`
               : t("tasks.detail.error")}
@@ -104,6 +104,47 @@ function Detail({ task }: { task: TaskOut }) {
               {task.errorMessage}
             </p>
           )}
+          {task.kind !== "resource" && task.kind !== "confirm_missing" && (
+            <p className="mt-2 text-muted-foreground">
+              {t("tasks.failureKept" as MessageKey)}
+            </p>
+          )}
+          <p className="mt-2 flex flex-wrap gap-x-3 text-muted-foreground">
+            <Link
+              to="/scans/$id"
+              params={{ id: String(task.scanRequestId) }}
+              search={{ f: { status: ["failed"] } }}
+              className="text-primary hover:underline"
+            >
+              {t("tasks.failureTasksLink" as MessageKey, {
+                id: task.scanRequestId,
+              })}
+            </Link>
+            <Link
+              to="/resources"
+              search={
+                task.resourceType
+                  ? {
+                      s: `acct:${task.accountId}`,
+                      f: {
+                        resourceType: [task.resourceType],
+                        ...(task.region ? { awsRegion: [task.region] } : {}),
+                      },
+                    }
+                  : {
+                      s: `acct:${task.accountId}`,
+                      f: task.region ? { awsRegion: [task.region] } : {},
+                    }
+              }
+              className="text-primary hover:underline"
+            >
+              {t(
+                task.resourceType
+                  ? ("tasks.failureResourcesOfType" as MessageKey)
+                  : ("tasks.failureResources" as MessageKey),
+              )}
+            </Link>
+          </p>
         </section>
       )}
 
@@ -134,8 +175,9 @@ function Detail({ task }: { task: TaskOut }) {
           </SummaryField>
           <SummaryField label={t("tasks.column.account")}>
             <Link
-              to="/accounts/$accountId"
-              params={{ accountId: task.accountId }}
+              to="/"
+              search={{ s: `acct:${task.accountId}` }}
+              title={task.accountId}
               className="font-mono text-primary hover:underline"
             >
               {task.accountId}
@@ -196,6 +238,44 @@ function Detail({ task }: { task: TaskOut }) {
           <dl className="grid grid-cols-2 gap-x-6 gap-y-4 min-[800px]:grid-cols-3 min-[1180px]:grid-cols-6">
             <ResourceMetrics counts={task.stats} includeUnchanged />
           </dl>
+          <p className="mt-3">
+            {task.resourceId ? (
+              <Link
+                to="/resources"
+                search={{
+                  // A resource is identified by account + region + type + id
+                  // (DESIGN 7.2 R4a); the ID alone can match another account's row.
+                  s: `acct:${task.accountId}`,
+                  q: task.resourceId,
+                  f: {
+                    ...(task.resourceType
+                      ? { resourceType: [task.resourceType] }
+                      : {}),
+                    ...(task.region ? { awsRegion: [task.region] } : {}),
+                  },
+                }}
+                className="text-primary hover:underline"
+              >
+                {t("tasks.openResource" as MessageKey)}
+              </Link>
+            ) : (
+              <Link
+                to="/resources"
+                search={{
+                  s: `acct:${task.accountId}`,
+                  f: {
+                    ...(task.resourceType
+                      ? { resourceType: [task.resourceType] }
+                      : {}),
+                    ...(task.region ? { awsRegion: [task.region] } : {}),
+                  },
+                }}
+                className="text-primary hover:underline"
+              >
+                {t("scans.viewScopeResources")}
+              </Link>
+            )}
+          </p>
         </section>
       )}
 
@@ -206,8 +286,17 @@ function Detail({ task }: { task: TaskOut }) {
   )
 }
 
+function logClock(value: string, locale: string) {
+  return new Intl.DateTimeFormat(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date(value))
+}
+
 function Logs({ id }: { id: number }) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const [search, setSearch] = useState("")
   const query = useTaskLogs(id)
   const events = query.data?.pages.flatMap((page) => page.events) ?? []
@@ -274,17 +363,16 @@ function Logs({ id }: { id: number }) {
                   {t("tasks.logsNoMatch" as MessageKey)}
                 </p>
               ) : (
-                <ul className="flex flex-col gap-1 font-mono text-xs">
+                <div className="flex flex-col gap-1 overflow-x-auto font-mono text-xs whitespace-pre">
                   {matching.map((event, index) => (
-                    <li
+                    <div
                       // biome-ignore lint/suspicious/noArrayIndexKey: log lines have no id
                       key={index}
-                      className="flex flex-wrap items-baseline gap-x-3"
+                      className="flex gap-x-3"
                     >
-                      <Time
-                        value={event.timestamp}
-                        className="shrink-0 text-muted-foreground"
-                      />
+                      <span className="shrink-0 text-muted-foreground">
+                        {logClock(event.timestamp, locale)}
+                      </span>
                       <span
                         className={
                           event.level.toLowerCase() === "error"
@@ -292,14 +380,12 @@ function Logs({ id }: { id: number }) {
                             : "shrink-0 text-muted-foreground"
                         }
                       >
-                        {event.level}
+                        {event.level.padEnd(5, " ")}
                       </span>
-                      <span className="min-w-0 flex-1 basis-56 break-all">
-                        {event.message}
-                      </span>
-                    </li>
+                      <span>{event.message}</span>
+                    </div>
                   ))}
-                </ul>
+                </div>
               )}
             </section>
             {query.isFetchNextPageError && (

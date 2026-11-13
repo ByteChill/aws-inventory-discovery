@@ -816,6 +816,363 @@
         }
       }
     },
+    "/api/v1/resources/summary": {
+      "get": {
+        "tags": [
+          "resources"
+        ],
+        "summary": "Resource Summary",
+        "operationId": "resource_summary",
+        "parameters": [
+          {
+            "name": "accountId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Accountid"
+            }
+          },
+          {
+            "name": "eimId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Eimid"
+            }
+          },
+          {
+            "name": "baId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Baid"
+            }
+          },
+          {
+            "name": "accountType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Accounttype"
+            }
+          },
+          {
+            "name": "awsRegion",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Awsregion"
+            }
+          },
+          {
+            "name": "resourceType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Resourcetype"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "active",
+                  "missing",
+                  "deleted"
+                ],
+                "type": "string"
+              },
+              "default": [],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "scanRequestId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scanrequestid"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Tag"
+            }
+          },
+          {
+            "name": "tagMissing",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "title": "Tagmissing"
+            }
+          },
+          {
+            "name": "configurationItemCaptureTime.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Configurationitemcapturetime.Gte"
+            }
+          },
+          {
+            "name": "configurationItemCaptureTime.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Configurationitemcapturetime.Lte"
+            }
+          },
+          {
+            "name": "firstSeenAt.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Firstseenat.Gte"
+            }
+          },
+          {
+            "name": "firstSeenAt.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Firstseenat.Lte"
+            }
+          },
+          {
+            "name": "lastChangedAt.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lastchangedat.Gte"
+            }
+          },
+          {
+            "name": "lastChangedAt.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lastchangedat.Lte"
+            }
+          },
+          {
+            "name": "missingSince.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Missingsince.Gte"
+            }
+          },
+          {
+            "name": "missingSince.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Missingsince.Lte"
+            }
+          },
+          {
+            "name": "deletedAt.gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deletedat.Gte"
+            }
+          },
+          {
+            "name": "deletedAt.lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deletedat.Lte"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/resources/export": {
       "get": {
         "tags": [
@@ -4463,6 +4820,40 @@
           "deletedAt"
         ],
         "title": "ResourceItem"
+      },
+      "ResourceSummary": {
+        "properties": {
+          "resources": {
+            "type": "integer",
+            "title": "Resources"
+          },
+          "accounts": {
+            "type": "integer",
+            "title": "Accounts"
+          },
+          "applications": {
+            "type": "integer",
+            "title": "Applications"
+          },
+          "resourceTypes": {
+            "type": "integer",
+            "title": "Resourcetypes"
+          },
+          "regions": {
+            "type": "integer",
+            "title": "Regions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "resources",
+          "accounts",
+          "applications",
+          "resourceTypes",
+          "regions"
+        ],
+        "title": "ResourceSummary",
+        "description": "Distinct counts under a filter, computed in SQL (facets cap their buckets at 200)."
       },
       "ResourceTypeInfo": {
         "properties": {

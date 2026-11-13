@@ -9,17 +9,13 @@ import type {
 } from "@/components/data-table"
 import { FilterControl, OptionList } from "@/components/data-table/filters"
 import { Button } from "@/components/ui/button"
+import { Dialog } from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 import { TagFilter, type TagFilters } from "@/features/tag-filter"
 import { useI18n } from "@/i18n"
 import { singleType } from "@/lib/resource-query"
@@ -55,6 +51,7 @@ export function ResourceFilters({
 }) {
   const { t } = useI18n()
   const [draft, setDraft] = useState(state.q ?? "")
+  const [moreOpen, setMoreOpen] = useState(false)
   const first = useRef(true)
 
   // Typing settles into the URL after a pause; Enter applies it at once.
@@ -136,198 +133,214 @@ export function ResourceFilters({
     })
   }
 
+  function clearMore() {
+    const keys = new Set(moreKeys)
+    onStateChange({
+      ...state,
+      filters: Object.fromEntries(
+        Object.entries(state.filters).filter(([key]) => !keys.has(key)),
+      ),
+      page: 1,
+    })
+  }
+
   return (
     <search
       className="flex flex-wrap items-center gap-2"
       aria-label={t("resources.filter.searchLabel")}
     >
-      <div className="flex min-w-0 flex-1 basis-[760px] flex-wrap items-center gap-1.5">
-        <label className="flex h-9 min-w-[200px] flex-1 basis-[220px] items-center gap-2 rounded-md border border-input bg-card px-2.5 text-muted-foreground focus-within:outline-2 focus-within:outline-primary focus-within:outline-offset-1 sm:max-w-[220px]">
-          <Search aria-hidden="true" className="size-4 shrink-0" />
-          <input
-            type="search"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key !== "Enter") return
-              e.preventDefault()
-              onStateChange({
-                ...state,
-                q: draft.trim() || undefined,
-                page: 1,
-              })
-            }}
-            placeholder={t("resources.filter.searchPlaceholder")}
-            aria-label={t("resources.filter.searchPlaceholder")}
-            className="h-full min-w-0 flex-1 bg-transparent text-foreground placeholder:text-muted-foreground focus-visible:outline-0"
-          />
-        </label>
+      <label className="flex h-9 min-w-[200px] flex-1 basis-[220px] items-center gap-2 rounded-md border border-input bg-card px-2.5 text-muted-foreground focus-within:outline-2 focus-within:outline-primary focus-within:outline-offset-1 sm:max-w-[220px]">
+        <Search aria-hidden="true" className="size-4 shrink-0" />
+        <input
+          type="search"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return
+            e.preventDefault()
+            onStateChange({
+              ...state,
+              q: draft.trim() || undefined,
+              page: 1,
+            })
+          }}
+          placeholder={t("resources.filter.searchPlaceholder")}
+          aria-label={t("resources.filter.searchPlaceholder")}
+          className="h-full min-w-0 flex-1 bg-transparent text-foreground placeholder:text-muted-foreground focus-visible:outline-0"
+        />
+      </label>
 
-        {scope?.kind !== "acct" && (
-          <select
-            value={env}
-            onChange={(e) =>
-              setFilters({
-                accountType: e.target.value ? [e.target.value] : undefined,
-              })
-            }
-            aria-label={t("resources.group.accountType")}
-            className={cn(selectClass, env && selectActive)}
-          >
-            <option value="">{t("resources.group.accountType")}</option>
-            {(facets.accountType ?? []).map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        )}
-
+      {scope?.kind !== "acct" && (
         <select
-          value={region}
+          value={env}
           onChange={(e) =>
             setFilters({
-              awsRegion: e.target.value ? [e.target.value] : undefined,
+              accountType: e.target.value ? [e.target.value] : undefined,
             })
           }
-          aria-label={t("resources.group.awsRegion")}
-          className={cn(selectClass, region && selectActive)}
+          aria-label={t("resources.group.accountType")}
+          className={cn(selectClass, env && selectActive)}
         >
-          <option value="">{t("resources.group.awsRegion")}</option>
-          {(facets.awsRegion ?? []).map((o) => (
+          <option value="">{t("resources.group.accountType")}</option>
+          {(facets.accountType ?? []).map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
           ))}
         </select>
+      )}
 
-        {!hideType && (
-          <select
-            value={selectedType}
-            onChange={(e) =>
-              setFilters({
-                resourceType: e.target.value ? [e.target.value] : undefined,
-              })
-            }
-            aria-label={t("resources.group.resourceType")}
-            className={cn(selectClass, selectedType && selectActive)}
-          >
-            <option value="">{t("resources.group.resourceType")}</option>
-            {(facets.resourceType ?? []).map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        )}
-
-        <select
-          value={status}
-          onChange={(e) => {
-            const value = e.target.value
-            setFilters({
-              status:
-                value === ""
-                  ? undefined
-                  : value === "all"
-                    ? ALL_STATUSES
-                    : [value],
-            })
-          }}
-          aria-label={t("resources.filter.status")}
-          className={cn(selectClass, status && selectActive)}
-        >
-          <option value="">{t("resources.filter.status")}</option>
-          <option value="missing">{t("status.missing")}</option>
-          <option value="deleted">{t("status.deleted")}</option>
-          <option value="all">
-            {t("resources.filter.allIncludingDeleted")}
+      <select
+        value={region}
+        onChange={(e) =>
+          setFilters({
+            awsRegion: e.target.value ? [e.target.value] : undefined,
+          })
+        }
+        aria-label={t("resources.group.awsRegion")}
+        className={cn(selectClass, region && selectActive)}
+      >
+        <option value="">{t("resources.group.awsRegion")}</option>
+        {(facets.awsRegion ?? []).map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
           </option>
+        ))}
+      </select>
+
+      {!hideType && (
+        <select
+          value={selectedType}
+          onChange={(e) =>
+            setFilters({
+              resourceType: e.target.value ? [e.target.value] : undefined,
+            })
+          }
+          aria-label={t("resources.group.resourceType")}
+          className={cn(selectClass, selectedType && selectActive)}
+        >
+          <option value="">{t("resources.group.resourceType")}</option>
+          {(facets.resourceType ?? []).map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
         </select>
-      </div>
+      )}
 
-      <div className="ml-auto flex flex-wrap items-center gap-2">
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" className="px-2.5">
-              <ListFilter />
-              {t("resources.filter.more")}
-              {moreCount > 0 && (
-                <span className="rounded-sm bg-primary-soft px-1.5 text-xs font-semibold text-primary">
-                  {moreCount}
-                </span>
-              )}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent
-            align="start"
-            className="max-h-[70vh] w-[min(360px,calc(100vw-32px))] overflow-auto p-3"
-          >
-            <div className="flex flex-col gap-4">
-              {scope?.kind !== "acct" && (
-                <Section label={t("resources.group.accountId")}>
-                  <OptionList
-                    options={facets.accountId ?? []}
-                    selected={asList(state.filters.accountId)}
-                    onChange={(next) =>
-                      setFilters({ accountId: next.length ? next : undefined })
-                    }
-                  />
-                </Section>
-              )}
-              {scope?.kind !== "app" && (
-                <Section label={t("resources.group.eimId")}>
-                  <OptionList
-                    options={facets.eimId ?? []}
-                    selected={asList(state.filters.eimId)}
-                    onChange={(next) =>
-                      setFilters({ eimId: next.length ? next : undefined })
-                    }
-                  />
-                </Section>
-              )}
-              <Section label={t("resources.group.baId")}>
-                <OptionList
-                  options={facets.baId ?? []}
-                  selected={asList(state.filters.baId)}
-                  onChange={(next) =>
-                    setFilters({ baId: next.length ? next : undefined })
-                  }
-                />
-              </Section>
-              <Section label={t("resources.group.tags")}>
-                <TagFilter
-                  value={tagFilters(state.filters)}
-                  onChange={(next) =>
-                    setFilters({
-                      tag: next.tag.length ? next.tag : undefined,
-                      tagMissing: next.tagMissing.length
-                        ? next.tagMissing
-                        : undefined,
-                    })
-                  }
-                />
-              </Section>
-              {typeColumns.map((column) => (
-                <Section key={column.key} label={column.label}>
-                  <FilterControl
-                    column={column}
-                    value={state.filters[column.key]}
-                    options={facets[column.key]}
-                    onChange={(value) => setFilters({ [column.key]: value })}
-                  />
-                </Section>
-              ))}
-            </div>
-          </PopoverContent>
-        </Popover>
-
-        {hasFilters && (
-          <Button variant="link" onClick={clearAll}>
-            {t("action.clearFilters")}
-          </Button>
+      <select
+        value={status}
+        onChange={(e) => {
+          const value = e.target.value
+          setFilters({
+            status:
+              value === ""
+                ? undefined
+                : value === "all"
+                  ? ALL_STATUSES
+                  : [value],
+          })
+        }}
+        aria-label={t("resources.filter.status")}
+        className={cn(selectClass, status && selectActive)}
+      >
+        <option value="">{t("resources.filter.status")}</option>
+        <option value="missing">{t("status.missing")}</option>
+        <option value="deleted">{t("status.deleted")}</option>
+        <option value="all">{t("resources.filter.allIncludingDeleted")}</option>
+      </select>
+      <Button
+        variant="outline"
+        className="px-2.5"
+        onClick={() => setMoreOpen(true)}
+      >
+        <ListFilter />
+        {t("resources.filter.more")}
+        {moreCount > 0 && (
+          <span className="rounded-sm bg-primary-soft px-1.5 text-xs font-semibold text-primary">
+            {moreCount}
+          </span>
         )}
-      </div>
+      </Button>
+
+      {hasFilters && (
+        <Button variant="link" onClick={clearAll}>
+          {t("action.clearFilters")}
+        </Button>
+      )}
+
+      <Dialog
+        open={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        title={t("resources.filter.more")}
+        className="w-[min(48rem,calc(100vw-2rem))]"
+      >
+        <p className="text-muted-foreground">
+          {t("resources.filter.moreHint")}
+        </p>
+        <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+          {scope?.kind !== "acct" && (
+            <Section label={t("resources.group.accountId")}>
+              <OptionList
+                options={facets.accountId ?? []}
+                selected={asList(state.filters.accountId)}
+                onChange={(next) =>
+                  setFilters({ accountId: next.length ? next : undefined })
+                }
+              />
+            </Section>
+          )}
+          {scope?.kind !== "app" && (
+            <Section label={t("resources.group.eimId")}>
+              <OptionList
+                options={facets.eimId ?? []}
+                selected={asList(state.filters.eimId)}
+                onChange={(next) =>
+                  setFilters({ eimId: next.length ? next : undefined })
+                }
+              />
+            </Section>
+          )}
+          <Section label={t("resources.group.baId")}>
+            <OptionList
+              options={facets.baId ?? []}
+              selected={asList(state.filters.baId)}
+              onChange={(next) =>
+                setFilters({ baId: next.length ? next : undefined })
+              }
+            />
+          </Section>
+          <Section label={t("resources.group.tags")}>
+            <TagFilter
+              value={tagFilters(state.filters)}
+              onChange={(next) =>
+                setFilters({
+                  tag: next.tag.length ? next.tag : undefined,
+                  tagMissing: next.tagMissing.length
+                    ? next.tagMissing
+                    : undefined,
+                })
+              }
+            />
+          </Section>
+          {typeColumns.map((column) => (
+            <Section key={column.key} label={column.label}>
+              <FilterControl
+                column={column}
+                value={state.filters[column.key]}
+                options={facets[column.key]}
+                onChange={(value) => setFilters({ [column.key]: value })}
+              />
+            </Section>
+          ))}
+        </div>
+        <div className="sticky -bottom-5 z-10 -mx-5 -mb-5 flex flex-wrap items-center justify-between gap-3 border-t bg-card px-5 pt-3 pb-5">
+          <Button variant="link" onClick={clearMore} disabled={moreCount === 0}>
+            {t("resources.filter.clearMore")}
+          </Button>
+          <Button onClick={() => setMoreOpen(false)}>{t("action.done")}</Button>
+        </div>
+      </Dialog>
     </search>
   )
 }
@@ -366,8 +379,8 @@ export function ResourceExport({
 
 function Section({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-1.5">
-      <h3 className="text-xs font-semibold text-muted-foreground">{label}</h3>
+    <section className="flex min-w-0 flex-col gap-2">
+      <h3 className="text-sm font-medium">{label}</h3>
       {children}
     </section>
   )

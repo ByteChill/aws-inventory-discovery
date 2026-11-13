@@ -6,6 +6,7 @@ import {
   useApplication,
   useColumns,
   useFacets,
+  useResourceSummary,
   useResources,
   useResourceTypes,
 } from "@/api/hooks"
@@ -24,6 +25,7 @@ import {
 import { Breadcrumb } from "@/components/layout/crumbs"
 import { Page, PageHeader, Panel } from "@/components/layout/page"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   NAV_GROUPS,
   type NavGroup,
@@ -31,6 +33,7 @@ import {
 } from "@/features/inventory-nav"
 import { ResourceExport, ResourceFilters } from "@/features/resource-filters"
 import { ResourcePreview } from "@/features/resource-preview"
+import { ScanDialog } from "@/features/scan-dialog"
 import { SERVICE_ICON } from "@/features/service-icons"
 import { useI18n } from "@/i18n"
 import { basePath } from "@/lib/base-path"
@@ -102,12 +105,13 @@ function Resources() {
   const type = singleType(state)
   const types = useResourceTypes()
   const [preview, setPreview] = useState<ResourceItem | null>(null)
+  const [scanOpen, setScanOpen] = useState(false)
   const columnsQuery = useColumns(type)
   const apiColumns = columnsQuery.data
   const ready = !!apiColumns && !columnsQuery.isPlaceholderData
 
   const columns = useMemo(
-    () => buildColumns(apiColumns ?? [], type, scope !== null, t),
+    () => buildColumns(apiColumns ?? [], type, scope?.kind ?? null, t),
     [apiColumns, type, scope, t],
   )
 
@@ -137,6 +141,12 @@ function Resources() {
     params,
     { page: state.page, pageSize: state.pageSize, sort: state.sort },
     ready,
+  )
+  // Facets cap every field at 200 buckets; the stats need the real totals.
+  // Only the service strip and the group overview show them.
+  const summary = useResourceSummary(
+    params,
+    ready && (!!service || (!!group && !search.scanRequestId)),
   )
 
   const attrFacets = (apiColumns ?? [])
@@ -354,6 +364,29 @@ function Resources() {
               >
                 {t("resources.backToScan", { id: scanId })}
               </Link>
+            ) : scope && !typePage ? (
+              <>
+                <Button variant="outline" asChild>
+                  <Link to="/">{t("overview.allScope")}</Link>
+                </Button>
+                {scope.kind === "acct" && (
+                  <Button variant="outline" asChild>
+                    <Link
+                      to="/accounts/$accountId"
+                      params={{ accountId: scope.id }}
+                    >
+                      {t("overview.viewAccount")}
+                    </Link>
+                  </Button>
+                )}
+                <Button onClick={() => setScanOpen(true)}>
+                  {t(
+                    scope.kind === "app"
+                      ? "overview.scanApp"
+                      : "accounts.scanThis",
+                  )}
+                </Button>
+              </>
             ) : undefined
           }
         />
@@ -396,6 +429,8 @@ function Resources() {
         <GroupOverview
           group={group}
           total={total}
+          appCount={summary.data?.applications ?? 0}
+          accountCount={summary.data?.accounts ?? 0}
           facets={facets}
           state={state}
           onChange={changeState}
@@ -405,8 +440,8 @@ function Resources() {
       {service && (
         <TypeStrip
           total={total}
-          accountCount={facets.accountId?.length ?? 0}
-          appCount={facets.eimId?.length ?? 0}
+          accountCount={summary.data?.accounts ?? 0}
+          appCount={summary.data?.applications ?? 0}
           showAppCount={scope === null}
           statusLabel={stripColumn?.label}
           statusFilterKey={stripColumn?.key}
@@ -472,6 +507,19 @@ function Resources() {
         back={back}
         onClose={() => setPreview(null)}
       />
+      {scanOpen && (
+        <ScanDialog
+          open={scanOpen}
+          onClose={() => setScanOpen(false)}
+          preset={
+            scope?.kind === "app"
+              ? { eimId: scope.eim }
+              : scope?.kind === "acct"
+                ? { accountIds: [scope.id] }
+                : undefined
+          }
+        />
+      )}
     </Page>
   )
 }
@@ -479,12 +527,16 @@ function Resources() {
 function GroupOverview({
   group,
   total,
+  appCount,
+  accountCount,
   facets,
   state,
   onChange,
 }: {
   group: NavGroup
   total: number
+  appCount: number
+  accountCount: number
   facets: Record<string, Option[]>
   state: TableState
   onChange: (next: TableState) => void
@@ -505,8 +557,6 @@ function GroupOverview({
     }))
     .sort((a, b) => b.count - a.count)
   const maxService = Math.max(0, ...byService.map((item) => item.count))
-  const appCount = facets.eimId?.length ?? 0
-  const accountCount = facets.accountId?.length ?? 0
 
   function toggle(key: "accountType" | "awsRegion", value: string) {
     const values = asList(state.filters[key])
@@ -693,7 +743,7 @@ function BarList({
 function buildColumns(
   apiColumns: ApiColumn[],
   type: string | undefined,
-  scoped: boolean,
+  scoped: "app" | "acct" | null,
   t: ReturnType<typeof useI18n>["t"],
 ): Column[] {
   const byKey = new Map(apiColumns.map((c) => [c.key, c]))
@@ -708,7 +758,8 @@ function buildColumns(
     })
 
   const account = byKey.get("accountId")
-  if (account)
+  // Only an account scope fixes the account; an application spans several.
+  if (account && scoped !== "acct")
     out.push({
       ...account,
       key: "accountId",
@@ -721,12 +772,13 @@ function buildColumns(
 
   const env = byKey.get("accountType")
   const region = byKey.get("awsRegion")
-  if (env) out.push({ ...env, label: t("resources.group.accountType") })
+  if (env && scoped !== "acct")
+    out.push({ ...env, label: t("resources.group.accountType") })
   if (region) out.push({ ...region, label: t("resources.group.awsRegion") })
 
   const resourceType = byKey.get("resourceType")
   if (resourceType && !type)
-    out.push({ ...resourceType, label: t("resources.group.resourceType") })
+    out.push({ ...resourceType, label: t("overview.statTypes") })
 
   if (type) out.push(...apiColumns.filter((c) => c.scope === "type"))
 

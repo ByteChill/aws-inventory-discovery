@@ -4,9 +4,16 @@ import type { ReactNode } from "react"
 import type { ScanSummary } from "@/client"
 import { Time } from "@/components/time"
 import { reasonText } from "@/features/scan-parts"
-import { useI18n } from "@/i18n"
+import { type MessageKey, useI18n } from "@/i18n"
 import { formatDuration, formatNumber } from "@/lib/format"
 import { cn } from "@/lib/utils"
+
+function finishTime(value: string, locale: string) {
+  return new Intl.DateTimeFormat(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value))
+}
 
 const cardClass =
   "flex min-h-[156px] min-w-0 flex-col rounded-xl border bg-card px-[18px] py-4"
@@ -65,6 +72,13 @@ export function ScanSummaryCards({
             {t("scans.summary.sweepLine", { id: sweep.scanRequestId })}
             <Time value={sweep.startedAt} />
           </p>
+          {sweep.estimatedFinishAt && (
+            <p className="mt-auto pt-2 text-xs text-muted-foreground">
+              {t("scans.summary.estimatedFinish" as MessageKey, {
+                time: finishTime(sweep.estimatedFinishAt, locale),
+              })}
+            </p>
+          )}
           {sweep.behindSchedule && (
             <p className="mt-auto pt-2 text-xs text-warn">
               {t("scans.behindNoDuration")}

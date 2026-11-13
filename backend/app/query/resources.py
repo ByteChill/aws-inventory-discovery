@@ -6,7 +6,18 @@ from collections.abc import Mapping, Sequence
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import ColumnElement, Select, and_, case, func, literal, or_, select, union_all
+from sqlalchemy import (
+    ColumnElement,
+    Select,
+    and_,
+    case,
+    distinct,
+    func,
+    literal,
+    or_,
+    select,
+    union_all,
+)
 from sqlalchemy.engine import Row
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.selectable import Join
@@ -23,6 +34,7 @@ from app.schemas.resources import (
     RelationshipRef,
     ResourceDetail,
     ResourceItem,
+    ResourceSummary,
     Tag,
 )
 from app.types.columns import column_paths, column_values
@@ -210,6 +222,31 @@ def count(
         .where(where(f, registry, task_retention=task_retention))
     )
     return session.execute(statement).scalar_one()
+
+
+def summary(
+    session: Session, f: ResourceFilter, registry: TypeRegistry, *, task_retention: timedelta
+) -> ResourceSummary:
+    """Distinct counts under the filter in one query; unlike facets, nothing is capped."""
+    statement = (
+        select(
+            func.count().label("resources"),
+            func.count(distinct(R.account_id)).label("accounts"),
+            func.count(distinct(A.eim_id)).label("applications"),
+            func.count(distinct(R.resource_type)).label("resource_types"),
+            func.count(distinct(R.aws_region)).label("regions"),
+        )
+        .select_from(RESOURCE.join(ACCOUNT, R.account_id == A.account_id))
+        .where(where(f, registry, task_retention=task_retention))
+    )
+    row = session.execute(statement).one()
+    return ResourceSummary(
+        resources=row.resources,
+        accounts=row.accounts,
+        applications=row.applications,
+        resource_types=row.resource_types,
+        regions=row.regions,
+    )
 
 
 def get_detail(session: Session, registry: TypeRegistry, resource_id: int) -> ResourceDetail:

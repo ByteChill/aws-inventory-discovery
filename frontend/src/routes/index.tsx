@@ -1,21 +1,17 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
-import {
-  type ComponentType,
-  type ReactNode,
-  useDeferredValue,
-  useMemo,
-  useState,
-} from "react"
+import { type ComponentType, type ReactNode, useState } from "react"
 
 import {
   useAccount,
   useAccounts,
   useApplication,
   useApplications,
+  useColumns,
   useFacets,
   useOverview,
+  useResourceSummary,
 } from "@/api/hooks"
-import type { AccountSummary, Application } from "@/client"
+import type { AccountSummary } from "@/client"
 import {
   stateToSearch,
   type TableSearch,
@@ -25,12 +21,13 @@ import {
 import { Breadcrumb } from "@/components/layout/crumbs"
 import { Page, PageHeader, Panel } from "@/components/layout/page"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { NAV_GROUPS } from "@/features/inventory-nav"
 import { OverviewResources } from "@/features/overview-resources"
+import { ScanDialog } from "@/features/scan-dialog"
 import { SERVICE_ICON } from "@/features/service-icons"
 import { type MessageKey, useI18n } from "@/i18n"
 import { formatNumber } from "@/lib/format"
+import { resourceParams, singleType } from "@/lib/resource-query"
 import { parseScope, scopeParams, scopeValue, withScope } from "@/lib/scope"
 import { cn } from "@/lib/utils"
 
@@ -56,16 +53,22 @@ function Overview() {
   const appEim = scope?.kind === "app" ? scope.eim : undefined
   const accountId = scope?.kind === "acct" ? scope.id : undefined
 
+  const [scanOpen, setScanOpen] = useState(false)
   const overview = useOverview()
+  const columns = useColumns(singleType(state))
+  const params = resourceParams(state, columns.data ?? [], scopeParams(scope))
+  const ready = !!columns.data && !columns.isPlaceholderData
+  const summary = useResourceSummary(params, ready)
   const facets = useFacets(
-    ["resourceType", "accountType", "awsRegion"],
-    scopeParams(scope),
+    ["resourceType", "accountType", "awsRegion", "accountId"],
+    params,
+    ready,
   )
   const app = useApplication(appEim)
   const account = useAccount(accountId)
   const appAccounts = useAccounts(
     appEim ? { eimId: [appEim] } : {},
-    { page: 1, pageSize: 8, sort: "-resourceCount" },
+    { page: 1, pageSize: 200, sort: "-resourceCount" },
     !!appEim,
   )
   const appUnreachable = useAccounts(
@@ -80,28 +83,32 @@ function Overview() {
   )
   const appsTotal = useApplications({}, { page: 1, pageSize: 1 })
 
-  const [appQuery, setAppQuery] = useState("")
-  const appSearch = useDeferredValue(appQuery.trim())
-  const appMatches = useApplications(
-    { q: appSearch || undefined },
-    { page: 1, pageSize: 5, sort: "-resourceCount" },
-  )
-
+  function matchingBuckets(key: string) {
+    const values = state.filters[key]
+    const selected = Array.isArray(values) ? values : values ? [values] : []
+    return (facets.data?.[key] ?? []).filter(
+      (item) => !selected.length || selected.includes(item.value),
+    )
+  }
+  // A facet leaves out its own filter, so each distribution keeps every bucket
+  // (the selected one is highlighted); only the stats follow the selection.
   const byType = facets.data?.resourceType ?? []
   const byEnv = facets.data?.accountType ?? []
   const byRegion = facets.data?.awsRegion ?? []
-  const resourceTotal = byType.reduce((sum, item) => sum + item.count, 0)
-  const typeTotal = byType.length
-  const regionTotal = byRegion.length
-  const services = useMemo(() => serviceBars(byType), [byType])
-
-  const appsCount = scope === null ? (appsTotal.data?.total ?? 0) : 0
+  const resourceTotal = summary.data?.resources ?? 0
+  const typeTotal = summary.data?.resourceTypes ?? 0
+  const regionTotal = summary.data?.regions ?? 0
+  const services = serviceBars(byType)
+  const filtered = !!state.q || Object.keys(state.filters).length > 0
+  // The summary counts in SQL; facet buckets stop at 200 and would under-report a
+  // large organization's applications and accounts.
+  const appsCount = filtered
+    ? (summary.data?.applications ?? 0)
+    : (appsTotal.data?.total ?? 0)
   const accountsCount =
-    scope === null
-      ? (overview.data?.accountTotal ?? 0)
-      : scope.kind === "app"
-        ? (appAccounts.data?.total ?? app.data?.accountCount ?? 0)
-        : 1
+    filtered || scope !== null
+      ? (summary.data?.accounts ?? 0)
+      : (overview.data?.accountTotal ?? 0)
   const unreachable =
     scope === null
       ? (overview.data?.accountUnreachable ?? 0)
@@ -190,7 +197,8 @@ function Overview() {
                 ? t("overview.appSubtitle", {
                     eim: scope.eim,
                     ba: app.data?.baId ?? t("common.none"),
-                    accounts: accountsCount,
+                    accounts:
+                      appAccounts.data?.total ?? app.data?.accountCount ?? 0,
                     envs:
                       app.data?.environments
                         .map((env) => t(`env.${env}`))
@@ -209,9 +217,30 @@ function Overview() {
           }
           actions={
             scope && (
-              <Button variant="outline" asChild>
-                <Link to="/">{t("overview.allScope")}</Link>
-              </Button>
+              <>
+                <Button variant="outline" asChild>
+                  <Link to="/" search={{ s: undefined }}>
+                    {t("overview.allScope")}
+                  </Link>
+                </Button>
+                {scope.kind === "acct" && (
+                  <Button variant="outline" asChild>
+                    <Link
+                      to="/accounts/$accountId"
+                      params={{ accountId: scope.id }}
+                    >
+                      {t("overview.viewAccount")}
+                    </Link>
+                  </Button>
+                )}
+                <Button onClick={() => setScanOpen(true)}>
+                  {t(
+                    scope.kind === "app"
+                      ? "overview.scanApp"
+                      : "accounts.scanThis",
+                  )}
+                </Button>
+              </>
             )
           }
         />
@@ -296,7 +325,32 @@ function Overview() {
         </Stat>
       </dl>
 
+      {scope?.kind === "app" && (
+        <section
+          className="flex flex-wrap items-center gap-2"
+          aria-label={t("overview.appAccounts")}
+        >
+          <span className="text-xs text-muted-foreground">
+            {t("overview.byAccount")}
+          </span>
+          {(appAccounts.data?.items ?? []).map((item) => (
+            <Link
+              key={item.accountId}
+              to="/"
+              search={scopeSearch("acct", item.accountId)}
+              className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2 hover:border-primary"
+            >
+              <strong className="font-semibold">{item.accountName}</strong>
+              <span className="text-xs text-muted-foreground">
+                {t(`env.${item.accountType}`)}
+              </span>
+            </Link>
+          ))}
+        </section>
+      )}
+
       <details
+        key={search.s ?? "all"}
         className="group flex flex-col"
         open={scope === null ? true : undefined}
       >
@@ -317,12 +371,17 @@ function Overview() {
         </summary>
         <div
           className={cn(
-            "grid items-start gap-x-8 gap-y-6 md:grid-cols-2",
-            scope?.kind === "acct" ? "xl:grid-cols-2" : "xl:grid-cols-4",
+            "grid items-start gap-4 min-[801px]:grid-cols-2",
+            scope?.kind === "acct"
+              ? "min-[1301px]:grid-cols-2"
+              : scope?.kind === "app"
+                ? "min-[1301px]:grid-cols-4"
+                : "min-[1301px]:grid-cols-3",
           )}
         >
           <Panel title={t("overview.byService")}>
             <Bars
+              collapse={4}
               items={services.map((service) => ({
                 key: service.key,
                 label: service.label,
@@ -336,28 +395,22 @@ function Overview() {
             />
           </Panel>
 
-          {scope === null && (
-            <Panel title={t("overview.byApp")}>
-              <Input
-                value={appQuery}
-                onChange={(e) => setAppQuery(e.target.value)}
-                placeholder={t("overview.appSearch")}
-                aria-label={t("overview.appSearch")}
-                className="mb-2"
-              />
-              <AppBars
-                apps={appMatches.data?.items ?? []}
-                total={appMatches.data?.total ?? 0}
-                query={appSearch}
-                searchFor={(eim) => scopeSearch("app", eim)}
-              />
-            </Panel>
-          )}
-
           {scope?.kind === "app" && (
             <Panel title={t("overview.byAccount")}>
               <AccountBars
-                accounts={appAccounts.data?.items ?? []}
+                accounts={(appAccounts.data?.items ?? [])
+                  .filter((item) =>
+                    matchingBuckets("accountId").some(
+                      (bucket) => bucket.value === item.accountId,
+                    ),
+                  )
+                  .map((item) => ({
+                    ...item,
+                    resourceCount:
+                      facets.data?.accountId?.find(
+                        (bucket) => bucket.value === item.accountId,
+                      )?.count ?? 0,
+                  }))}
                 searchFor={(id) => scopeSearch("acct", id)}
               />
             </Panel>
@@ -366,6 +419,7 @@ function Overview() {
           {scope?.kind !== "acct" && (
             <Panel title={t("overview.byEnv")}>
               <Bars
+                collapse={4}
                 items={byEnv.map((item) => ({
                   key: item.value,
                   label: item.label,
@@ -379,6 +433,7 @@ function Overview() {
 
           <Panel title={t("overview.byRegion")}>
             <Bars
+              collapse={4}
               items={byRegion.map((item) => ({
                 key: item.value,
                 label: item.label,
@@ -397,6 +452,19 @@ function Overview() {
         scope={scope}
         fallbackTotal={resourceTotal}
       />
+      {scanOpen && (
+        <ScanDialog
+          open={scanOpen}
+          onClose={() => setScanOpen(false)}
+          preset={
+            scope?.kind === "app"
+              ? { eimId: scope.eim }
+              : scope?.kind === "acct"
+                ? { accountIds: [scope.id] }
+                : undefined
+          }
+        />
+      )}
     </Page>
   )
 }
@@ -533,60 +601,6 @@ function Bar({ value, max }: { value: number; max: number }) {
   )
 }
 
-function AppBars({
-  apps,
-  total,
-  query,
-  searchFor,
-}: {
-  apps: Application[]
-  total: number
-  query: string
-  searchFor: (eim: string) => TableSearch
-}) {
-  const { t, locale } = useI18n()
-  const max = Math.max(0, ...apps.map((app) => app.resourceCount))
-  return (
-    <div className="flex flex-col">
-      {apps.length === 0 ? (
-        <Empty />
-      ) : (
-        <ul className="flex flex-col">
-          {apps.map((app) => (
-            <li key={app.eimId}>
-              <Link
-                to="/"
-                search={searchFor(app.eimId)}
-                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-1.5 hover:bg-subtle"
-              >
-                <span className="flex min-w-0 items-baseline gap-2">
-                  <span className="truncate text-sm">{app.eimApp}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {app.eimId}
-                  </span>
-                </span>
-                <span className="text-sm tabular-nums">
-                  {formatNumber(app.resourceCount, locale)}
-                </span>
-                <Bar value={app.resourceCount} max={max} />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-      <Link
-        to="/apps"
-        search={query ? { q: query } : {}}
-        className="mt-1 px-2 text-sm text-primary hover:underline"
-      >
-        {query
-          ? t("overview.viewMatchingApps", { count: total })
-          : t("overview.viewAllApps", { count: total })}
-      </Link>
-    </div>
-  )
-}
-
 function AccountBars({
   accounts,
   searchFor,
@@ -595,31 +609,47 @@ function AccountBars({
   searchFor: (id: string) => TableSearch
 }) {
   const { t, locale } = useI18n()
+  const [expanded, setExpanded] = useState(false)
   const max = Math.max(0, ...accounts.map((account) => account.resourceCount))
   if (accounts.length === 0) return <Empty />
+  const hidden = Math.max(0, accounts.length - 4)
+  const shown = hidden > 0 && !expanded ? accounts.slice(0, 4) : accounts
   return (
-    <ul className="flex flex-col">
-      {accounts.map((account) => (
-        <li key={account.accountId}>
-          <Link
-            to="/"
-            search={searchFor(account.accountId)}
-            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-1.5 hover:bg-subtle"
-          >
-            <span className="flex min-w-0 items-baseline gap-2">
-              <span className="truncate text-sm">{account.accountName}</span>
-              <span className="text-xs text-muted-foreground">
-                {t(`env.${account.accountType}`)}
+    <div className="flex flex-col">
+      <ul className="flex flex-col">
+        {shown.map((account) => (
+          <li key={account.accountId}>
+            <Link
+              to="/resources"
+              search={searchFor(account.accountId)}
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-1.5 hover:bg-subtle"
+            >
+              <span className="flex min-w-0 items-baseline gap-2">
+                <span className="truncate text-sm">{account.accountName}</span>
+                <span className="text-xs text-muted-foreground">
+                  {t(`env.${account.accountType}`)}
+                </span>
               </span>
-            </span>
-            <span className="text-sm tabular-nums">
-              {formatNumber(account.resourceCount, locale)}
-            </span>
-            <Bar value={account.resourceCount} max={max} />
-          </Link>
-        </li>
-      ))}
-    </ul>
+              <span className="text-sm tabular-nums">
+                {formatNumber(account.resourceCount, locale)}
+              </span>
+              <Bar value={account.resourceCount} max={max} />
+            </Link>
+          </li>
+        ))}
+      </ul>
+      {hidden > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="mt-1 w-fit px-2 text-sm font-medium text-primary hover:underline"
+        >
+          {expanded
+            ? t("overview.showLess")
+            : t("overview.showAll", { count: accounts.length })}
+        </button>
+      )}
+    </div>
   )
 }
 

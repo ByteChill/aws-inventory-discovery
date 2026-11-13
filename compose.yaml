@@ -52,6 +52,9 @@ services:
       - "55432:5432"
     volumes:
       - ./devtools/postgres-init:/docker-entrypoint-initdb.d:ro,Z
+      # Keep the database across `compose up --force-recreate` (the demo data is cheap to
+      # rebuild, but recreating api should not wipe it).
+      - aws-inventory-discovery-postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U inventory -d inventory"]
       interval: 2s
@@ -149,3 +152,6 @@ services:
         condition: service_started
       fake-aws:
         condition: service_started
+
+volumes:
+  aws-inventory-discovery-postgres-data:

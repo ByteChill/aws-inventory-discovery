@@ -60,10 +60,10 @@ class RelationshipParams(BaseModel):
 
 @router.get("")
 def list_resources(
-    params: ResourceListDep, session: ReadSessionDep, registry: RegistryDep
+    params: ResourceListDep, session: ReadSessionDep, registry: RegistryDep, cache: CacheDep
 ) -> Page[ResourceItem]:
     return resources_query.list_resources(
-        session, registry, params, task_retention=task_retention()
+        session, registry, cache, params, task_retention=task_retention()
     )
 
 
@@ -82,9 +82,14 @@ def resource_facets(
 
 @router.get("/summary")
 def resource_summary(
-    params: ResourceFilterDep, session: ReadSessionDep, registry: RegistryDep
+    params: ResourceFilterDep,
+    session: ReadSessionDep,
+    registry: RegistryDep,
+    cache: CacheDep,
 ) -> ResourceSummary:
-    return resources_query.summary(session, params, registry, task_retention=task_retention())
+    return resources_query.summary(
+        session, params, registry, task_retention=task_retention(), cache=cache
+    )
 
 
 @router.get("/export")

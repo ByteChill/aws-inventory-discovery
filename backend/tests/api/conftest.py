@@ -3,6 +3,7 @@ from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
+import redis
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
@@ -38,6 +39,16 @@ def db_engine(schema_name: str) -> Iterator[Engine]:
         yield engine
     finally:
         engine.dispose()
+
+
+@pytest.fixture
+def redis_client() -> Iterator[redis.Redis]:
+    """The real cache, emptied first so a test only sees what it writes itself."""
+    client = redis.Redis.from_url(TEST_REDIS_URL)
+    for key in client.scan_iter("aws-inventory-discovery:*"):
+        client.delete(key)
+    yield client
+    client.close()
 
 
 @pytest.fixture

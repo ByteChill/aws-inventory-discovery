@@ -123,15 +123,6 @@ def test_facet_field_not_allowed_is_a_400(client: TestClient, query: str) -> Non
     assert response.json()["code"] == "invalid_filter"
 
 
-@pytest.fixture
-def redis_client() -> Iterator[redis.Redis]:
-    client = redis.Redis.from_url(TEST_REDIS_URL)
-    for key in client.scan_iter("aws-inventory-discovery:*"):
-        client.delete(key)
-    yield client
-    client.close()
-
-
 @pytest.mark.usefixtures("seeded")
 def test_facets_and_overview_are_cached_in_redis_for_60_seconds(
     make_client: Callable[..., TestClient], redis_client: redis.Redis, schema_name: str

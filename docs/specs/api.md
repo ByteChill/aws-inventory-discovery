@@ -110,17 +110,18 @@ type ScopeCandidate = {
 - `attrs` 只在请求里指定了单一 `resourceType` 时返回该类型的专属列；否则为 `{}`。详情和按 ARN 查询的 `attrs` 总是按资源自己的类型计算。数据里没有值的列是 `null`。
 - 筛选参数的规则：同名参数重复传是「或」；不同参数之间是「且」；`status` 默认是 `active` 加 `missing`。`tag=key:value` 按**第一个冒号**切分（所以值里可以有冒号），没有冒号就是「有这个标签」，重复的 `tag` 是「或」；`tagMissing=key` 重复传是「且」（这些标签都没有）。`q` 对名称、ARN、资源 ID 做不区分大小写的包含匹配。时间范围参数是 `<字段>.gte` / `<字段>.lte`，字段是 `configurationItemCaptureTime`、`firstSeenAt`、`lastChangedAt`、`missingSince`、`deletedAt`。`scanRequestId` 只列这次扫描范围内的当前资源，范围按已解析的账号、区域、类型计算，不是简单拼接请求里的 `scope`；显示的是当前清单，不代表这次扫描当时的结果。扫描创建后 `TASK_RETENTION_DAYS` 天内，范围按这次扫描的任务计算：`shard` 和 `confirm_missing` 覆盖自己的账号、区域、类型；`config_group` 覆盖它的账号、区域里 Config 能提供的类型（不含只走 Cloud Control 或服务 API 的类型，比如 Target Group、AMI，它们各有自己的 `shard`），请求限定了 `resourceTypes` 时再按它收窄；`resource` 只覆盖那一个资源；`sweep_account` 不覆盖任何资源；全局类型的区域记为 `global`，由 us-east-1 的 `config_group` 覆盖。超过这个时间后任务明细可能已经清理（先完成的任务先清理），改按请求记录的范围计算：有 `target` 的请求是那个资源或那个范围，其余按 `scope` 的账号（或 `all`）、区域（给了 us-east-1 就包含全局类型）和类型。`attr.<key>`：文本、枚举、布尔列只能等于（可多值，是「或」）；数字列可以等于，也可以 `.gte` / `.lte`；时间列只能 `.gte` / `.lte`；只在 `resourceType` 恰好指定一个类型时可用。
 - **类型专属列和通用列重名**（ECS Task Definition 的 `status` 是 Config 里的任务定义状态，和资源的 `status` 同名）：类型专属列在查询参数里**一律**写成 `attr.<key>`（`attr.status`），不带前缀的 `status` 永远是资源状态。`GET /columns` 会返回两个 `key` 都是 `status` 的列，用 `scope`（`common` / `type`）区分；dashboard 据此给类型专属列加前缀。
+- 缓存：`total` 单独缓存在 Redis，60 秒，key 由筛选条件决定（不含分页和排序）；与 `GET /resources/summary` 的 `resources` 共用。列表内容本身不缓存。
 
 ### `GET /resources/facets`
 - 参数：`field`（可重复，允许 `accountId`、`eimId`、`baId`、`accountType`、`awsRegion`、`resourceType`、`status`，以及单一类型时的 `attr.<key>`，后者要求列类型为 `enum` 或 `bool`）、筛选参数。
 - 计算某个字段的分类时，不应用这个字段本身的筛选条件，这样已选中的选项旁边也能显示其他选项的数量；`status` 的分类也一样，不应用默认的「`active` 加 `missing`」，所以能看到各个状态（包括 `deleted`）的数量。计算 `resourceType` 的分类时也不应用 `attr.*` 条件（它们依赖选定的类型）。
 - 返回：`{ [field: string]: FacetBucket[] }`，每个字段最多 200 个选项，按数量倒序；`label` 按 `Accept-Language`：账号是账号名称，EIM 是 EIM 应用名，类型是类型的显示名，状态和环境是本地化的词，`global` 区域显示为「全局」，布尔是「是 / 否」。
-- 缓存：Redis，key `aws-inventory-discovery:facets:<筛选条件和语言的哈希>`，60 秒。
+- 缓存：Redis，按字段分别缓存，key `aws-inventory-discovery:facets:<筛选条件的哈希>:<field>:<语言>`，60 秒；同一筛选条件下，不同页面请求的字段集合共用重叠字段。
 
 ### `GET /resources/summary`
 - 参数：筛选参数（同 `GET /resources`）。
 - 返回：`{ resources, accounts, applications, resourceTypes, regions }`，分别是当前筛选条件下的资源数、账号数、EIM 应用数、资源类型数和区域数，用 `count(distinct …)` 在 SQL 里计算，不受分类计数最多 200 个选项的限制。`resources` 与列表的 `total` 一致；没有 EIM 的账号不计入 `applications`。
-- 缓存：不缓存。
+- 缓存：`resources` 复用列表 `total` 的 60 秒缓存；另外四个去重计数每次查询。
 
 ### `GET /resources/export`
 - 参数：`format=csv|jsonl`（默认 `csv`）、`columns`（CSV 用，逗号分隔的列键，通用列写 `key`，类型专属列写 `attr.<key>`；默认是全部通用列，指定了单一类型时再加上它的全部专属列；不认识的列返回 422 `validation_error`）、`lang`（`zh-CN` 或 `en`，指定表头用的语言，优先于 `Accept-Language`，方便直接在浏览器地址里下载）、筛选参数、排序。
@@ -188,6 +189,7 @@ type ScopeCandidate = {
 ### `GET /accounts`
 - 参数：`accountType`、`eimId`、`baId`、`accessStatus`（都可以重复，是「或」）、`q`（名称或 ID，包含匹配）、`active`（默认 `true`；`false` 是从清单里移除的账号）、分页、排序（默认 `accountName`，可以排序的有 `accountId`、`accountName`、`accountType`、`eimId`、`baId`、`accessStatus`、`lastScanOkAt`、`active`、`resourceCount`；不认识的参数返回 422）。`resourceCount` 不含已删除的资源。
 - 返回：`Page<AccountRef & { active: boolean; accessStatus: string; accessError: string | null; resourceCount: number; lastScanOkAt: string | null; purgeAt: string | null }>`。`purgeAt` 只对不活跃的账号有值。
+- 缓存：整页缓存在 Redis，60 秒，key 由筛选、分页、排序和 `INACTIVE_ACCOUNT_PURGE_DAYS` 决定。
 
 ### `GET /accounts/{accountId}`
 返回：上面的账号信息，加上 `regions: { region: string; optInStatus: string; reachable: boolean; configRecording: boolean | null }[]`。
@@ -199,6 +201,7 @@ type ScopeCandidate = {
 - 参数：`q`（应用名、EIM、BA，包含匹配）、`accountType`（可重复）、分页、排序（`eimApp`、`accountCount`、`resourceCount`，默认 `eimApp`；不认识的参数返回 422，不能排序的字段返回 400 `invalid_sort`）。
 - 返回：`Page<Application>`。只统计活跃账号；没有 EIM 的账号不出现；`resourceCount` 不含已删除资源。`total` 和列表按同一组（EIM、应用名、BA）计数。先分页，再只为这一页的应用统计资源数；只有按 `resourceCount` 排序时才需要统计全部应用。
 - 应用的身份是 EIM。EIM、应用名、BA 一一对应的假设来自 DESIGN 2，真实接口格式确认前不变。
+- 缓存：整页缓存在 Redis，60 秒，key 由筛选、分页和排序决定。
 
 ## 6. 扫描
 
@@ -243,6 +246,7 @@ type Task = {
 - `sweep`：最近一个还在 `queued` / `running`、并且是定时的（`trigger = schedule`）或范围是全部账号的扫描；没有则为 `null`。`accountsTotal` 是这个请求里有任务的账号数，`accountsDone` 是其中已经没有排队或运行中任务的账号数。`estimatedFinishAt` = 开始时间 + 已用时间 × 总数 ÷ 已完成数，一个账号都没完成时为 `null`。`behindSchedule`：预计完成时间（没有就用现在）晚于开始时间加 `SWEEP_INTERVAL_HOURS`。**接口不返回计划完成时间，所以不能算出「慢了多久」。**
 - `backlog`：`queued` 是已经到时间可以领取的排队任务数（`not_before` 不晚于现在），`oldestWaitSeconds` 是最早那个到时间以来等了多久；`onDemand` 是 `priority = 0`，`scheduled` 是其余。
 - `failures24h`：最近 24 小时内结束的失败任务，按错误码汇总（没有错误码的记为 `internal`）。`missingCount` 是全库状态为 `missing` 的资源数。
+- 缓存：Redis，key `aws-inventory-discovery:scans:summary`，10 秒（dashboard 每 3–5 秒轮询）。
 
 ### `POST /scans`
 - 请求头：`Idempotency-Key`（可选）。

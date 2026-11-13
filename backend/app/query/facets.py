@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 from datetime import timedelta
 from typing import Any
 
@@ -12,6 +10,7 @@ from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.orm import Session
 
 from app.core.cache import Cache
+from app.query.cache_keys import params_digest
 from app.query.columns import Language, attr_expr, label_of, value_label
 from app.query.filters import ResourceFilter, invalid_filter, single_spec, where
 from app.query.tables import ACCOUNT, RESOURCE, A, R
@@ -41,17 +40,7 @@ class FacetParams(ResourceFilter):
 def cache_key(cache: Cache, params: FacetParams, language: Language, field: str) -> str:
     """One entry per (filter, field, language): a request for a different set of fields reuses
     the entries it shares with earlier requests instead of computing them again."""
-    return cache.key("facets", _digest(params), field, language)
-
-
-def _digest(params: FacetParams) -> str:
-    body = params.model_dump(mode="json", by_alias=True, exclude={"field"})
-    normalised = {
-        name: sorted(set(value)) if isinstance(value, list) else value
-        for name, value in body.items()
-        if value not in (None, [], "")
-    }
-    return hashlib.sha256(json.dumps(normalised, sort_keys=True).encode()).hexdigest()
+    return cache.key("facets", params_digest(params, exclude={"field"}), field, language)
 
 
 def _bucket_label(

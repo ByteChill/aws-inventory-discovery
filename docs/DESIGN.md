@@ -59,7 +59,7 @@ flowchart LR
 | 数据生产服务 `aws-inventory-discovery-worker` | **唯一**调用目标账号 AWS API、唯一持有目标账号凭证的服务；负责扫描、写入数据、确认删除、定时调度、定期清理 |
 | 数据消费服务 `aws-inventory-discovery-api` | 提供 REST API，托管 dashboard；读数据，创建扫描请求。**不调用目标账号**，唯一访问的 AWS 服务是 hub 账号自己的 CloudWatch Logs，用来显示任务日志 |
 | Aurora PostgreSQL | 唯一的数据源：资产数据、账号、扫描请求和任务（任务队列）、范围租约 |
-| ElastiCache for Valkey | 只做缓存：分类计数、概览统计，key 以 `aws-inventory-discovery:<DATABASE_SCHEMA>:` 开头（多个部署共用一个缓存实例时，schema 不同的部署互不读到对方的缓存）。cluster mode disabled，自定义端口 16379，私有子网 + 安全组 + TLS + AUTH，1 主 1 副本、Multi-AZ；不可用时只是变慢，数据不受影响 |
+| ElastiCache for Valkey | 只做缓存：分类计数、概览统计、筛选后的资源计数、账号 / 应用列表和扫描页摘要，key 以 `aws-inventory-discovery:<DATABASE_SCHEMA>:` 开头（多个部署共用一个缓存实例时，schema 不同的部署互不读到对方的缓存）。默认 60 秒，扫描页摘要 10 秒。cluster mode disabled，自定义端口 16379，私有子网 + 安全组 + TLS + AUTH，1 主 1 副本、Multi-AZ；不可用时只是变慢，数据不受影响 |
 
 api 和 worker 只通过数据库协作：api 写扫描请求和任务，worker 领取并执行。worker 不接受任何直接调用。
 
@@ -667,7 +667,7 @@ aws-inventory-discovery/
 |---|---|
 | `DATABASE_URL`、`DATABASE_READ_URL`、`DATABASE_SCHEMA` | — |
 | `REDIS_URL` | 由 Secrets Manager 注入，形如 `rediss://:<token>@<primary-endpoint>:16379/0` |
-| `CACHE_TTL_SECONDS` | `60`（facets 和概览统计的缓存秒数；写入时向下抖动最多 10%） |
+| `CACHE_TTL_SECONDS` | `60`（分类计数、资源计数、账号 / 应用列表、概览统计的缓存秒数；写入时向下抖动最多 10%。扫描页摘要固定 10 秒） |
 | `ACCOUNT_REGISTRY_URL`、`CREDENTIAL_SERVICE_URL` | — |
 | `REACHABLE_REGIONS` | `ap-east-1,us-east-1,eu-west-1,eu-west-2` |
 | `SWEEP_ENABLED`、`SWEEP_INTERVAL_HOURS` | `true`、`6` |

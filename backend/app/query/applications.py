@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import TypeAdapter
 from sqlalchemy import ColumnElement, FromClause, Subquery, any_, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.cache import Cache
 from app.core.errors import ApiError
+from app.query.cache_keys import params_digest
 from app.query.paging import PagingParams
 from app.query.search import like_pattern
 from app.query.tables import A, R
@@ -15,6 +18,7 @@ from app.schemas.applications import Application
 from app.schemas.base import Page
 
 ENVIRONMENTS = ("dev", "preprod", "prod")
+_PAGE = TypeAdapter(Page[Application])
 
 
 class ApplicationFilter(PagingParams):
@@ -106,7 +110,13 @@ def _application(row: Any) -> Application:
     )
 
 
-def list_applications(session: Session, params: ApplicationFilter) -> Page[Application]:
+def list_applications(
+    session: Session, params: ApplicationFilter, cache: Cache
+) -> Page[Application]:
+    key = cache.key("applications", "list", params_digest(params))
+    cached = cache.get(key)
+    if cached is not None:
+        return _PAGE.validate_python(cached)
     applications = _applications(params)
     # Page first, then count resources for that page only. Counting them for every
     # application is needed only to sort by the count.
@@ -122,9 +132,11 @@ def list_applications(session: Session, params: ApplicationFilter) -> Page[Appli
         select(page, resource_count).order_by(*_ordering(params.sort, page, resource_count))
     ).all()
     total = session.execute(select(func.count()).select_from(applications)).scalar_one()
-    return Page(
+    result = Page(
         items=[_application(row) for row in rows],
         page=params.page,
         page_size=params.page_size,
         total=total,
     )
+    cache.set(key, _PAGE.dump_python(result, mode="json", by_alias=True))
+    return result

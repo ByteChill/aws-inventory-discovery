@@ -22,7 +22,9 @@ from sqlalchemy.engine import Row
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.selectable import Join
 
+from app.core.cache import Cache
 from app.core.errors import ApiError
+from app.query.cache_keys import params_digest
 from app.query.columns import STALE_AFTER, attr_expr, attr_value
 from app.query.filters import Paging, ResourceFilter, order_by, single_spec, where
 from app.query.tables import ACCOUNT, RELATION, RESOURCE, SHARD, A, R, S
@@ -187,7 +189,12 @@ def detail_rows(
 
 
 def list_resources(
-    session: Session, registry: TypeRegistry, params: Paging, *, task_retention: timedelta
+    session: Session,
+    registry: TypeRegistry,
+    cache: Cache,
+    params: Paging,
+    *,
+    task_retention: timedelta,
 ) -> Page[ResourceItem]:
     condition = where(params, registry, task_retention=task_retention)
     spec = single_spec(params, registry)
@@ -209,28 +216,48 @@ def list_resources(
         items=items,
         page=params.page,
         page_size=params.page_size,
-        total=count(session, params, registry, task_retention=task_retention),
+        total=count(session, params, registry, task_retention=task_retention, cache=cache),
     )
 
 
 def count(
-    session: Session, f: ResourceFilter, registry: TypeRegistry, *, task_retention: timedelta
+    session: Session,
+    f: ResourceFilter,
+    registry: TypeRegistry,
+    *,
+    task_retention: timedelta,
+    cache: Cache,
 ) -> int:
+    """The filter's resource count, shared by the list's `total` and `/resources/summary`.
+
+    Paging and sort do not change the count, so they are left out of the key."""
+    key = cache.key("resources", "count", params_digest(f, exclude={"page", "page_size", "sort"}))
+    cached = cache.get(key)
+    if cached is not None:
+        return int(cached)
     statement = (
         select(func.count())
         .select_from(RESOURCE.join(ACCOUNT, R.account_id == A.account_id))
         .where(where(f, registry, task_retention=task_retention))
     )
-    return session.execute(statement).scalar_one()
+    total = session.execute(statement).scalar_one()
+    cache.set(key, total)
+    return total
 
 
 def summary(
-    session: Session, f: ResourceFilter, registry: TypeRegistry, *, task_retention: timedelta
+    session: Session,
+    f: ResourceFilter,
+    registry: TypeRegistry,
+    *,
+    task_retention: timedelta,
+    cache: Cache,
 ) -> ResourceSummary:
-    """Distinct counts under the filter in one query; unlike facets, nothing is capped."""
+    """Distinct counts under the filter; unlike facets, nothing is capped. The resource count
+    comes from the same cache as the list's `total`."""
+    resources = count(session, f, registry, task_retention=task_retention, cache=cache)
     statement = (
         select(
-            func.count().label("resources"),
             func.count(distinct(R.account_id)).label("accounts"),
             func.count(distinct(A.eim_id)).label("applications"),
             func.count(distinct(R.resource_type)).label("resource_types"),
@@ -241,7 +268,7 @@ def summary(
     )
     row = session.execute(statement).one()
     return ResourceSummary(
-        resources=row.resources,
+        resources=resources,
         accounts=row.accounts,
         applications=row.applications,
         resource_types=row.resource_types,

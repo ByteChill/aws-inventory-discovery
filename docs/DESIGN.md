@@ -31,7 +31,7 @@
 | 部署账号 | 一个 hub 账号，主区域 ap-east-1，应用部署在这里 |
 | 已开启区域 | ap-east-1、us-east-1、eu-west-1、eu-west-2，以后可能增加 |
 | 网络 | 每个区域一个私有 VPC。ap-east-1 通过 VPC peering 访问其他三个区域的 interface endpoint |
-| 数据存储 | 已有的 Aurora PostgreSQL（已为本服务分配独立 schema）和 Redis，直接使用 |
+| 数据存储 | 已有的 Aurora PostgreSQL（已为本服务分配独立 schema）；专用的 ElastiCache for Valkey（cluster mode disabled，自定义端口 16379），只做缓存 |
 | 目标账号 | 同一个组织内 1000 多个账号，每个账号都有 ADFS-readonly 角色（AWS 托管的 ReadOnlyAccess 策略） |
 | AWS Config | 每个账号都已开启，按账号调用，**没有组织级聚合器** |
 | 账号清单服务 ① | 返回 `account_id、account_name、account_type（dev/preprod/prod）、eim_id（8 位字符串）、eim_app、ba_id（如 BA2011234）`。EIM 是一个应用的资源集合：EIM ID、BA ID、应用名各自唯一、一一对应；每个账号只属于一个 EIM，一个 EIM 通常有 dev、preprod、prod 各一个账号。**接口格式暂按假设实现，上线前确认** |
@@ -45,7 +45,7 @@ flowchart LR
   S[内部服务] --> ALB
   ALB --> API[aws-inventory-discovery-api<br/>ECS · FastAPI + Dashboard]
   API --> PG[(Aurora PostgreSQL<br/>任务队列 + 资产数据)]
-  API --> R[(Redis<br/>缓存)]
+  API --> R[(ElastiCache for Valkey<br/>缓存 · 16379)]
   API --> CWL[CloudWatch Logs<br/>任务日志]
   W[aws-inventory-discovery-worker<br/>ECS · 扫描 + 定时调度] --> PG
   W --> REG[① 账号清单服务]
@@ -59,7 +59,7 @@ flowchart LR
 | 数据生产服务 `aws-inventory-discovery-worker` | **唯一**调用目标账号 AWS API、唯一持有目标账号凭证的服务；负责扫描、写入数据、确认删除、定时调度、定期清理 |
 | 数据消费服务 `aws-inventory-discovery-api` | 提供 REST API，托管 dashboard；读数据，创建扫描请求。**不调用目标账号**，唯一访问的 AWS 服务是 hub 账号自己的 CloudWatch Logs，用来显示任务日志 |
 | Aurora PostgreSQL | 唯一的数据源：资产数据、账号、扫描请求和任务（任务队列）、范围租约 |
-| Redis | 只做缓存：分类计数、概览统计，key 以 `aws-inventory-discovery:<DATABASE_SCHEMA>:` 开头（共用一个 Redis、schema 不同的部署互不读到对方的缓存）。Redis 不可用时只是变慢，数据不受影响 |
+| ElastiCache for Valkey | 只做缓存：分类计数、概览统计，key 以 `aws-inventory-discovery:<DATABASE_SCHEMA>:` 开头（多个部署共用一个缓存实例时，schema 不同的部署互不读到对方的缓存）。cluster mode disabled，自定义端口 16379，私有子网 + 安全组 + TLS + AUTH，1 主 1 副本、Multi-AZ；不可用时只是变慢，数据不受影响 |
 
 api 和 worker 只通过数据库协作：api 写扫描请求和任务，worker 领取并执行。worker 不接受任何直接调用。
 
@@ -666,7 +666,8 @@ aws-inventory-discovery/
 | 变量 | 默认值 |
 |---|---|
 | `DATABASE_URL`、`DATABASE_READ_URL`、`DATABASE_SCHEMA` | — |
-| `REDIS_URL` | — |
+| `REDIS_URL` | 由 Secrets Manager 注入，形如 `rediss://:<token>@<primary-endpoint>:16379/0` |
+| `CACHE_TTL_SECONDS` | `60`（facets 和概览统计的缓存秒数；写入时向下抖动最多 10%） |
 | `ACCOUNT_REGISTRY_URL`、`CREDENTIAL_SERVICE_URL` | — |
 | `REACHABLE_REGIONS` | `ap-east-1,us-east-1,eu-west-1,eu-west-2` |
 | `SWEEP_ENABLED`、`SWEEP_INTERVAL_HOURS` | `true`、`6` |
@@ -690,6 +691,7 @@ aws-inventory-discovery/
 - **安全组和路由**：远端 endpoint 的安全组放行来自 ap-east-1 VPC 网段的 443 端口；peering 两边都要配置路由。
 - 不需要 Route 53 的 endpoint：Route 53 的数据来自 Config（记录在 us-east-1），或由 Cloud Control 在 AWS 内部调用。
 - **入口**：挂在平台已有的内网 ALB 上，不新建 ALB。监听器规则：路径 `/aws-inventory`、`/aws-inventory/*` → 目标组 `aws-inventory-discovery-api`（HTTP 8000，目标类型 ip），健康检查 `/aws-inventory/api/v1/health`。**规则上不要配 URL 重写**：ALB 原样转发路径，应用自己带前缀。api 安全组的 8000 端口只放行这个 ALB 的安全组，所以 `--forwarded-allow-ips '*'` 是安全的。
+- **缓存**：见 12.6。
 
 ### 12.5 IAM
 
@@ -699,6 +701,14 @@ aws-inventory-discovery/
 | `aws-inventory-discovery-api-task` | 对 `/aws-inventory-discovery/worker` 日志组的 `logs:FilterLogEvents` |
 | `aws-inventory-discovery-task-execution` | 拉 ECR 镜像、写日志、对 `aws-inventory-discovery/*` 两个密钥做 `secretsmanager:GetSecretValue`（ECS 用它把密钥里的 JSON 键注入成环境变量；这是执行角色的权限，本服务的代码从不读取 secret 的值） |
 | 目标账号 | 已有的 ADFS-readonly 角色（ReadOnlyAccess），不需要改 |
+
+### 12.6 缓存（ElastiCache for Valkey）
+- 专用实例，cluster mode disabled，1 主 1 副本、Multi-AZ 自动故障转移；生产 `cache.t4g.small`，非生产 `cache.t4g.micro`。与 api / worker 在同一个 ap-east-1 VPC 的私有子网，通过安全组直接访问。
+- 自定义端口 **16379**；安全组 `aws-inventory-discovery-redis` 只放行 `aws-inventory-discovery-api` 和 `aws-inventory-discovery-worker` 到 16379。
+- 传输中 TLS + 静态加密；AUTH token 放 Secrets Manager 的 `aws-inventory-discovery/redis`，连接串形如 `rediss://:<token>@<primary-endpoint>:16379/0`；token 里的特殊字符要 URL 编码。
+- 参数组 `aws-inventory-discovery-redis`：`maxmemory-policy=allkeys-lru`、`timeout=0`、`tcp-keepalive=300`。
+- 关闭备份（snapshot retention 0）；开启自动小版本升级，维护窗口放在低峰。
+- 监控：`Evictions`、`DatabaseMemoryUsagePercentage`、`EngineCPUUtilization`、`CurrConnections`、`NewConnections`、`ReplicationLag`；至少给 `Evictions > 0`、内存 > 80%、CPU > 70%、`ReplicationLag > 1s` 配告警。
 
 ## 13. 命名规范
 
@@ -710,8 +720,9 @@ aws-inventory-discovery/
 | CloudWatch 日志组 | `/aws-inventory-discovery/api`、`/aws-inventory-discovery/worker`、`/aws-inventory-discovery/migrate` |
 | IAM 角色 | `aws-inventory-discovery-api-task`、`aws-inventory-discovery-worker-task`、`aws-inventory-discovery-task-execution` |
 | Secrets Manager | `aws-inventory-discovery/db`、`aws-inventory-discovery/redis` |
+| ElastiCache（replication group、subnet group、parameter group、缓存安全组） | `aws-inventory-discovery-redis` |
 | 目标组 | `aws-inventory-discovery-api`（名称上限 32 个字符）；ALB 用平台已有的，不新建 |
-| 安全组 | `aws-inventory-discovery-api`、`aws-inventory-discovery-worker`、`aws-inventory-discovery-endpoints` |
+| 安全组 | `aws-inventory-discovery-api`、`aws-inventory-discovery-worker`、`aws-inventory-discovery-redis`、`aws-inventory-discovery-endpoints` |
 | VPC endpoint | 为本项目新建的，`Name` 标签用 `aws-inventory-discovery-<服务>`；平台已有的直接复用，不改名 |
 | Route 53 私有托管区 | 域名必须是 AWS 的服务域名，不能加前缀，用注释和标签标明归属 |
 | 所有 AWS 资源的标签 | `Project=aws-inventory-discovery` |
@@ -738,5 +749,5 @@ aws-inventory-discovery/
 1. **账号清单服务 ① 的真实接口格式**：地址、鉴权方式、是否分页、字段名。
 2. **凭证服务 ② 的真实接口格式**：怎么传账号、返回的字段、过期时间的格式、鉴权方式、调用频率限制。
 3. **样本数据和真实数据的差异**：用一个真实账号抓取每个类型的 Config 和 Cloud Control 数据，修正样本和映射。
-4. **平台创建的资源**：ECS 服务、endpoint、9 个私有托管区、IAM 角色、密钥、日志组，按 `deploy/CHECKLIST.md` 逐项核对，再用 `doctor` 命令检查连通性。
+4. **平台创建的资源**：ECS 服务、ElastiCache 缓存、endpoint、9 个私有托管区、IAM 角色、密钥、日志组，按 `deploy/CHECKLIST.md` 逐项核对，再用 `doctor` 命令检查连通性。
 5. **必填标签列表**（如果要用「缺少某个标签」的快捷筛选）。

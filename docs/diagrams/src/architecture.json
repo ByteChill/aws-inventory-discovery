@@ -81,7 +81,7 @@
     {
       "id": "redis",
       "type": "database",
-      "label": "ElastiCache Redis",
+      "label": "ElastiCache for Valkey",
       "sublabel": "只做缓存",
       "pos": [
         450,
@@ -314,7 +314,7 @@
       "items": [
         "worker 用 FOR UPDATE SKIP LOCKED 领取任务",
         "定时调度在 worker 内，advisory lock 选主",
-        "Redis 只做缓存，不可用时只影响速度"
+        "ElastiCache for Valkey 只做缓存，不可用时只影响速度"
       ]
     },
     {

@@ -20,7 +20,6 @@ from app.types.columns import column_paths
 from app.types.registry import TypeRegistry
 
 MAX_BUCKETS = 200
-CACHE_SECONDS = 60
 
 # facet field -> (value column, column the label comes from or None)
 COMMON_FIELDS: dict[str, tuple[ColumnElement[Any], ColumnElement[Any] | None]] = {
@@ -32,19 +31,27 @@ COMMON_FIELDS: dict[str, tuple[ColumnElement[Any], ColumnElement[Any] | None]] =
     "resourceType": (R.resource_type, None),
     "status": (R.status, None),
 }
-_BUCKETS = TypeAdapter(dict[str, list[FacetBucket]])
+_BUCKETS = TypeAdapter(list[FacetBucket])
 
 
 class FacetParams(ResourceFilter):
     field: list[str] = []
 
 
-def cache_key(cache: Cache, params: FacetParams, language: Language) -> str:
-    body = params.model_dump(mode="json", by_alias=True)
-    digest = hashlib.sha256(
-        json.dumps({"filter": body, "language": language}, sort_keys=True).encode()
-    ).hexdigest()
-    return cache.key("facets", digest)
+def cache_key(cache: Cache, params: FacetParams, language: Language, field: str) -> str:
+    """One entry per (filter, field, language): a request for a different set of fields reuses
+    the entries it shares with earlier requests instead of computing them again."""
+    return cache.key("facets", _digest(params), field, language)
+
+
+def _digest(params: FacetParams) -> str:
+    body = params.model_dump(mode="json", by_alias=True, exclude={"field"})
+    normalised = {
+        name: sorted(set(value)) if isinstance(value, list) else value
+        for name, value in body.items()
+        if value not in (None, [], "")
+    }
+    return hashlib.sha256(json.dumps(normalised, sort_keys=True).encode()).hexdigest()
 
 
 def _bucket_label(
@@ -83,9 +90,10 @@ def compute(
     language: Language,
     *,
     task_retention: timedelta,
+    fields: list[str],
 ) -> dict[str, list[FacetBucket]]:
     result: dict[str, list[FacetBucket]] = {}
-    for field in dict.fromkeys(params.field):
+    for field in fields:
         value, label = _field_columns(field, params, registry)
         total = func.count().label("total")
         statement = (
@@ -129,10 +137,21 @@ def facets(
     *,
     task_retention: timedelta,
 ) -> dict[str, list[FacetBucket]]:
-    key = cache_key(cache, params, language)
-    cached = cache.get(key)
-    if cached is not None:
-        return _BUCKETS.validate_python(cached)
-    result = compute(session, registry, params, language, task_retention=task_retention)
-    cache.set(key, _BUCKETS.dump_python(result, mode="json", by_alias=True), CACHE_SECONDS)
-    return result
+    fields = list(dict.fromkeys(params.field))
+    keys = [cache_key(cache, params, language, field) for field in fields]
+    values: dict[str, Any] = dict(zip(fields, cache.get_many(keys), strict=True))
+    missing = [field for field in fields if values[field] is None]
+    if missing:
+        computed = compute(
+            session, registry, params, language, task_retention=task_retention, fields=missing
+        )
+        cache.set_many(
+            {
+                cache_key(cache, params, language, field): _BUCKETS.dump_python(
+                    buckets, mode="json", by_alias=True
+                )
+                for field, buckets in computed.items()
+            }
+        )
+        values.update(computed)
+    return {field: _BUCKETS.validate_python(values[field]) for field in fields}

@@ -155,6 +155,60 @@ def test_facets_and_overview_are_cached_in_redis_for_60_seconds(
     assert redis_client.ttl(f"aws-inventory-discovery:{schema_name}:stats:overview:zh-CN") > 0
 
 
+@pytest.mark.usefixtures("seeded")
+def test_each_facet_field_is_cached_on_its_own(
+    make_client: Callable[..., TestClient], redis_client: redis.Redis, schema_name: str
+) -> None:
+    client = make_client(REDIS_URL=TEST_REDIS_URL)
+
+    one = client.get("/api/v1/resources/facets?field=awsRegion").json()
+    two = client.get("/api/v1/resources/facets?field=accountType&field=awsRegion").json()
+    keys = list(redis_client.scan_iter(f"aws-inventory-discovery:{schema_name}:facets:*"))
+
+    # The second request only computes and stores accountType; awsRegion comes from the cache.
+    assert len(keys) == 2
+    assert two["awsRegion"] == one["awsRegion"]
+
+
+@pytest.mark.usefixtures("seeded")
+def test_requests_share_one_redis_client(
+    make_client: Callable[..., TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    created = []
+    from_url = redis.Redis.from_url
+
+    def counting_from_url(*args: Any, **kwargs: Any) -> redis.Redis:
+        created.append(args)
+        return from_url(*args, **kwargs)
+
+    monkeypatch.setattr(redis.Redis, "from_url", counting_from_url)
+    client = make_client(REDIS_URL=TEST_REDIS_URL)
+
+    client.get("/api/v1/resources/facets?field=awsRegion")
+    client.get("/api/v1/resources/facets?field=accountType")
+    client.get("/api/v1/stats/overview")
+
+    assert len(created) == 1  # the app's cache, not one client per request
+
+
+@pytest.mark.usefixtures("seeded")
+def test_filter_values_in_any_order_share_one_cache_entry(
+    make_client: Callable[..., TestClient], redis_client: redis.Redis, schema_name: str
+) -> None:
+    client = make_client(REDIS_URL=TEST_REDIS_URL)
+
+    first = client.get(
+        "/api/v1/resources/facets?field=awsRegion&awsRegion=us-east-1&awsRegion=eu-west-1"
+    ).json()
+    second = client.get(
+        "/api/v1/resources/facets?field=awsRegion&awsRegion=eu-west-1&awsRegion=us-east-1"
+    ).json()
+    keys = list(redis_client.scan_iter(f"aws-inventory-discovery:{schema_name}:facets:*"))
+
+    assert len(keys) == 1
+    assert second == first
+
+
 @pytest.fixture
 def empty_schema(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
     """A second migrated schema with no data: another deployment on the same database."""

@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     DATABASE_READ_URL: str | None = None
     DATABASE_SCHEMA: str
     REDIS_URL: str | None = None
+    # How long cached facets and overview numbers stay valid. Entries are written with a
+    # slightly shorter random TTL so they do not all expire on the same second.
+    CACHE_TTL_SECONDS: int = 60
 
     ACCOUNT_REGISTRY_URL: str | None = None
     CREDENTIAL_SERVICE_URL: str | None = None

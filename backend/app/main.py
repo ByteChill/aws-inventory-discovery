@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from app.api.deps import get_registry
 from app.api.errors import register_error_handlers
 from app.api.main import api_router
+from app.core.cache import Cache
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.types.hooks import TYPE_HOOKS
@@ -15,10 +16,13 @@ setup_logging()
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # Load the resource types once; an invalid spec file stops the start-up.
     validate_hooks(get_registry(), TYPE_HOOKS)
-    yield
+    try:
+        yield
+    finally:
+        app.state.cache.close()
 
 
 def create_app() -> FastAPI:
@@ -36,6 +40,9 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     register_error_handlers(app)
+    app.state.cache = Cache.from_url(
+        settings.REDIS_URL, settings.DATABASE_SCHEMA, ttl_seconds=settings.CACHE_TTL_SECONDS
+    )
     app.include_router(api_router, prefix=f"{prefix}/api/v1")
     # Registered last so the API routes win; the dashboard is absent in plain dev runs.
     if settings.frontend_dist.is_dir():

@@ -20,7 +20,7 @@ flowchart LR
   U[Dashboard 用户 / 内部服务] --> ALB[已有的内网 ALB<br/>/aws-inventory]
   ALB --> API[aws-inventory-discovery-api<br/>FastAPI + Dashboard]
   API --> PG[(Aurora PostgreSQL)]
-  API --> R[(Redis 缓存)]
+  API --> R[(ElastiCache for Valkey 缓存)]
   W[aws-inventory-discovery-worker<br/>扫描 + 定时调度] --> PG
   W --> SVC[账号清单服务 ① / 凭证服务 ②]
   W --> EP[VPC endpoints] --> T[目标账号<br/>AWS Config / Cloud Control]
@@ -31,7 +31,7 @@ flowchart LR
 | `aws-inventory-discovery-worker` | 唯一调用目标账号 AWS API 的服务：扫描、写入、确认删除、定时调度、清理 |
 | `aws-inventory-discovery-api` | REST API 和 dashboard；只读数据库、创建扫描请求，不调用目标账号 |
 | Aurora PostgreSQL | 资产数据、账号、扫描任务（任务队列也在这里） |
-| Redis | 只做缓存 |
+| Redis | 专用 ElastiCache for Valkey，只做缓存 |
 | 数据来源 | 定时扫描用 AWS Config，Config 覆盖不到的用 Cloud Control；按需扫描和单资源刷新用 Cloud Control；两者都不支持的类型（AMI）用服务自己的 API |
 
 **技术栈**
@@ -40,7 +40,7 @@ flowchart LR
 |---|---|
 | 后端 | Python 3.14、FastAPI、SQLModel、Alembic、psycopg 3、boto3、uv、Ruff、ty |
 | 前端 | React 19、Vite、TypeScript、TanStack Router / Query / Table、shadcn/ui、Tailwind v4、Biome、Playwright |
-| 部署 | 一个镜像，两个 ECS Fargate 服务，ap-east-1 |
+| 部署 | 一个镜像，两个 ECS Fargate 服务，ap-east-1，专用 ElastiCache for Valkey |
 | 本地 | podman compose、moto、自带的 Cloud Control 模拟服务 |
 
 ## 代码结构

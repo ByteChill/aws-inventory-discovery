@@ -156,3 +156,9 @@
 ### D-33 `scanRequestId` 的范围：保留期内按任务，之后按请求记录的范围
 - **结论**：扫描创建后 `TASK_RETENTION_DAYS`（14 天）内，`scanRequestId` 的范围按这次扫描的任务计算；超过后改按请求记录的 `scope` 或 `target` 计算。`config_group` 只覆盖 Config 能提供的类型，不覆盖只走 Cloud Control 或服务 API 的类型。
 - **原因**：任务明细只保留 14 天，扫描请求保留 90 天，而每条扫描记录都有「查看当前范围资源」。只按任务计算时，超过 14 天的扫描会显示空列表，和范围本来就没有资源无法区分。任务按完成时间逐个清理，所以用「创建时间超过保留期」作为切换点，不用「任务是否已经清空」：前者不会出现只剩一部分任务、范围越来越小的中间状态。`config_group` 的任务不带类型，早先按「区域内所有类型」计算，会把同一轮里被去重跳过的 AMI、Target Group 也算进来（2026-11-13 独立评审发现）。
+
+### D-34 缓存用专用 ElastiCache for Valkey（cluster mode disabled）
+- **结论**：新建专用 ElastiCache for Valkey，不共用现有 Redis。cluster mode disabled，1 主 1 副本、Multi-AZ 自动故障转移，生产 `cache.t4g.small`（非生产 `cache.t4g.micro`）；自定义端口 16379，与 api / worker 在同一个 ap-east-1 VPC 的私有子网，安全组只放行 api / worker 到 16379；开启 TLS 和 AUTH（token 放 Secrets Manager 的 `aws-inventory-discovery/redis`）；关闭备份；参数组 `allkeys-lru`。缓存只存派生数据，key 仍以 `aws-inventory-discovery:<DATABASE_SCHEMA>:` 开头。
+- **原因**：缓存丢失只影响速度，不影响数据正确性；CMD 让本地和线上都用 `redis.Redis`，不需要 cluster-aware 客户端；自定义端口满足安全规范；专用实例避免共享缓存的内存、淘汰策略和 `FLUSHDB` 风险；Multi-AZ 避免节点故障时把查询压力打回 Aurora；Valkey 比 Redis OSS 便宜，仍在积极开发。
+- **否决**：ElastiCache Serverless（固定 6379/6380，不能自定义端口；强制 cluster mode enabled，客户端要换成 `RedisCluster`，本地环境也要另起集群或加配置分支）；共用现有 Redis（噪声邻居、内存策略不可控、cluster mode 未知）；MemoryDB（持久化数据库，不是缓存）；cluster mode enabled（数据量不需要分片，客户端和跨 slot 限制不值得）。
+- **备注**：D-02 的任务队列选择不受影响；D-03 的「Redis 只做缓存」不变。

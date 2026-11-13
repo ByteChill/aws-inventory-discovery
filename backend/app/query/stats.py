@@ -13,7 +13,6 @@ from app.query.tables import ACCOUNT, RESOURCE, A, R
 from app.schemas.resources import AccountTypeCount, StatsOverview, TypeCount
 from app.types.registry import TypeRegistry
 
-CACHE_SECONDS = 60
 UNREACHABLE = ("access_denied", "credential_error")
 
 
@@ -74,5 +73,5 @@ def overview(
     if cached is not None:
         return StatsOverview.model_validate(cached)
     result = compute(session, registry, language)
-    cache.set(key, result.model_dump(mode="json", by_alias=True), CACHE_SECONDS)
+    cache.set(key, result.model_dump(mode="json", by_alias=True))
     return result

@@ -58,7 +58,7 @@ def test_overview_counts_live_resources_and_reachable_accounts(
     assert body["accountUnreachable"] == 1  # credential_error
     prod = next(t for t in body["byAccountType"] if t["accountType"] == "prod")
     assert prod["count"] == len([r for r in live if r["account_id"] != DEV_ACCOUNT])
-    assert prod["label"] == "生产"
+    assert prod["label"] == "prod"
     assert datetime.fromisoformat(body["generatedAt"])
 
 

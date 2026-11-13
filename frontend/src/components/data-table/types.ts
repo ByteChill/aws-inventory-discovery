@@ -33,8 +33,8 @@ export type TableState = {
   q: string | undefined
 }
 
-export const DEFAULT_PAGE_SIZE = 50
-export const PAGE_SIZES = [50, 100, 200]
+export const DEFAULT_PAGE_SIZE = 10
+export const PAGE_SIZES = [10, 25, 50]
 
 export const emptyTableState: TableState = {
   page: 1,

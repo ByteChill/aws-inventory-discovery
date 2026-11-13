@@ -119,9 +119,9 @@ VALUE_LABELS: dict[str, dict[str, tuple[str, str]]] = {
         "deleted": ("已删除", "Deleted"),
     },
     "accountType": {
-        "dev": ("开发", "Dev"),
-        "preprod": ("预发布", "Pre-prod"),
-        "prod": ("生产", "Prod"),
+        "dev": ("dev", "dev"),
+        "preprod": ("preprod", "preprod"),
+        "prod": ("prod", "prod"),
     },
     "bool": {"true": ("是", "Yes"), "false": ("否", "No")},
 }

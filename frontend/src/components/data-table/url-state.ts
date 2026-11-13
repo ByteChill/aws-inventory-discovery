@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router"
 import { z } from "zod"
 
+import { scopeParam } from "@/lib/scope"
 import { DEFAULT_PAGE_SIZE, type FilterValue, type TableState } from "./types"
 
 const scalar = z.union([z.string(), z.number()])
@@ -29,6 +30,10 @@ export const tableSearchSchema = z.object({
   sort: z.string().optional().catch(undefined),
   q: z.string().optional().catch(undefined),
   f: z.record(z.string(), filterValue).optional().catch(undefined),
+  /** Resource browsing scope (`app:<EIM>` / `acct:<id>`); see lib/scope.ts. */
+  s: scopeParam,
+  /** Show the inventory inside one scan's scope instead of everything. */
+  scanRequestId: z.number().int().positive().optional().catch(undefined),
 })
 
 export type TableSearch = z.infer<typeof tableSearchSchema>

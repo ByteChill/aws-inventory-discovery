@@ -87,8 +87,8 @@ def test_labels_follow_accept_language(get_json: Callable[..., Any]) -> None:
     assert label(zh, "resourceType", "AWS::EC2::Instance") == "EC2 实例"
     assert label(en, "resourceType", "AWS::EC2::Instance") == "EC2 instance"
     assert label(zh, "status", "missing") != label(en, "status", "missing")
-    assert label(zh, "accountType", "prod") == "生产"
-    assert label(en, "accountType", "prod") == "Prod"
+    assert label(zh, "accountType", "prod") == "prod"
+    assert label(en, "accountType", "prod") == "prod"
     assert label(zh, "accountId", "111122223333") == "payments-prod"
     assert label(zh, "awsRegion", "us-east-1") == "us-east-1"
 

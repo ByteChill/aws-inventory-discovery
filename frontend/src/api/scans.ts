@@ -22,6 +22,7 @@ import {
   listScanScopes,
   listScans,
   listScanTasks,
+  listScopeCandidates,
   type RefreshedResource,
   refreshResource,
   retryFailed,
@@ -124,6 +125,27 @@ export function useAbnormalScopes() {
       (await listScanScopes({ query: { pageSize: 200 }, throwOnError: true }))
         .data,
     refetchInterval: 15_000,
+  })
+}
+
+/** The resources a guard spared in one scope, as saved when it tripped. */
+export function useScopeCandidates(
+  scanShardId: number | undefined,
+  q: string | undefined,
+  paging: { page: number; pageSize: number },
+) {
+  return useQuery({
+    queryKey: ["scope-candidates", scanShardId, q, paging],
+    queryFn: async () =>
+      (
+        await listScopeCandidates({
+          path: { scan_shard_id: scanShardId as number },
+          query: { q, ...paging },
+          throwOnError: true,
+        })
+      ).data,
+    enabled: scanShardId !== undefined,
+    placeholderData: keepPreviousData,
   })
 }
 

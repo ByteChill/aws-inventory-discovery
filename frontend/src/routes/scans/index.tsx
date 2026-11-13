@@ -490,7 +490,7 @@ function AnomalyBlock() {
                 {t("scans.anomalyColumn.region")}
               </th>
               <th scope="col" className="px-3.5 py-2 font-medium">
-                {t("scanScope.regionType")}
+                {t("detail.type")}
               </th>
               <th scope="col" className="px-3.5 py-2 font-medium">
                 {t("scanScope.detectedAt")}

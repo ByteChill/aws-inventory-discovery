@@ -60,7 +60,7 @@ const COLUMN_WIDTHS: Record<string, number> = {
   resourceName: 260,
   accountId: 180,
   eimId: 160,
-  accountType: 84,
+  accountType: 108,
   awsRegion: 120,
   resourceType: 180,
 }

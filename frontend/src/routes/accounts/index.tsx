@@ -212,7 +212,7 @@ function Accounts() {
           columnWidths={{
             accountName: 220,
             accountId: 150,
-            accountType: 90,
+            accountType: 108,
             eimId: 170,
             baId: 130,
             resourceCount: 90,

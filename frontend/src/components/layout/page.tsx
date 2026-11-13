@@ -37,7 +37,10 @@ export function PageHeader({
   return (
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0">
-        <h1 className={cn("break-all", mono && "font-mono text-base")}>
+        {/* IDs and ARNs have no spaces to wrap at; prose titles wrap by word. */}
+        <h1
+          className={cn("break-words", mono && "font-mono text-base break-all")}
+        >
           {title}
         </h1>
         {description && (

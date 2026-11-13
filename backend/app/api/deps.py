@@ -64,7 +64,7 @@ CacheDep = Annotated[Cache, Depends(get_cache)]
 LogsClientDep = Annotated[Any, Depends(get_logs_client)]
 LanguageDep = Annotated[Language, Depends(get_language)]
 
-# Filters shared by list, facets and export (DESIGN 8.2), each with its own extras.
+# Filters shared by list, facets, summary and export (DESIGN 8.2), each with its own extras.
 ResourceListDep = Annotated[Paging, Query()]
 ResourceFilterDep = Annotated[ResourceFilter, Query()]
 FacetParamsDep = Annotated[FacetParams, Query()]

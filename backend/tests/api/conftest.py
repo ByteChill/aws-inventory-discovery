@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import Engine
 
 from app.api.deps import get_registry
 from app.core.db import make_engine
@@ -25,6 +26,16 @@ def seeded(schema_name: str, registry: TypeRegistry) -> Iterator[Seeded]:
     engine = make_engine(TEST_DATABASE_URL, schema_name)
     try:
         yield seed(engine, registry)
+    finally:
+        engine.dispose()
+
+
+@pytest.fixture
+def db_engine(schema_name: str) -> Iterator[Engine]:
+    """An engine for the session's migrated schema, for tests that insert their own rows."""
+    engine = make_engine(TEST_DATABASE_URL, schema_name)
+    try:
+        yield engine
     finally:
         engine.dispose()
 

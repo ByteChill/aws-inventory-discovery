@@ -401,7 +401,7 @@ T2  定时扫描写入 q1、q2，observed_at = T0
 | 鉴权 | 不自己做登录，访问由网络层控制（内网 ALB、安全组）；当前设计阶段用假身份展示，正式接入时由网关传入，仅用于显示 |
 
 ### 8.2 资源筛选参数
-列表、分类计数、导出三个接口用同一套，后端用一个参数模型 `Annotated[ResourceFilter, Query()]` 统一接收。
+列表、分类计数、概览统计和导出四个接口用同一套，后端用一个参数模型 `Annotated[ResourceFilter, Query()]` 统一接收。
 
 | 参数 | 说明 |
 |---|---|
@@ -421,7 +421,7 @@ T2  定时扫描写入 q1、q2，observed_at = T0
 |---|---|---|
 | GET | `/resources` | 列表：筛选、搜索、排序、分页。不返回 `configuration` 和 `live_raw`，只返回列需要的 `attrs` 和 `relationshipCount` |
 | GET | `/resources/facets?field=...` | 分类计数，给筛选下拉框用；带上当前筛选条件；缓存在 Redis |
-| GET | `/resources/summary` | 当前筛选条件下的去重计数（资源、账号、应用、类型、区域），在 SQL 里算，不受分类计数 200 个选项的上限影响；给概览统计用 |
+| GET | `/resources/summary` | 当前筛选条件下的去重计数（资源、账号、应用、类型、区域），在 SQL 里算，不受分类计数 200 个选项的上限影响；给概览页和服务页 / 分组页的统计用 |
 | GET | `/resources/export?format=csv\|jsonl&lang=` | 流式导出当前筛选结果：CSV 是 `columns` 指定的列（默认全部），JSON Lines 是完整记录（Config 格式）；`lang` 指定 CSV 表头的语言 |
 | GET | `/resources/lookup?arn=` | 按 ARN 查询，返回列表 |
 | GET | `/resources/{id}` | 详情：Config 格式、实时数据、账号信息 |

@@ -143,7 +143,11 @@ function Resources() {
     ready,
   )
   // Facets cap every field at 200 buckets; the stats need the real totals.
-  const summary = useResourceSummary(params, ready)
+  // Only the service strip and the group overview show them.
+  const summary = useResourceSummary(
+    params,
+    ready && (!!service || (!!group && !search.scanRequestId)),
+  )
 
   const attrFacets = (apiColumns ?? [])
     .filter(

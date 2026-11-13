@@ -37,10 +37,10 @@ class FacetParams(ResourceFilter):
     field: list[str] = []
 
 
-def cache_key(cache: Cache, params: FacetParams, language: Language, field: str) -> str:
+def cache_key(cache: Cache, digest: str, language: Language, field: str) -> str:
     """One entry per (filter, field, language): a request for a different set of fields reuses
     the entries it shares with earlier requests instead of computing them again."""
-    return cache.key("facets", params_digest(params, exclude={"field"}), field, language)
+    return cache.key("facets", digest, field, language)
 
 
 def _bucket_label(
@@ -127,7 +127,8 @@ def facets(
     task_retention: timedelta,
 ) -> dict[str, list[FacetBucket]]:
     fields = list(dict.fromkeys(params.field))
-    keys = [cache_key(cache, params, language, field) for field in fields]
+    digest = params_digest(params, exclude={"field"})  # the same for every field
+    keys = [cache_key(cache, digest, language, field) for field in fields]
     values: dict[str, list[FacetBucket]] = {}
     missing: list[str] = []
     for field, raw in zip(fields, cache.get_many(keys), strict=True):
@@ -142,7 +143,7 @@ def facets(
         )
         cache.set_many(
             {
-                cache_key(cache, params, language, field): _BUCKETS.dump_python(
+                cache_key(cache, digest, language, field): _BUCKETS.dump_python(
                     buckets, mode="json", by_alias=True
                 )
                 for field, buckets in computed.items()

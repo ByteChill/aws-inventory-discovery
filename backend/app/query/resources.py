@@ -230,8 +230,14 @@ def count(
 ) -> int:
     """The filter's resource count, shared by the list's `total` and `/resources/summary`.
 
-    Paging and sort do not change the count, so they are left out of the key."""
-    key = cache.key("resources", "count", params_digest(f, exclude={"page", "page_size", "sort"}))
+    Paging and sort do not change the count, so they are left out of the key; the task retention
+    does, because it decides how `scanRequestId` resolves its scope."""
+    key = cache.key(
+        "resources",
+        "count",
+        str(task_retention),
+        params_digest(f, exclude={"page", "page_size", "sort"}),
+    )
     cached = cache.get(key)
     if isinstance(cached, int) and not isinstance(cached, bool):
         return cached

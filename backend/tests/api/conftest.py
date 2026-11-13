@@ -42,10 +42,11 @@ def db_engine(schema_name: str) -> Iterator[Engine]:
 
 
 @pytest.fixture
-def redis_client() -> Iterator[redis.Redis]:
-    """The real cache, emptied first so a test only sees what it writes itself."""
-    client = redis.Redis.from_url(TEST_REDIS_URL)
-    for key in client.scan_iter("aws-inventory-discovery:*"):
+def redis_client(schema_name: str) -> Iterator[redis.Redis]:
+    """The real cache, with this test schema's keys emptied first so a test only sees what it
+    writes itself. Other schemas — a local stack sharing the instance — keep their entries."""
+    client = redis.Redis.from_url(TEST_REDIS_URL, socket_connect_timeout=1, socket_timeout=1)
+    for key in client.scan_iter(f"aws-inventory-discovery:{schema_name}:*"):
         client.delete(key)
     yield client
     client.close()

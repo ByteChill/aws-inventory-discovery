@@ -40,18 +40,34 @@ class Cache:
     ) -> Self:
         if not url:  # unset or empty: no cache at all, so a blank variable does not stop start-up
             return cls(None, schema, ttl_seconds=ttl_seconds)
-        client = redis.Redis.from_url(
-            url,
-            socket_connect_timeout=1,
-            socket_timeout=1,
-            health_check_interval=30,
-            max_connections=MAX_CONNECTIONS,
-            client_name="aws-inventory-discovery",
-        )
+        try:
+            client = redis.Redis.from_url(
+                url,
+                socket_connect_timeout=1,
+                socket_timeout=1,
+                health_check_interval=30,
+                max_connections=MAX_CONNECTIONS,
+                client_name="aws-inventory-discovery",
+            )
+        except ValueError:
+            # A malformed URL (usually an AUTH token that was not URL-encoded) costs speed, not
+            # service, the same as Redis being down (D-03). The URL holds the token: never log it.
+            logger.error("REDIS_URL cannot be parsed, running without a cache")
+            return cls(None, schema, ttl_seconds=ttl_seconds)
         return cls(client, schema, ttl_seconds=ttl_seconds)
 
     def key(self, *parts: str) -> str:
         return f"{PREFIX}{self.schema}:{':'.join(parts)}"
+
+    def ping(self) -> bool:
+        """Whether Redis answers, for `/health`. A failure is "unavailable", not an error."""
+        if self._client is None:
+            return False
+        try:
+            return bool(self._client.ping())
+        except (redis.RedisError, OSError) as exc:
+            logger.warning("cache ping failed: %s", exc)
+            return False
 
     def get(self, key: str) -> Any | None:
         return self.get_many([key])[0]

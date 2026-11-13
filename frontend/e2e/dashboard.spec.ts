@@ -58,10 +58,11 @@ test("概览：统计数字和按服务分布打开对应的资源列表", async
     stats.getByRole("link", { name: count(resources.total), exact: true }),
   ).toBeVisible()
 
-  // Distributions start folded; the service bar opens that service's page.
-  const distributions = page.locator("details")
-  await distributions.getByText(t("overview.distributions")).click()
-  await distributions
+  // The prototype's service bars sit on the page; a bar opens that service's list.
+  const services = page.locator("section").filter({
+    has: page.getByRole("heading", { name: t("overview.byService") }),
+  })
+  await services
     .getByRole("link", { name: new RegExp(`^${SQS.label}\\b`) })
     .click()
   await expect(page).toHaveURL(/\/resources\?/)
@@ -155,7 +156,9 @@ test("资源预览和详情：整行打开预览，详情回到原列表，刷�
   await expect(page).toHaveURL(/q=/)
 
   // A click outside the name link opens the preview drawer.
-  const row = page.getByRole("row", { name: t("preview.row", { name }) })
+  const row = page
+    .getByRole("row", { name: t("preview.row", { name }) })
+    .first()
   await row.getByRole("cell").nth(3).click()
   const preview = page.getByRole("dialog", { name: t("preview.title") })
   await expect(preview.getByRole("heading", { name })).toBeVisible()
@@ -164,7 +167,9 @@ test("资源预览和详情：整行打开预览，详情回到原列表，刷�
 
   await expect(page).toHaveURL(new RegExp(`/resources/${r.id}\\?back=`))
   await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible()
-  await expect(section(page, t("detail.basic")).getByText(r.arn)).toBeVisible()
+  await expect(
+    section(page, t("detail.identifiers")).getByText(r.arn),
+  ).toBeVisible()
 
   // 刷新 re-reads the resource live; the "更新于" time moves forward.
   const updated = () =>
@@ -188,13 +193,32 @@ test("扫描：从表单发起单个账号的扫描，详情成功，当前范�
   const account = (await api<Page_<Account>>(page, "/accounts?pageSize=1"))
     .items[0]
 
-  await page.goto("scans")
+  // From a scoped resource list, scan management offers the way back to that scope.
+  await page.goto(`./?s=acct:${account.accountId}`)
+  await page
+    .getByRole("navigation", { name: t("nav.main") })
+    .getByRole("link", { name: new RegExp(`^${t("scans.title")}`) })
+    .click()
   await expect(
     page.getByRole("heading", { name: t("scans.title"), level: 1 }),
   ).toBeVisible()
-  await page
-    .getByRole("button", { name: t("action.scan"), exact: true })
-    .click()
+  const returnScope = page.getByRole("link", {
+    name: t("scans.returnScope", { name: account.accountName }),
+  })
+  await expect(returnScope).toBeVisible()
+  await returnScope.click()
+  await expect(page).toHaveURL(
+    (url) => url.searchParams.get("s") === `acct:${account.accountId}`,
+  )
+
+  await page.goto("scans")
+  await expect(
+    page.getByRole("region", { name: t("scans.summary.label") }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole("columnheader", { name: t("scans.column.id"), exact: true }),
+  ).toBeVisible()
+  await page.getByRole("button", { name: t("scans.new"), exact: true }).click()
   const dialog = page.getByRole("dialog")
   await dialog
     .getByLabel(t("scans.form.accountsSearch"))
@@ -207,7 +231,10 @@ test("扫描：从表单发起单个账号的扫描，详情成功，当前范�
   await expect(page).toHaveURL(/\/scans\/\d+/)
   const scanId = Number(new URL(page.url()).pathname.split("/").pop())
   await expect(
-    page.getByRole("heading", { name: new RegExp(t("scans.detail.title")) }),
+    page.getByRole("heading", {
+      level: 1,
+      name: new RegExp(`^${t("scans.detail.title")} #\\d+$`),
+    }),
   ).toBeVisible()
   await expect(page.getByText(t("scans.status.succeeded")).first()).toBeVisible(
     { timeout: 90_000 },
@@ -227,7 +254,7 @@ test("扫描：从表单发起单个账号的扫描，详情成功，当前范�
 
   await page
     .getByRole("table")
-    .getByRole("link", { name: /^\d+$/ })
+    .getByRole("link", { name: /^#?\d+$/ })
     .first()
     .click()
   await expect(page).toHaveURL(/\/tasks\/\d+/)
@@ -425,7 +452,7 @@ for (const width of [1440, 1920, 1024, 390]) {
 
     await page.goto("scans")
     await page
-      .getByRole("button", { name: t("action.scan"), exact: true })
+      .getByRole("button", { name: t("scans.new"), exact: true })
       .click()
     const box = await page.getByRole("dialog").boundingBox()
     expect(box).not.toBeNull()

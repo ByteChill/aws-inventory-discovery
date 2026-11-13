@@ -1,22 +1,13 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router"
 import {
-  Boxes,
+  ArrowLeft,
   ChevronDown,
   ChevronRight,
-  Cloud,
-  Container,
-  Cpu,
-  Globe,
-  Inbox,
-  KeyRound,
   LayoutDashboard,
-  Megaphone,
   PanelLeftClose,
   ScanSearch,
-  Split,
-  Zap,
 } from "lucide-react"
-import { type ComponentType, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import {
   useAccount,
@@ -33,24 +24,12 @@ import {
   type NavGroup,
   type NavService,
 } from "@/features/inventory-nav"
+import { SERVICE_ICON } from "@/features/service-icons"
 import { useI18n } from "@/i18n"
 import { formatNumber } from "@/lib/format"
 import { parseScope, type Scope, scopeParams, scopeValue } from "@/lib/scope"
 import { cn } from "@/lib/utils"
 import { ScopeDialog } from "./scope-dialog"
-
-const SERVICE_ICON: Record<string, ComponentType<{ className?: string }>> = {
-  ec2: Cpu,
-  ecs: Container,
-  lambda: Zap,
-  vpc: Cloud,
-  elb: Split,
-  route53: Globe,
-  sqs: Inbox,
-  sns: Megaphone,
-  secretsmanager: KeyRound,
-  other: Boxes,
-}
 
 const linkBase =
   "flex min-h-8 items-center gap-1.5 rounded-md px-2.5 py-1 hover:bg-subtle-strong"
@@ -75,7 +54,16 @@ export function Sidebar({
 
   const types = useResourceTypes()
   const summary = useScanSummary()
-  const scope = parseScope((location.search as { s?: string }).s)
+  const scanActive =
+    location.pathname.startsWith("/scans") ||
+    location.pathname.startsWith("/tasks") ||
+    location.pathname.startsWith("/scan-scopes")
+  const selectedScope = (location.search as { s?: string }).s
+  const [inventoryScope, setInventoryScope] = useState(selectedScope)
+  useEffect(() => {
+    if (!scanActive) setInventoryScope(selectedScope)
+  }, [scanActive, selectedScope])
+  const scope = parseScope(scanActive ? inventoryScope : selectedScope)
   const facets = useFacets(["resourceType"], scopeParams(scope))
   const allApps = useApplications({}, { page: 1, pageSize: 1 })
   const overview = useOverview()
@@ -119,10 +107,6 @@ export function Sidebar({
     location.pathname === "/" ||
     location.pathname === "/apps" ||
     location.pathname.startsWith("/accounts")
-  const scanActive =
-    location.pathname.startsWith("/scans") ||
-    location.pathname.startsWith("/tasks") ||
-    location.pathname.startsWith("/scan-scopes")
   const running = summary.data?.sweep ? 1 : 0
   const total = [...counts.values()].reduce((a, b) => a + b, 0)
 
@@ -206,49 +190,68 @@ export function Sidebar({
         </div>
 
         <div className="px-3 pb-2.5">
-          <button
-            type="button"
-            onClick={() => setScopeOpen(true)}
-            aria-haspopup="dialog"
-            aria-label={t("scope.switch")}
-            title={t("scope.switch")}
-            className={cn(
-              "grid min-h-[50px] w-full grid-cols-[32px_minmax(0,1fr)_14px] items-center gap-2 rounded-md border border-[#d8d0c8] bg-card px-2 py-2 text-left hover:border-input dark:border-border",
-              scope && "border-primary bg-primary-soft hover:border-primary",
-            )}
-          >
-            <span
-              aria-hidden="true"
+          {scanActive ? (
+            <div className="flex min-h-[53px] flex-col justify-center rounded-md border bg-card px-3 py-1.5">
+              <span className="text-xs text-muted-foreground">
+                {t("scans.context")}
+              </span>
+              <Link
+                to="/"
+                search={scopeValue(scope) ? { s: scopeValue(scope) } : {}}
+                onClick={onClose}
+                className="flex items-center gap-1.5 break-words text-primary hover:underline"
+              >
+                <ArrowLeft className="size-3.5 shrink-0" />
+                {scope
+                  ? t("scans.returnScope", { name: scopeTitle })
+                  : t("scans.returnAll")}
+              </Link>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setScopeOpen(true)}
+              aria-haspopup="dialog"
+              aria-label={t("scope.switch")}
+              title={t("scope.switch")}
               className={cn(
-                "grid size-8 place-items-center rounded-md font-semibold",
-                scope
-                  ? "bg-primary-soft text-primary"
-                  : "bg-subtle-strong text-muted-foreground",
+                "grid min-h-[50px] w-full grid-cols-[32px_minmax(0,1fr)_14px] items-center gap-2 rounded-md border border-[#d8d0c8] bg-card px-2 py-2 text-left hover:border-input dark:border-border",
+                scope && "border-primary bg-primary-soft hover:border-primary",
               )}
             >
-              {scope ? (
-                scopeTitle.slice(0, 1).toUpperCase()
-              ) : (
-                <LayoutDashboard className="size-4" />
-              )}
-            </span>
-            <span className="min-w-0">
-              <strong
+              <span
+                aria-hidden="true"
                 className={cn(
-                  "block truncate font-semibold",
-                  scope && "text-primary",
+                  "grid size-8 place-items-center rounded-md font-semibold",
+                  scope
+                    ? "bg-primary-soft text-primary"
+                    : "bg-subtle-strong text-muted-foreground",
                 )}
               >
-                {scopeTitle}
-              </strong>
-              {scopeSubtitle && (
-                <span className="block truncate text-xs text-muted-foreground">
-                  {scopeSubtitle}
-                </span>
-              )}
-            </span>
-            <ChevronDown className="size-3.5 text-muted-foreground" />
-          </button>
+                {scope ? (
+                  scopeTitle.slice(0, 1).toUpperCase()
+                ) : (
+                  <LayoutDashboard className="size-4" />
+                )}
+              </span>
+              <span className="min-w-0">
+                <strong
+                  className={cn(
+                    "block truncate font-semibold",
+                    scope && "text-primary",
+                  )}
+                >
+                  {scopeTitle}
+                </strong>
+                {scopeSubtitle && (
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {scopeSubtitle}
+                  </span>
+                )}
+              </span>
+              <ChevronDown className="size-3.5 text-muted-foreground" />
+            </button>
+          )}
         </div>
 
         <nav
@@ -331,6 +334,9 @@ export function Sidebar({
           })}
 
           <div className="mt-4 border-t pt-3">
+            <p className="px-3 pb-1.5 text-xs font-semibold text-muted-foreground">
+              {t("nav.scanManagement")}
+            </p>
             <Link
               to="/scans"
               onClick={onClose}
@@ -342,7 +348,7 @@ export function Sidebar({
               )}
             >
               <ScanSearch className="size-4 text-muted-foreground" />
-              {t("nav.scanManagement")}
+              {t("scans.title")}
               {running > 0 && (
                 <span className="ml-auto text-xs font-normal text-muted-foreground">
                   {t("nav.runningScans", { count: running })}
@@ -382,7 +388,7 @@ function ServiceLink({
   onClick: () => void
 }) {
   const { locale } = useI18n()
-  const Icon = SERVICE_ICON[service.key] ?? Boxes
+  const Icon = SERVICE_ICON[service.key] ?? SERVICE_ICON.other
   return (
     <Link
       to="/resources"

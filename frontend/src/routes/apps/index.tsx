@@ -11,6 +11,7 @@ import {
   tableSearchSchema,
   useTableUrlState,
 } from "@/components/data-table"
+import { Breadcrumb } from "@/components/layout/crumbs"
 import { Page, PageHeader } from "@/components/layout/page"
 import { Button } from "@/components/ui/button"
 import { useI18n } from "@/i18n"
@@ -133,10 +134,25 @@ function Apps() {
 
   return (
     <Page className="min-h-0 gap-4">
-      <PageHeader
-        title={t("apps.title")}
-        description={t("apps.subtitle", { count: total })}
-      />
+      <div className="flex flex-col gap-3">
+        <Breadcrumb
+          items={[
+            {
+              key: "inventory",
+              content: (
+                <Link to="/" search={{ s: undefined }}>
+                  {t("nav.inventory")}
+                </Link>
+              ),
+            },
+            { key: "apps", content: t("apps.title") },
+          ]}
+        />
+        <PageHeader
+          title={t("apps.title")}
+          description={t("apps.subtitle", { count: total })}
+        />
+      </div>
 
       <div className="min-h-0 flex-1">
         <DataTable<Application>
@@ -160,6 +176,7 @@ function Apps() {
             environments: 170,
             resourceCount: 110,
           }}
+          columnMenu={false}
           filterPopovers={false}
           onRowActivate={open}
           rowLabel={(app) => t("apps.openRow", { name: app.eimApp })}

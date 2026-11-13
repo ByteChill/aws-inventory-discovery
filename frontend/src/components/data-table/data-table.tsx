@@ -81,6 +81,8 @@ export type DataTableProps<Row extends object> = {
   /** A filter row above the table (replaces the per-header filter popovers). */
   toolbar?: ReactNode
   toolbarEnd?: ReactNode
+  /** The prototype only offers the column menu on the resource list. */
+  columnMenu?: boolean
   /** Keep the first column in place while the table scrolls sideways. */
   stickyFirst?: boolean
   /** Per-header filter buttons; off when the page has its own filter row. */
@@ -134,13 +136,14 @@ export function DataTable<Row extends object>({
   columnWidths,
   toolbar,
   toolbarEnd,
+  columnMenu = true,
   stickyFirst = false,
   filterPopovers = true,
   onRowActivate,
   rowLabel,
   preservedFilters,
 }: DataTableProps<Row>) {
-  const { t, locale } = useI18n()
+  const { t } = useI18n()
   const [visibility, setVisibility] = useLocalStorage<VisibilityState>(
     `table:${tableId}:visibility`,
     {},
@@ -168,6 +171,7 @@ export function DataTable<Row extends object>({
     [columns, getCellValue, columnWidths],
   )
 
+  const columnByKey = new Map(columns.map((c) => [c.key, c]))
   const table = useReactTable({
     data: rows,
     columns: defs,
@@ -229,7 +233,6 @@ export function DataTable<Row extends object>({
     update({ sort, page: 1 })
   }
 
-  const columnByKey = new Map(columns.map((c) => [c.key, c]))
   const visibleHeaders = table.getHeaderGroups()[0]?.headers ?? []
 
   let body: ReactNode = null
@@ -271,11 +274,11 @@ export function DataTable<Row extends object>({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex flex-wrap items-start gap-x-3 gap-y-2 pb-3">
+      <div className="flex flex-wrap items-end gap-x-3 gap-y-2 pb-3">
         <div className="min-w-0 flex-1">{toolbar}</div>
         <div className="ml-auto flex items-center gap-2">
           {toolbarEnd}
-          {columns.length > 0 && (
+          {columnMenu && columns.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" aria-label={t("table.columns")}>
@@ -349,6 +352,7 @@ export function DataTable<Row extends object>({
                       <th
                         key={header.id}
                         scope="col"
+                        aria-label={col.label}
                         aria-sort={
                           sorted === "asc"
                             ? "ascending"
@@ -546,27 +550,29 @@ export function DataTable<Row extends object>({
       {!error && (rows.length > 0 || isLoading) && (
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 pt-3">
           <p>
-            {!error && (total > 0 || !isLoading)
-              ? t(`table.total.${entity}` as MessageKey, { count: total })
+            {!error && total > 0
+              ? t(`table.range.${entity}` as MessageKey, {
+                  from: (state.page - 1) * state.pageSize + 1,
+                  to: Math.min(state.page * state.pageSize, total),
+                  count: total,
+                })
               : ""}
           </p>
           <div className="flex items-center gap-3">
-            <label className="flex items-center gap-2 text-muted-foreground">
-              {t("table.pageSize")}
-              <select
-                value={state.pageSize}
-                onChange={(e) =>
-                  update({ pageSize: Number(e.target.value), page: 1 })
-                }
-                className="h-8 rounded-md border border-input bg-card px-2 text-foreground"
-              >
-                {PAGE_SIZES.map((n) => (
-                  <option key={n} value={n}>
-                    {formatNumber(n, locale)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <select
+              value={state.pageSize}
+              aria-label={t("table.pageSize")}
+              onChange={(e) =>
+                update({ pageSize: Number(e.target.value), page: 1 })
+              }
+              className="h-8 rounded-md border border-input bg-card px-2 text-foreground"
+            >
+              {PAGE_SIZES.map((n) => (
+                <option key={n} value={n}>
+                  {t("table.pageSizeOption", { count: n })}
+                </option>
+              ))}
+            </select>
             <span className="text-muted-foreground">
               {t("table.page", { page: state.page, pages })}
             </span>

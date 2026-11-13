@@ -13,6 +13,7 @@ import {
   tableSearchSchema,
   useTableUrlState,
 } from "@/components/data-table"
+import { Breadcrumb } from "@/components/layout/crumbs"
 import { Page, PageHeader } from "@/components/layout/page"
 import { Time } from "@/components/time"
 import { Button } from "@/components/ui/button"
@@ -177,6 +178,16 @@ function Accounts() {
       }
       case "lastScanOkAt":
         return <Time value={row.lastScanOkAt} />
+      case "coverage":
+        return (
+          <Link
+            to="/accounts/$accountId"
+            params={{ accountId: row.accountId }}
+            className="text-primary hover:underline"
+          >
+            {t("accounts.coverage")}
+          </Link>
+        )
       case "accountType":
         return <>{t(`env.${row.accountType}`)}</>
     }
@@ -191,10 +202,25 @@ function Accounts() {
 
   return (
     <Page className="min-h-0 gap-4">
-      <PageHeader
-        title={t("accounts.title")}
-        description={t("accounts.subtitle", { count: total })}
-      />
+      <div className="flex flex-col gap-3">
+        <Breadcrumb
+          items={[
+            {
+              key: "inventory",
+              content: (
+                <Link to="/" search={{ s: undefined }}>
+                  {t("nav.inventory")}
+                </Link>
+              ),
+            },
+            { key: "accounts", content: t("accounts.title") },
+          ]}
+        />
+        <PageHeader
+          title={t("accounts.title")}
+          description={t("accounts.subtitle", { count: total })}
+        />
+      </div>
       <div className="min-h-0 flex-1">
         <DataTable<AccountSummary>
           tableId="accounts"
@@ -210,15 +236,17 @@ function Accounts() {
           onRetry={() => query.refetch()}
           getRowId={(row) => row.accountId}
           columnWidths={{
-            accountName: 220,
-            accountId: 150,
-            accountType: 108,
-            eimId: 170,
-            baId: 130,
-            resourceCount: 90,
-            accessStatus: 150,
-            lastScanOkAt: 150,
+            accountName: 190,
+            accountId: 130,
+            accountType: 84,
+            eimId: 150,
+            baId: 110,
+            resourceCount: 78,
+            accessStatus: 100,
+            lastScanOkAt: 120,
+            coverage: 90,
           }}
+          columnMenu={false}
           filterPopovers={false}
           onRowActivate={(row) =>
             navigate({
@@ -294,13 +322,13 @@ function Accounts() {
                 onChange={(e) =>
                   setFilter("accessStatus", e.target.value || undefined)
                 }
-                aria-label={t("accounts.column.status")}
+                aria-label={t("accounts.accessStatus")}
                 className={cn(
                   selectClass,
                   single(state.filters.accessStatus) && selectActive,
                 )}
               >
-                <option value="">{t("accounts.column.status")}</option>
+                <option value="">{t("accounts.accessStatus")}</option>
                 {ACCESS_STATUSES.map((v) => (
                   <option key={v} value={v}>
                     {t(`access.${v}` as MessageKey)}

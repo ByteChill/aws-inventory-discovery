@@ -54,6 +54,73 @@ export function PageHeader({
   )
 }
 
+/** A bordered card with a heading, the prototype's `.panel`. */
+export function Panel({
+  title,
+  children,
+  actions,
+  className,
+}: {
+  title?: ReactNode
+  children: ReactNode
+  actions?: ReactNode
+  className?: string
+}) {
+  return (
+    <section
+      className={cn("min-w-0 rounded-xl border bg-card px-5 py-4", className)}
+    >
+      {(title || actions) && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          {title && <h2>{title}</h2>}
+          {actions}
+        </div>
+      )}
+      {children}
+    </section>
+  )
+}
+
+/** The prototype's borderless summary strip: label above value, wrapping cells. */
+export function Summary({
+  children,
+  label,
+  className,
+}: {
+  children: ReactNode
+  /** Accessible name for the strip. */
+  label?: string
+  className?: string
+}) {
+  return (
+    <dl
+      aria-label={label}
+      className={cn(
+        "grid grid-cols-2 gap-x-6 gap-y-4 rounded-xl border bg-card px-5 py-4",
+        "sm:grid-cols-3 xl:grid-cols-4",
+        className,
+      )}
+    >
+      {children}
+    </dl>
+  )
+}
+
+export function SummaryItem({
+  label,
+  children,
+}: {
+  label: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 break-words">{children}</dd>
+    </div>
+  )
+}
+
 /** A titled block separated by whitespace and a divider, never a nested card. */
 export function Section({
   title,

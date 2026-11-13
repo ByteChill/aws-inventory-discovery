@@ -3,6 +3,7 @@ import { ArrowLeft, Loader2 } from "lucide-react"
 import { type ReactNode, useMemo } from "react"
 import { z } from "zod"
 import {
+  useColumns,
   useLookup,
   useRelationships,
   useResource,
@@ -13,11 +14,14 @@ import type { RelationshipEntry, ResourceDetail } from "@/client"
 import { CopyButton } from "@/components/copy-button"
 import { InlineError, QueryRegion } from "@/components/inline-state"
 import { JsonViewer } from "@/components/json-viewer"
-import { Page, PageHeader, Section } from "@/components/layout/page"
+import { Breadcrumb } from "@/components/layout/crumbs"
+import { Page, PageHeader, Panel, Section } from "@/components/layout/page"
 import { Time, TimeSentence } from "@/components/time"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { NAV_GROUPS } from "@/features/inventory-nav"
 import { refreshReason } from "@/features/scan-parts"
+import { SERVICE_ICON } from "@/features/service-icons"
 import { type MessageKey, useI18n } from "@/i18n"
 import { basePath } from "@/lib/base-path"
 import { errorText } from "@/lib/errors"
@@ -97,26 +101,111 @@ function Detail({ resource: r }: { resource: ResourceDetail }) {
   const { t } = useI18n()
   const { back } = Route.useSearch()
   const types = useResourceTypes()
+  const typeColumns = useColumns(r.resourceType)
   const refresh = useRefreshResource()
   const typeLabel =
     types.data?.find((x) => x.typeName === r.resourceType)?.label ??
     r.resourceType
+  const service = useMemo(
+    () =>
+      NAV_GROUPS.flatMap((g) => g.services).find((x) =>
+        x.types.includes(r.resourceType),
+      ),
+    [r.resourceType],
+  )
+  const group = useMemo(
+    () =>
+      service
+        ? NAV_GROUPS.find((g) => g.services.includes(service))
+        : undefined,
+    [service],
+  )
+  const Icon = service ? SERVICE_ICON[service.key] : undefined
   const backLink = backInfo(back, t)
+  const columns = (typeColumns.data ?? []).filter((c) => c.scope === "type")
+  const region = r.awsRegion === "global" ? t("region.global") : r.awsRegion
 
   return (
     <>
-      <a
-        href={`${basePath}${backLink.href}`}
-        className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" />
-        {backLink.label}
-      </a>
-      <div className="flex flex-col gap-2">
-        <PageHeader
-          title={r.resourceName ?? r.resourceId}
-          mono={!r.resourceName}
-          actions={
+      <Breadcrumb
+        items={[
+          {
+            key: "inventory",
+            content: (
+              <Link to="/" search={{ s: undefined }}>
+                {t("nav.inventory")}
+              </Link>
+            ),
+          },
+          ...(group
+            ? [
+                {
+                  key: "group",
+                  content: (
+                    <Link
+                      to="/resources"
+                      search={{
+                        f: {
+                          resourceType: group.services.flatMap((s) => s.types),
+                        },
+                      }}
+                    >
+                      {t(`nav.group.${group.key}`)}
+                    </Link>
+                  ),
+                },
+              ]
+            : []),
+          ...(service
+            ? [
+                {
+                  key: "service",
+                  content: (
+                    <Link
+                      to="/resources"
+                      search={{ f: { resourceType: service.types } }}
+                    >
+                      {service.label}
+                    </Link>
+                  ),
+                },
+              ]
+            : []),
+          {
+            key: "type",
+            content: (
+              <Link
+                to="/resources"
+                search={{ f: { resourceType: [r.resourceType] } }}
+              >
+                {typeLabel}
+              </Link>
+            ),
+          },
+          { key: "resource", content: r.resourceName ?? r.resourceId },
+        ]}
+      />
+
+      <PageHeader
+        title={
+          <>
+            {Icon && (
+              <span className="inline-grid size-9 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
+                <Icon className="size-5" />
+              </span>
+            )}
+            {r.resourceName ?? r.resourceId}
+          </>
+        }
+        description={`${typeLabel}，${r.account.accountName}，${region}`}
+        actions={
+          <>
+            <Button variant="outline" asChild>
+              <a href={`${basePath}${backLink.href}`}>
+                <ArrowLeft />
+                {backLink.label}
+              </a>
+            </Button>
             <Button
               variant="outline"
               disabled={refresh.phase !== "idle"}
@@ -136,63 +225,61 @@ function Detail({ resource: r }: { resource: ResourceDetail }) {
                 ? t("detail.refreshing")
                 : t("action.refresh")}
             </Button>
-          }
-        />
-        {refresh.error != null && (
-          <p role="alert" className="text-danger">
-            {t("detail.refreshFailed", {
-              reason: refreshReason(t, refresh.error),
-            })}
-          </p>
+            <CopyButton value={r.arn} text={t("action.copyArn")} />
+          </>
+        }
+      />
+      {refresh.error != null && (
+        <p role="alert" className="text-danger">
+          {t("detail.refreshFailed", {
+            reason: refreshReason(t, refresh.error),
+          })}
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+        {r.status !== "active" && (
+          <Badge tone={r.status === "missing" ? "warn" : "neutral"}>
+            {t(`status.${r.status}`)}
+          </Badge>
         )}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span>{typeLabel}</span>
-          {r.status !== "active" && (
-            <Badge tone={r.status === "missing" ? "warn" : "neutral"}>
-              {t(`status.${r.status}`)}
-            </Badge>
-          )}
-          {r.stale && <Badge>{t("status.stale")}</Badge>}
-          <span className="text-muted-foreground">
-            <TimeSentence
-              message="time.updatedAt"
-              value={r.observedAt}
-              note={t(`source.${r.observedSource}`)}
-            />
-          </span>
-        </div>
+        {r.stale && <Badge>{t("status.stale")}</Badge>}
+        <span>
+          <TimeSentence
+            message="time.updatedAt"
+            value={r.observedAt}
+            note={t(`source.${r.observedSource}`)}
+          />
+        </span>
       </div>
 
-      <Section title={t("detail.basic")}>
-        <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1.5">
-          <Field label={t("detail.arn")}>
-            <span className="inline-flex items-start gap-0.5">
-              <span className="font-mono break-all">{r.arn}</span>
-              <CopyButton value={r.arn} />
+      <Panel>
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 xl:grid-cols-5">
+          <SummaryField label={t("detail.id")}>
+            <span className="font-mono break-all">{r.resourceId}</span>
+          </SummaryField>
+          <SummaryField label={t("detail.account")}>
+            <Link
+              to="/accounts/$accountId"
+              params={{ accountId: r.accountId }}
+              title={r.account.accountName}
+              className="block truncate text-primary hover:underline"
+            >
+              {r.account.accountName}
+            </Link>
+            <span className="mt-0.5 flex min-w-0 items-center gap-0.5 font-mono text-xs text-muted-foreground">
+              <span className="truncate">{r.accountId}</span>
+              <CopyButton value={r.accountId} className="size-5 shrink-0" />
             </span>
-          </Field>
-          <Field label={t("detail.type")}>
-            <span className="font-mono">{r.resourceType}</span>
-          </Field>
-          <Field label={t("detail.account")}>
-            <div className="min-w-0">
-              <Link
-                to="/accounts/$accountId"
-                params={{ accountId: r.accountId }}
-                title={r.account.accountName}
-                className="block truncate text-primary hover:underline"
-              >
-                {r.account.accountName}
-              </Link>
-              <span className="flex min-w-0 items-center gap-0.5 font-mono text-xs text-muted-foreground">
-                <span className="truncate">{r.accountId}</span>
-                <CopyButton value={r.accountId} className="size-5 shrink-0" />
-              </span>
-            </div>
-          </Field>
-          {r.account.eimId && (
-            <Field label={t("detail.eim")}>
-              <div className="min-w-0">
+          </SummaryField>
+          <SummaryField label={t("detail.env")}>
+            {t(`env.${r.account.accountType}`)}
+          </SummaryField>
+          <SummaryField label={t("detail.region")}>
+            <span className="font-mono">{region}</span>
+          </SummaryField>
+          <SummaryField label={t("detail.eim")}>
+            {r.account.eimId ? (
+              <>
                 <Link
                   to="/"
                   search={{ s: `app:${r.account.eimId}` }}
@@ -201,89 +288,106 @@ function Detail({ resource: r }: { resource: ResourceDetail }) {
                 >
                   {r.account.eimApp ?? r.account.eimId}
                 </Link>
-                <span className="flex min-w-0 items-center gap-0.5 font-mono text-xs text-muted-foreground">
+                <span className="mt-0.5 flex min-w-0 items-center gap-0.5 font-mono text-xs text-muted-foreground">
                   <span className="truncate">{r.account.eimId}</span>
                   <CopyButton
                     value={r.account.eimId}
                     className="size-5 shrink-0"
                   />
                 </span>
-              </div>
-            </Field>
-          )}
-          {r.account.baId && (
-            <Field label={t("detail.ba")}>
-              <span className="font-mono">{r.account.baId}</span>
-            </Field>
-          )}
-          <Field label={t("detail.env")}>
-            {t(`env.${r.account.accountType}`)}
-          </Field>
-          <Field label={t("detail.region")}>
-            {r.awsRegion === "global" ? t("region.global") : r.awsRegion}
-          </Field>
-          <Field label={t("detail.firstSeen")}>
-            <Time value={r.firstSeenAt} />
-          </Field>
-          {r.missingSince && (
-            <Field label={t("detail.missingSince")}>
-              <Time value={r.missingSince} />
-            </Field>
-          )}
-          {r.deletedAt && (
-            <Field label={t("detail.deletedAt")}>
-              <Time value={r.deletedAt} />
-            </Field>
-          )}
+              </>
+            ) : (
+              <span className="text-muted-foreground">{t("common.none")}</span>
+            )}
+          </SummaryField>
         </dl>
-      </Section>
+      </Panel>
 
-      <Section title={t("detail.tags")}>
-        {r.tags.length === 0 ? (
-          <p className="text-muted-foreground">{t("detail.noTags")}</p>
-        ) : (
-          <table className="w-full max-w-3xl border-separate border-spacing-0 text-left">
-            <thead>
-              <tr>
-                <th className="border-b py-1.5 pr-4 font-medium">
-                  {t("detail.tagKey")}
-                </th>
-                <th className="border-b py-1.5 font-medium">
-                  {t("detail.tagValue")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {r.tags.map((tag) => (
-                <tr key={tag.key}>
-                  <td className="border-b py-1.5 pr-4 align-top break-all">
-                    {tag.key}
-                  </td>
-                  <td className="border-b py-1.5 align-top break-all">
-                    {tag.value}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Section>
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <div className="flex flex-col gap-4">
+          <Panel title={t("detail.config")}>
+            {columns.length === 0 ? (
+              <p className="text-muted-foreground">{t("common.none")}</p>
+            ) : (
+              <dl>
+                {columns.map((column) => (
+                  <Field key={column.key} label={column.label}>
+                    <span className="break-words">
+                      {displayValue(r.attrs[column.key], t)}
+                    </span>
+                  </Field>
+                ))}
+              </dl>
+            )}
+          </Panel>
+          <Panel title={t("detail.relationships")}>
+            <Relationships id={r.id} />
+          </Panel>
+        </div>
 
-      <Section title={t("detail.relationships")}>
-        <Relationships id={r.id} />
-      </Section>
+        <div className="flex flex-col gap-4">
+          <Panel title={t("detail.identifiers")}>
+            <dl>
+              <Field label={t("detail.arn")}>
+                <span className="flex items-start gap-0.5">
+                  <span className="font-mono break-all">{r.arn}</span>
+                  <CopyButton value={r.arn} />
+                </span>
+              </Field>
+              <Field label={t("detail.type")}>
+                <span className="font-mono">{r.resourceType}</span>
+              </Field>
+              {r.account.baId && (
+                <Field label="BA">
+                  <span className="font-mono">{r.account.baId}</span>
+                </Field>
+              )}
+              <Field label={t("detail.firstSeen")}>
+                <Time value={r.firstSeenAt} />
+              </Field>
+              <Field label={t("detail.lastChanged")}>
+                <Time value={r.lastChangedAt} />
+              </Field>
+              {r.missingSince && (
+                <Field label={t("detail.missingSince")}>
+                  <Time value={r.missingSince} />
+                </Field>
+              )}
+              {r.deletedAt && (
+                <Field label={t("detail.deletedAt")}>
+                  <Time value={r.deletedAt} />
+                </Field>
+              )}
+            </dl>
+          </Panel>
+
+          <Panel title={t("detail.tags")}>
+            {r.tags.length === 0 ? (
+              <p className="text-muted-foreground">{t("detail.noTags")}</p>
+            ) : (
+              <dl>
+                {r.tags.map((tag) => (
+                  <Field key={tag.key} label={tag.key}>
+                    <span className="break-all">{tag.value}</span>
+                  </Field>
+                ))}
+              </dl>
+            )}
+          </Panel>
+        </div>
+      </div>
 
       {r.configuration && (
-        <Section title={t("detail.configuration")}>
+        <Panel title={t("detail.configuration")}>
           <JsonViewer value={r.configuration} />
-        </Section>
+        </Panel>
       )}
 
       {r.live && (
-        <Section
+        <Panel
           title={t("detail.live")}
           actions={
-            <span className="text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               <TimeSentence
                 message="time.observedAt"
                 value={r.live.observedAt}
@@ -295,10 +399,38 @@ function Detail({ resource: r }: { resource: ResourceDetail }) {
             value={r.live.properties}
             searchLabel={t("detail.liveSearch")}
           />
-        </Section>
+        </Panel>
       )}
     </>
   )
+}
+
+function SummaryField({
+  label,
+  children,
+}: {
+  label: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 break-words">{children}</dd>
+    </div>
+  )
+}
+
+function displayValue(
+  value: unknown,
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  if (value === null || value === undefined || value === "")
+    return t("common.none")
+  if (typeof value === "boolean")
+    return value ? t("common.yes") : t("common.no")
+  if (Array.isArray(value)) return value.map(String).join(t("common.separator"))
+  if (typeof value === "object") return JSON.stringify(value)
+  return String(value)
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {

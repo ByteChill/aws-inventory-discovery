@@ -42,6 +42,7 @@ export function useAccountColumns(): Column[] {
         filterable: true,
       }),
       col("lastScanOkAt", t("accounts.column.lastScan"), "datetime"),
+      col("coverage", "", "text", { sortable: false }),
     ],
     [t],
   )
@@ -51,18 +52,21 @@ export function useScanColumns(): Column[] {
   const { t } = useI18n()
   return useMemo(
     () => [
-      col("createdAt", t("scans.column.time"), "datetime", {
-        sortable: false,
-      }),
-      col("trigger", t("scans.column.trigger"), "enum", {
-        sortable: false,
-        filterable: true,
-      }),
-      col("scope", t("scans.column.scope"), "text", { sortable: false }),
+      col("id", t("scans.column.id"), "text", { mono: true, sortable: false }),
       col("status", t("scans.column.status"), "enum", {
         sortable: false,
         filterable: true,
       }),
+      col("scope", t("scans.column.scope"), "text", { sortable: false }),
+      col("trigger", t("scans.column.trigger"), "enum", {
+        sortable: false,
+        filterable: true,
+      }),
+      col("tasks", t("scans.column.tasks"), "text", { sortable: false }),
+      col("startedAt", t("scans.column.startedAt"), "datetime", {
+        sortable: false,
+      }),
+      col("duration", t("scans.column.duration"), "text", { sortable: false }),
       col("result", t("scans.column.result"), "text", { sortable: false }),
     ],
     [t],

@@ -22,7 +22,8 @@ import type { ScanScopeOut } from "@/client"
 import { CopyButton } from "@/components/copy-button"
 import { tableSearchSchema, useTableUrlState } from "@/components/data-table"
 import { EmptyState, InlineError, QueryRegion } from "@/components/inline-state"
-import { Page, PageHeader } from "@/components/layout/page"
+import { Breadcrumb } from "@/components/layout/crumbs"
+import { Page, PageHeader, Panel } from "@/components/layout/page"
 import { Time } from "@/components/time"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
@@ -106,6 +107,19 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
 
   return (
     <>
+      <Breadcrumb
+        items={[
+          {
+            key: "scans",
+            content: <Link to="/scans">{t("nav.scanManagement")}</Link>,
+          },
+          {
+            key: "anomalies",
+            content: <Link to="/scans">{t("scans.anomalies")}</Link>,
+          },
+          { key: "review", content: t("scanScope.title") },
+        ]}
+      />
       <PageHeader
         title={t("scanScope.title")}
         description={t("scanScope.subtitle", {
@@ -120,7 +134,7 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
         }
       />
 
-      <section className="rounded-lg border bg-card p-4">
+      <Panel>
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field label={t("scanScope.account")}>
             {accountName}
@@ -147,7 +161,7 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
             </span>
           </Field>
         </dl>
-      </section>
+      </Panel>
 
       <div className="rounded-lg border border-[#e6d3a8] bg-warn-soft p-3.5 dark:border-[#5a4a1e]">
         <strong className="text-warn">{t("scanScope.noteTitle")}</strong>
@@ -363,20 +377,21 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
         </>
       )}
 
-      <section className="flex flex-col gap-3 border-t pt-4">
-        <h2>{t("scanScope.decisionTitle")}</h2>
-        <p className="max-w-[780px] text-muted-foreground">
-          {t("scanScope.decisionBody", { count: scope.candidateCount })}
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline">
-            <Link to="/scans">{t("scanScope.hold")}</Link>
-          </Button>
-          <Button onClick={() => setConfirming(true)}>
-            {t("action.confirmChange")}
-          </Button>
+      <Panel title={t("scanScope.decisionTitle")}>
+        <div className="flex flex-col gap-3">
+          <p className="max-w-[780px] text-muted-foreground">
+            {t("scanScope.decisionBody", { count: scope.candidateCount })}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link to="/scans">{t("scanScope.hold")}</Link>
+            </Button>
+            <Button onClick={() => setConfirming(true)}>
+              {t("action.confirmChange")}
+            </Button>
+          </div>
         </div>
-      </section>
+      </Panel>
 
       <Dialog
         open={confirming}

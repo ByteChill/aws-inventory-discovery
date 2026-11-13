@@ -1,10 +1,12 @@
 import { Link } from "@tanstack/react-router"
-import { Fragment } from "react"
+import { ChevronRight } from "lucide-react"
+import { Fragment, type ReactNode } from "react"
 
-import type { ScanDetail, ScanRequestOut } from "@/client"
+import type { ScanDetail, ScanRequestOut, TaskOut } from "@/client"
+import { useNow } from "@/hooks/use-now"
 import { type MessageKey, type TFunction, useI18n } from "@/i18n"
 import { errorText } from "@/lib/errors"
-import { formatCount } from "@/lib/format"
+import { formatCount, formatDuration } from "@/lib/format"
 
 type Scan = ScanRequestOut | ScanDetail
 
@@ -87,7 +89,7 @@ export function ScanResult({ scan }: { scan: Scan }) {
       <span className="text-muted-foreground">{t("scans.result.none")}</span>
     )
   return (
-    <>
+    <span>
       {parts.map((p, i) => (
         <Fragment key={p.key}>
           {i > 0 && t("common.separator")}
@@ -107,8 +109,152 @@ export function ScanResult({ scan }: { scan: Scan }) {
           </Link>
         </Fragment>
       )}
-    </>
+    </span>
   )
+}
+
+export function ScanBreadcrumbs({
+  scanId,
+  taskId,
+}: {
+  scanId: number
+  taskId?: number
+}) {
+  const { t } = useI18n()
+  return (
+    <nav
+      aria-label={t("scans.breadcrumb")}
+      className="mb-3.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
+    >
+      <Link to="/scans" className="hover:text-primary">
+        {t("nav.scanManagement")}
+      </Link>
+      <ChevronRight aria-hidden="true" className="size-3" />
+      <Link to="/scans" className="hover:text-primary">
+        {t("scans.title")}
+      </Link>
+      <ChevronRight aria-hidden="true" className="size-3" />
+      {taskId === undefined ? (
+        <span aria-current="page">#{scanId}</span>
+      ) : (
+        <>
+          <Link
+            to="/scans/$id"
+            params={{ id: String(scanId) }}
+            className="hover:text-primary"
+          >
+            #{scanId}
+          </Link>
+          <ChevronRight aria-hidden="true" className="size-3" />
+          <span aria-current="page">
+            {t("tasks.detail.title")} #{taskId}
+          </span>
+        </>
+      )}
+    </nav>
+  )
+}
+
+export function SummaryField({
+  label,
+  children,
+}: {
+  label: string
+  children: ReactNode
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="mb-1 text-xs text-muted-foreground">{label}</dt>
+      <dd className="break-words [overflow-wrap:anywhere]">{children}</dd>
+    </div>
+  )
+}
+
+/** A running duration advances with the same clock as relative timestamps. */
+export function ScanDuration({
+  startedAt,
+  finishedAt,
+  status,
+}: Pick<TaskOut, "startedAt" | "finishedAt" | "status">) {
+  const { t } = useI18n()
+  const now = useNow()
+  if (!startedAt) return <>{t("scans.detail.notStarted" as MessageKey)}</>
+  if (!finishedAt && status !== "running") return <>—</>
+  const end = finishedAt ? new Date(finishedAt).getTime() : now
+  return (
+    <>{formatDuration(Math.max(0, end - new Date(startedAt).getTime()), t)}</>
+  )
+}
+
+const RESULT_FIELDS = [
+  ["new", "scans.metric.added", "scans.result.added"],
+  ["updated", "scans.metric.updated", "scans.result.updated"],
+  ["missing", "status.missing", "scans.result.missing"],
+  ["deleted", "status.deleted", "scans.result.deleted"],
+  ["unchanged", "scans.metric.unchanged", "scans.result.unchanged"],
+  ["restored", "scans.metric.restored", "scans.result.restored"],
+] as const
+
+export function hasResourceCounts(counts: Record<string, unknown>): boolean {
+  return RESULT_FIELDS.some(([key]) => typeof counts[key] === "number")
+}
+
+export function ResourceMetrics({
+  counts,
+  includeUnchanged = false,
+}: {
+  counts: Record<string, unknown>
+  includeUnchanged?: boolean
+}) {
+  const { t } = useI18n()
+  return RESULT_FIELDS.filter(
+    ([key]) => includeUnchanged || (key !== "unchanged" && key !== "restored"),
+  ).map(([key, label]) => {
+    const count = counts[key]
+    if (typeof count !== "number") return null
+    return (
+      <SummaryField key={key} label={t(label as MessageKey)}>
+        {formatCount(t, "resources", count)}
+      </SummaryField>
+    )
+  })
+}
+
+export function TaskResult({ task }: { task: TaskOut }) {
+  const { t } = useI18n()
+  if (task.errorCode || task.errorMessage)
+    return (
+      <span className="text-warn" title={task.errorMessage ?? undefined}>
+        {task.errorCode
+          ? reasonText(t, task.errorCode).title
+          : task.errorMessage}
+      </span>
+    )
+  const counts = task.stats
+  const results = RESULT_FIELDS.filter(
+    ([key]) =>
+      key !== "unchanged" &&
+      typeof counts?.[key] === "number" &&
+      Number(counts[key]) > 0,
+  )
+  if (results.length)
+    return (
+      <span className="flex flex-col gap-0.5">
+        {results.map(([key, , label]) => (
+          <span key={key}>
+            {t(label as MessageKey, { count: Number(counts?.[key]) })}
+          </span>
+        ))}
+      </span>
+    )
+  const hasCounts = RESULT_FIELDS.some(
+    ([key]) => typeof counts?.[key] === "number",
+  )
+  if (hasCounts)
+    return (
+      <span className="text-muted-foreground">{t("scans.result.none")}</span>
+    )
+  return <span className="text-muted-foreground">—</span>
 }
 
 /** The current inventory inside this scan's scope, not what changed in it. */

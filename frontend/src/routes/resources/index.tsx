@@ -2,6 +2,8 @@ import { createFileRoute, Link, useLocation } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
 
 import {
+  useAccount,
+  useApplication,
   useColumns,
   useFacets,
   useResources,
@@ -19,14 +21,17 @@ import {
   tableSearchSchema,
   useTableUrlState,
 } from "@/components/data-table"
+import { Breadcrumb } from "@/components/layout/crumbs"
+import { Page, PageHeader, Panel } from "@/components/layout/page"
 import { Badge } from "@/components/ui/badge"
 import {
   NAV_GROUPS,
   type NavGroup,
   type NavService,
 } from "@/features/inventory-nav"
-import { ResourceFilters } from "@/features/resource-filters"
+import { ResourceExport, ResourceFilters } from "@/features/resource-filters"
 import { ResourcePreview } from "@/features/resource-preview"
+import { SERVICE_ICON } from "@/features/service-icons"
 import { useI18n } from "@/i18n"
 import { basePath } from "@/lib/base-path"
 import { formatNumber } from "@/lib/format"
@@ -92,6 +97,8 @@ function Resources() {
   const location = useLocation()
   const { state, setState } = useTableUrlState(search)
   const scope = parseScope(search.s)
+  const app = useApplication(scope?.kind === "app" ? scope.eim : undefined)
+  const account = useAccount(scope?.kind === "acct" ? scope.id : undefined)
   const type = singleType(state)
   const types = useResourceTypes()
   const [preview, setPreview] = useState<ResourceItem | null>(null)
@@ -188,7 +195,7 @@ function Resources() {
     }
   }
 
-  function toggleStripFilter(key: "accountType" | "awsRegion", value: string) {
+  function toggleStripFilter(key: string, value: string) {
     const active = asList(state.filters[key])[0] === value
     const filters = { ...state.filters }
     if (active) delete filters[key]
@@ -206,6 +213,7 @@ function Resources() {
 
   const total = list.data?.total ?? 0
   const typeColumns = (apiColumns ?? []).filter((c) => c.scope === "type")
+  const stripColumn = typeColumns.find((c) => c.type === "enum")
   const previewTypeLabel = preview
     ? (types.data?.find((x) => x.typeName === preview.resourceType)?.label ??
       preview.resourceType)
@@ -241,35 +249,117 @@ function Resources() {
       : group
         ? t(`nav.group.${group.key}`)
         : t("resources.title")
+  const scopeName =
+    scope?.kind === "app"
+      ? (app.data?.eimApp ?? scope.eim)
+      : scope?.kind === "acct"
+        ? (account.data?.accountName ?? scope.id)
+        : undefined
+  const ServiceIcon = service ? SERVICE_ICON[service.key] : undefined
+  const parentGroup = service
+    ? NAV_GROUPS.find((item) => item.services.includes(service))
+    : undefined
+  const description = scanId
+    ? t("resources.scanNote")
+    : service
+      ? service.types.map(typeLabel).join(t("common.separator"))
+      : group
+        ? group.services.map((item) => item.label).join(t("common.separator"))
+        : (scopeName ?? t("overview.allSubtitle"))
 
   return (
-    <div className="flex h-full flex-col gap-4 px-8 py-6 max-[1180px]:px-5 max-[800px]:px-4">
-      <div className="flex flex-col gap-1">
-        <h1>{title}</h1>
-        {typePage && (
-          <p className="text-muted-foreground">
-            {service
-              ? service.types.map(typeLabel).join(t("common.separator"))
-              : group?.services
-                  .map((item) => item.label)
-                  .join(t("common.separator"))}
-          </p>
-        )}
-        {scanId && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
-            <span>{t("resources.scanNote")}</span>
-            <Link
-              to="/scans/$id"
-              params={{ id: String(scanId) }}
-              className="text-primary hover:underline"
-            >
-              {t("resources.backToScan", { id: scanId })}
-            </Link>
-          </div>
-        )}
+    <Page className="min-h-0 gap-4">
+      <div className="flex flex-col gap-3">
+        <Breadcrumb
+          items={[
+            {
+              key: "inventory",
+              content: (
+                <Link to="/" search={{ s: search.s }}>
+                  {t("nav.inventory")}
+                </Link>
+              ),
+            },
+            ...(scope
+              ? [
+                  {
+                    key: "scope-parent",
+                    content:
+                      scope.kind === "app" ? (
+                        <Link to="/apps">{t("apps.title")}</Link>
+                      ) : (
+                        <Link to="/accounts">{t("accounts.title")}</Link>
+                      ),
+                  },
+                  {
+                    key: "scope",
+                    content: (
+                      <Link
+                        to="/"
+                        search={{ s: search.s }}
+                        className="text-muted-foreground"
+                      >
+                        {scopeName}
+                      </Link>
+                    ),
+                  },
+                ]
+              : []),
+            ...(service && parentGroup
+              ? [
+                  {
+                    key: "service-group",
+                    content: t(`nav.group.${parentGroup.key}`),
+                  },
+                ]
+              : []),
+            ...(scanId
+              ? [
+                  {
+                    key: "scans",
+                    content: <Link to="/scans">{t("scans.title")}</Link>,
+                  },
+                ]
+              : []),
+            {
+              key: "page",
+              content: service
+                ? service.label
+                : group
+                  ? t(`nav.group.${group.key}`)
+                  : scanId
+                    ? t("resources.scanTitle", { id: scanId })
+                    : t("resources.title"),
+            },
+          ]}
+        />
+        <PageHeader
+          title={
+            <>
+              {ServiceIcon && (
+                <span className="inline-grid size-9 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
+                  <ServiceIcon className="size-5" />
+                </span>
+              )}
+              {title}
+            </>
+          }
+          description={description}
+          actions={
+            scanId ? (
+              <Link
+                to="/scans/$id"
+                params={{ id: String(scanId) }}
+                className="text-sm text-primary hover:underline"
+              >
+                {t("resources.backToScan", { id: scanId })}
+              </Link>
+            ) : undefined
+          }
+        />
       </div>
 
-      {typePage && tabTypes.length > 1 && (
+      {service && tabTypes.length > 1 && (
         <nav
           aria-label={t("resources.group.resourceType")}
           className="flex flex-wrap gap-1 overflow-x-auto border-b"
@@ -302,9 +392,28 @@ function Resources() {
         </nav>
       )}
 
-      {typePage && (
+      {group && !scanId && (
+        <GroupOverview
+          group={group}
+          total={total}
+          facets={facets}
+          state={state}
+          onChange={changeState}
+        />
+      )}
+
+      {service && (
         <TypeStrip
           total={total}
+          accountCount={facets.accountId?.length ?? 0}
+          appCount={facets.eimId?.length ?? 0}
+          showAppCount={scope === null}
+          statusLabel={stripColumn?.label}
+          statusFilterKey={stripColumn?.key}
+          statuses={stripColumn ? (facets[stripColumn.key] ?? []) : []}
+          statusActive={
+            stripColumn ? asList(state.filters[stripColumn.key])[0] : undefined
+          }
           envs={facets.accountType ?? []}
           regions={facets.awsRegion ?? []}
           envActive={asList(state.filters.accountType)[0]}
@@ -343,6 +452,7 @@ function Resources() {
           rowLabel={(row) =>
             t("preview.row", { name: row.resourceName ?? row.resourceId })
           }
+          toolbarEnd={<ResourceExport total={total} exportHref={exportHref} />}
           toolbar={
             <ResourceFilters
               state={state}
@@ -350,9 +460,7 @@ function Resources() {
               facets={facets}
               columns={apiColumns ?? []}
               scope={scope}
-              total={total}
               hideType={typePage}
-              exportHref={exportHref}
             />
           }
         />
@@ -364,7 +472,221 @@ function Resources() {
         back={back}
         onClose={() => setPreview(null)}
       />
-    </div>
+    </Page>
+  )
+}
+
+function GroupOverview({
+  group,
+  total,
+  facets,
+  state,
+  onChange,
+}: {
+  group: NavGroup
+  total: number
+  facets: Record<string, Option[]>
+  state: TableState
+  onChange: (next: TableState) => void
+}) {
+  const { t, locale } = useI18n()
+  const types = group.services.flatMap((service) => service.types)
+  const byService = group.services
+    .map((service) => ({
+      key: service.key,
+      label: service.label,
+      count: service.types.reduce(
+        (sum, type) =>
+          sum +
+          (facets.resourceType?.find((item) => item.value === type)?.count ??
+            0),
+        0,
+      ),
+    }))
+    .sort((a, b) => b.count - a.count)
+  const maxService = Math.max(0, ...byService.map((item) => item.count))
+  const appCount = facets.eimId?.length ?? 0
+  const accountCount = facets.accountId?.length ?? 0
+
+  function toggle(key: "accountType" | "awsRegion", value: string) {
+    const values = asList(state.filters[key])
+    const filters = { ...state.filters }
+    if (values[0] === value) delete filters[key]
+    else filters[key] = [value]
+    onChange({ ...state, filters, page: 1 })
+  }
+
+  function active(key: "accountType" | "awsRegion", value: string) {
+    return asList(state.filters[key])[0] === value
+  }
+
+  const cells = [
+    {
+      label: t("overview.statResources"),
+      value: total,
+      unit: t("overview.unitCount"),
+    },
+    {
+      label: t("overview.statApps"),
+      value: appCount,
+      unit: t("overview.unitCount"),
+    },
+    {
+      label: t("overview.statAccounts"),
+      value: accountCount,
+      unit: t("overview.unitCount"),
+    },
+    {
+      label: t("overview.statTypes"),
+      value: types.length,
+      unit: t("overview.unitTypes"),
+    },
+    {
+      label: t("overview.statRegions"),
+      value: facets.awsRegion?.length ?? 0,
+      unit: t("overview.unitCount"),
+    },
+  ]
+
+  return (
+    <>
+      <dl className="grid grid-cols-2 overflow-hidden rounded-lg border bg-card md:grid-cols-3 xl:grid-cols-5">
+        {cells.map((cell, index) => (
+          <div
+            key={cell.label}
+            className="min-w-0 border-l border-border px-5 py-3.5 first:border-l-0"
+          >
+            <dt className="text-xs font-semibold text-muted-foreground">
+              {cell.label}
+            </dt>
+            <dd className="mt-1 text-xs text-muted-foreground">
+              <strong
+                className={cn(
+                  "mr-1 text-[28px] leading-tight font-semibold tracking-[-0.5px] text-foreground",
+                  index === 0 && "text-primary",
+                )}
+              >
+                {formatNumber(cell.value, locale)}
+              </strong>
+              {cell.unit}
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      <div className="grid items-start gap-x-8 gap-y-6 md:grid-cols-2 xl:grid-cols-4">
+        <Panel title={t("overview.byService")}>
+          <BarList
+            items={byService.map((item) => ({
+              key: item.key,
+              label: item.label,
+              count: item.count,
+              max: maxService,
+            }))}
+          />
+        </Panel>
+        <Panel title={t("overview.byApp")}>
+          <BarList
+            items={(facets.eimId ?? []).slice(0, 5).map((item) => ({
+              key: item.value,
+              label: item.label,
+              count: item.count ?? 0,
+              href: {
+                s: `app:${item.value}`,
+                f: { resourceType: types },
+              },
+            }))}
+          />
+        </Panel>
+        <Panel title={t("overview.byEnv")}>
+          <BarList
+            items={(facets.accountType ?? []).map((item) => ({
+              key: item.value,
+              label: item.label,
+              count: item.count ?? 0,
+              active: active("accountType", item.value),
+              onClick: () => toggle("accountType", item.value),
+            }))}
+          />
+        </Panel>
+        <Panel title={t("overview.byRegion")}>
+          <BarList
+            items={(facets.awsRegion ?? []).map((item) => ({
+              key: item.value,
+              label: item.label,
+              count: item.count ?? 0,
+              active: active("awsRegion", item.value),
+              onClick: () => toggle("awsRegion", item.value),
+            }))}
+          />
+        </Panel>
+      </div>
+    </>
+  )
+}
+
+function BarList({
+  items,
+}: {
+  items: {
+    key: string
+    label: string
+    count: number
+    max?: number
+    active?: boolean
+    href?: { s?: string; f?: Record<string, string[]> }
+    onClick?: () => void
+  }[]
+}) {
+  const { locale } = useI18n()
+  if (items.length === 0)
+    return <p className="px-2 py-2 text-sm text-muted-foreground">—</p>
+  const max = Math.max(1, ...items.map((item) => item.max ?? item.count))
+  return (
+    <ul className="flex flex-col">
+      {items.map((item) => {
+        const inner = (
+          <>
+            <span className="truncate text-sm">{item.label}</span>
+            <span className="text-sm tabular-nums">
+              {formatNumber(item.count, locale)}
+            </span>
+            <span className="col-span-2 mt-1 h-1 rounded-full bg-subtle-strong">
+              <span
+                className="block h-full rounded-full bg-primary"
+                style={{ width: `${(item.count / max) * 100}%` }}
+              />
+            </span>
+          </>
+        )
+        const className = cn(
+          "grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-1.5 text-left",
+          item.active
+            ? "bg-primary-soft font-semibold text-primary"
+            : "hover:bg-subtle",
+        )
+        return (
+          <li key={item.key}>
+            {item.onClick ? (
+              <button
+                type="button"
+                aria-pressed={item.active}
+                onClick={item.onClick}
+                className={className}
+              >
+                {inner}
+              </button>
+            ) : item.href ? (
+              <Link to="/resources" search={item.href} className={className}>
+                {inner}
+              </Link>
+            ) : (
+              <div className={className}>{inner}</div>
+            )}
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 
@@ -532,6 +854,13 @@ function IdentityCell({ row, back }: { row: ResourceItem; back: string }) {
 /** The service or group header's strip: how many resources, and where they are. */
 function TypeStrip({
   total,
+  accountCount,
+  appCount,
+  showAppCount,
+  statusLabel,
+  statuses,
+  statusActive,
+  statusFilterKey,
   envs,
   regions,
   envActive,
@@ -540,27 +869,61 @@ function TypeStrip({
   onToggle,
 }: {
   total: number
+  accountCount: number
+  appCount: number
+  showAppCount: boolean
+  statusLabel: string | undefined
+  statuses: Option[]
+  statusActive: string | undefined
+  statusFilterKey: string | undefined
   envs: Option[]
   regions: Option[]
   envActive: string | undefined
   regionActive: string | undefined
   showEnv: boolean
-  onToggle: (key: "accountType" | "awsRegion", value: string) => void
+  onToggle: (key: string, value: string) => void
 }) {
   const { t, locale } = useI18n()
   return (
-    <dl className="grid grid-cols-1 divide-y overflow-hidden rounded-lg border bg-card sm:grid-cols-[minmax(160px,0.5fr)_1fr_1fr] sm:divide-x sm:divide-y-0">
+    <dl
+      className={cn(
+        "grid grid-cols-1 divide-y overflow-hidden rounded-lg border bg-card sm:divide-x sm:divide-y-0",
+        statusLabel
+          ? "sm:grid-cols-[minmax(230px,1.1fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1fr)]"
+          : "sm:grid-cols-[minmax(230px,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]",
+      )}
+    >
       <div className="px-5 py-3">
         <dt className="text-xs font-semibold text-muted-foreground">
           {t("overview.statResources")}
         </dt>
         <dd className="mt-1 text-xs text-muted-foreground">
-          <strong className="mr-0.5 text-lg leading-tight font-semibold text-primary">
+          <strong className="mr-1 text-[28px] leading-tight font-semibold tracking-[-0.5px] text-primary">
             {formatNumber(total, locale)}
           </strong>
           {t("overview.unitCount")}
+          {showAppCount && appCount > 0 && (
+            <span>
+              {t("common.separator")}
+              {t("overview.appCount", { count: appCount })}
+            </span>
+          )}
+          {accountCount > 0 && (
+            <span>
+              {t("common.separator")}
+              {t("overview.accountCount", { count: accountCount })}
+            </span>
+          )}
         </dd>
       </div>
+      {statusLabel && statuses.length > 0 && (
+        <PillsCell
+          label={statusLabel}
+          options={statuses}
+          active={statusActive}
+          onToggle={(value) => onToggle(statusFilterKey as string, value)}
+        />
+      )}
       {showEnv && (
         <PillsCell
           label={t("resources.group.accountType")}

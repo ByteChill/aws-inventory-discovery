@@ -1,6 +1,11 @@
-import { createFileRoute, Link, useLocation } from "@tanstack/react-router"
-import { type ReactNode, useDeferredValue, useMemo, useState } from "react"
-import { z } from "zod"
+import { createFileRoute, Link } from "@tanstack/react-router"
+import {
+  type ComponentType,
+  type ReactNode,
+  useDeferredValue,
+  useMemo,
+  useState,
+} from "react"
 
 import {
   useAccount,
@@ -9,24 +14,28 @@ import {
   useApplications,
   useFacets,
   useOverview,
-  useResources,
 } from "@/api/hooks"
-import type { AccountSummary, Application, ResourceItem } from "@/client"
-import { CopyButton } from "@/components/copy-button"
-import { InlineError } from "@/components/inline-state"
-import { Page } from "@/components/layout/page"
-import { Badge } from "@/components/ui/badge"
+import type { AccountSummary, Application } from "@/client"
+import {
+  stateToSearch,
+  type TableSearch,
+  tableSearchSchema,
+  useTableUrlState,
+} from "@/components/data-table"
+import { Breadcrumb } from "@/components/layout/crumbs"
+import { Page, PageHeader, Panel } from "@/components/layout/page"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NAV_GROUPS } from "@/features/inventory-nav"
+import { OverviewResources } from "@/features/overview-resources"
+import { SERVICE_ICON } from "@/features/service-icons"
 import { type MessageKey, useI18n } from "@/i18n"
-import { errorText } from "@/lib/errors"
 import { formatNumber } from "@/lib/format"
-import { parseScope, type Scope, scopeParams, withScope } from "@/lib/scope"
+import { parseScope, scopeParams, scopeValue, withScope } from "@/lib/scope"
 import { cn } from "@/lib/utils"
 
 export const Route = createFileRoute("/")({
-  validateSearch: z.object({ s: z.string().optional().catch(undefined) }),
+  validateSearch: tableSearchSchema,
   component: Overview,
 })
 
@@ -42,7 +51,7 @@ const SERVICE_OF_TYPE = new Map(
 function Overview() {
   const { t, locale } = useI18n()
   const search = Route.useSearch()
-  const location = useLocation()
+  const { state, setState } = useTableUrlState(search)
   const scope = parseScope(search.s)
   const appEim = scope?.kind === "app" ? scope.eim : undefined
   const accountId = scope?.kind === "acct" ? scope.id : undefined
@@ -78,22 +87,12 @@ function Overview() {
     { page: 1, pageSize: 5, sort: "-resourceCount" },
   )
 
-  const recent = useResources(scopeParams(scope), {
-    page: 1,
-    pageSize: 5,
-    sort: "-lastChangedAt",
-  })
-
   const byType = facets.data?.resourceType ?? []
   const byEnv = facets.data?.accountType ?? []
   const byRegion = facets.data?.awsRegion ?? []
   const resourceTotal = byType.reduce((sum, item) => sum + item.count, 0)
   const typeTotal = byType.length
   const regionTotal = byRegion.length
-  const typeLabels = useMemo(
-    () => new Map(byType.map((item) => [item.value, item.label])),
-    [byType],
-  )
   const services = useMemo(() => serviceBars(byType), [byType])
 
   const appsCount = scope === null ? (appsTotal.data?.total ?? 0) : 0
@@ -117,15 +116,75 @@ function Overview() {
         ? (app.data?.eimApp ?? scope.eim)
         : (account.data?.accountName ?? scope.id)
 
-  const back = `${location.pathname}${location.searchStr}`
+  function selected(key: string, value: string): boolean {
+    const current = state.filters[key]
+    return Array.isArray(current) ? current.includes(value) : current === value
+  }
+
+  function toggleFilter(key: "accountType" | "awsRegion", value: string) {
+    const filters = { ...state.filters }
+    if (selected(key, value)) delete filters[key]
+    else filters[key] = [value]
+    setState({ ...state, filters, page: 1 })
+  }
+
+  /** The current table state with the scope switched, dropping filters scopes hide. */
+  function scopeSearch(kind: "app" | "acct", id: string): TableSearch {
+    const filters = { ...state.filters }
+    delete filters.accountId
+    delete filters.eimId
+    if (kind === "acct") delete filters.accountType
+    const next: TableSearch = {
+      ...stateToSearch(state),
+      page: undefined,
+      s: kind === "app" ? `app:${id}` : `acct:${id}`,
+    }
+    if (Object.keys(filters).length) next.f = filters
+    else delete next.f
+    return next
+  }
+
+  function serviceSearch(types: string[]): TableSearch {
+    const value = scopeValue(scope)
+    return {
+      ...stateToSearch(state),
+      page: undefined,
+      ...(value ? { s: value } : {}),
+      f: { ...state.filters, resourceType: types },
+    }
+  }
 
   return (
     <Page className="gap-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="break-all">{title}</h1>
-          <p className="mt-1 text-muted-foreground">
-            {scope === null
+      <div className="flex flex-col gap-3">
+        <Breadcrumb
+          items={[
+            {
+              key: "inventory",
+              content: (
+                <Link to="/" search={{ s: undefined }}>
+                  {t("nav.inventory")}
+                </Link>
+              ),
+            },
+            scope === null
+              ? { key: "overview", content: t("nav.overview") }
+              : scope.kind === "app"
+                ? {
+                    key: "apps",
+                    content: <Link to="/apps">{t("apps.title")}</Link>,
+                  }
+                : {
+                    key: "accounts",
+                    content: <Link to="/accounts">{t("accounts.title")}</Link>,
+                  },
+            ...(scope === null ? [] : [{ key: "scope", content: title }]),
+          ]}
+        />
+        <PageHeader
+          title={title}
+          description={
+            scope === null
               ? t("overview.allSubtitle")
               : scope.kind === "app"
                 ? t("overview.appSubtitle", {
@@ -146,15 +205,17 @@ function Overview() {
                       account.data?.eimApp ??
                       account.data?.eimId ??
                       t("common.none"),
-                  })}
-          </p>
-        </div>
-        {scope && (
-          <Button variant="outline" asChild>
-            <Link to="/">{t("overview.allScope")}</Link>
-          </Button>
-        )}
-      </header>
+                  })
+          }
+          actions={
+            scope && (
+              <Button variant="outline" asChild>
+                <Link to="/">{t("overview.allScope")}</Link>
+              </Button>
+            )
+          }
+        />
+      </div>
 
       {scope?.kind === "acct" &&
         account.data &&
@@ -235,18 +296,28 @@ function Overview() {
         </Stat>
       </dl>
 
-      <details className="flex flex-col border-t pt-4">
-        <summary className="cursor-pointer font-semibold">
+      <details
+        className="group flex flex-col"
+        open={scope === null ? true : undefined}
+      >
+        <summary
+          className={cn(
+            "mb-4 w-fit cursor-pointer text-base font-semibold",
+            scope === null && "hidden",
+          )}
+        >
           {t("overview.distributions")}
-          <span className="ml-3 text-xs font-normal text-muted-foreground">
-            {scope?.kind === "acct"
-              ? t("overview.distributionsHintAccount")
-              : t("overview.distributionsHint")}
-          </span>
+          {scope !== null && (
+            <span className="ml-3 text-xs font-normal text-muted-foreground">
+              {scope.kind === "acct"
+                ? t("overview.distributionsHintAccount")
+                : t("overview.distributionsHint")}
+            </span>
+          )}
         </summary>
         <div
           className={cn(
-            "mt-4 grid gap-x-8 gap-y-6 md:grid-cols-2",
+            "grid items-start gap-x-8 gap-y-6 md:grid-cols-2",
             scope?.kind === "acct" ? "xl:grid-cols-2" : "xl:grid-cols-4",
           )}
         >
@@ -256,11 +327,10 @@ function Overview() {
                 key: service.key,
                 label: service.label,
                 count: service.count,
+                icon: SERVICE_ICON[service.key],
                 link: {
                   to: "/resources" as const,
-                  search: withScope(scope, {
-                    f: { resourceType: service.types },
-                  }),
+                  search: serviceSearch(service.types),
                 },
               }))}
             />
@@ -279,6 +349,7 @@ function Overview() {
                 apps={appMatches.data?.items ?? []}
                 total={appMatches.data?.total ?? 0}
                 query={appSearch}
+                searchFor={(eim) => scopeSearch("app", eim)}
               />
             </Panel>
           )}
@@ -287,7 +358,7 @@ function Overview() {
             <Panel title={t("overview.byAccount")}>
               <AccountBars
                 accounts={appAccounts.data?.items ?? []}
-                scope={scope}
+                searchFor={(id) => scopeSearch("acct", id)}
               />
             </Panel>
           )}
@@ -299,12 +370,8 @@ function Overview() {
                   key: item.value,
                   label: item.label,
                   count: item.count,
-                  link: {
-                    to: "/resources" as const,
-                    search: withScope(scope, {
-                      f: { accountType: [item.value] },
-                    }),
-                  },
+                  active: selected("accountType", item.value),
+                  onSelect: () => toggleFilter("accountType", item.value),
                 }))}
               />
             </Panel>
@@ -316,50 +383,20 @@ function Overview() {
                 key: item.value,
                 label: item.label,
                 count: item.count,
-                link: {
-                  to: "/resources" as const,
-                  search: withScope(scope, {
-                    f: { awsRegion: [item.value] },
-                  }),
-                },
+                active: selected("awsRegion", item.value),
+                onSelect: () => toggleFilter("awsRegion", item.value),
               }))}
             />
           </Panel>
         </div>
       </details>
 
-      <section className="flex flex-col gap-3 border-t pt-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2>
-            {t("overview.recent")}{" "}
-            <span className="text-sm font-normal text-muted-foreground">
-              {formatNumber(resourceTotal, locale)} {t("overview.unitCount")}
-            </span>
-          </h2>
-          <Link
-            to="/resources"
-            search={withScope(scope)}
-            className="text-sm text-primary hover:underline"
-          >
-            {t("overview.viewAllResources")}
-          </Link>
-        </div>
-        {recent.error ? (
-          <InlineError
-            message={errorText(t, recent.error)}
-            onRetry={() => recent.refetch()}
-          />
-        ) : recent.isLoading ? (
-          <p className="text-muted-foreground">{t("common.loading")}</p>
-        ) : (
-          <RecentResources
-            rows={recent.data?.items ?? []}
-            global={scope === null}
-            back={back}
-            typeLabels={typeLabels}
-          />
-        )}
-      </section>
+      <OverviewResources
+        state={state}
+        onStateChange={setState}
+        scope={scope}
+        fallbackTotal={resourceTotal}
+      />
     </Page>
   )
 }
@@ -383,7 +420,7 @@ function Stat({
       <dd className="mt-1 text-xs text-muted-foreground">
         <strong
           className={cn(
-            "mr-0.5 text-lg leading-tight font-semibold text-foreground",
+            "mr-1 text-[28px] leading-tight font-semibold tracking-[-0.5px] text-foreground",
             accent && "text-primary",
           )}
         >
@@ -396,46 +433,92 @@ function Stat({
   )
 }
 
-function Panel({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="flex min-w-0 flex-col">
-      <h3 className="mb-1">{title}</h3>
-      {children}
-    </section>
-  )
-}
-
 type BarLink = {
   to: "/resources"
-  search: ReturnType<typeof withScope>
+  search: TableSearch
 }
 
-function Bars({
-  items,
-}: {
-  items: { key: string; label: string; count: number; link: BarLink }[]
-}) {
-  const { locale } = useI18n()
+type BarItem = {
+  key: string
+  label: string
+  count: number
+  icon?: ComponentType<{ className?: string }>
+  link?: BarLink
+  onSelect?: () => void
+  active?: boolean
+}
+
+function Bars({ items, collapse }: { items: BarItem[]; collapse?: number }) {
+  const { t, locale } = useI18n()
+  const [expanded, setExpanded] = useState(false)
   if (items.length === 0) return <Empty />
   const max = Math.max(...items.map((item) => item.count))
+  const hidden = collapse ? Math.max(0, items.length - collapse) : 0
+  const shown = hidden > 0 && !expanded ? items.slice(0, collapse) : items
+  const rowClass =
+    "grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-1.5 text-left"
   return (
-    <ul className="flex flex-col">
-      {items.map((item) => (
-        <li key={item.key}>
-          <Link
-            to={item.link.to}
-            search={item.link.search}
-            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-1.5 hover:bg-subtle"
-          >
-            <span className="truncate text-sm">{item.label}</span>
-            <span className="text-sm tabular-nums">
-              {formatNumber(item.count, locale)}
-            </span>
-            <Bar value={item.count} max={max} />
-          </Link>
-        </li>
-      ))}
-    </ul>
+    <div className="flex flex-col">
+      <ul className="flex flex-col">
+        {shown.map((item) => {
+          const Icon = item.icon
+          const inner = (
+            <>
+              <span className="flex min-w-0 items-center gap-2 text-sm">
+                {Icon && (
+                  <Icon className="size-4 shrink-0 text-muted-foreground" />
+                )}
+                <span className="truncate">{item.label}</span>
+              </span>
+              <span className="text-sm tabular-nums">
+                {formatNumber(item.count, locale)}
+              </span>
+              <Bar value={item.count} max={max} />
+            </>
+          )
+          return (
+            <li key={item.key}>
+              {item.onSelect ? (
+                <button
+                  type="button"
+                  aria-pressed={item.active}
+                  onClick={item.onSelect}
+                  className={cn(
+                    rowClass,
+                    item.active
+                      ? "bg-primary-soft font-semibold text-primary"
+                      : "hover:bg-subtle",
+                  )}
+                >
+                  {inner}
+                </button>
+              ) : item.link ? (
+                <Link
+                  to={item.link.to}
+                  search={item.link.search}
+                  className={cn(rowClass, "hover:bg-subtle")}
+                >
+                  {inner}
+                </Link>
+              ) : (
+                <div className={rowClass}>{inner}</div>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+      {hidden > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="mt-1 w-fit px-2 text-sm font-medium text-primary hover:underline"
+        >
+          {expanded
+            ? t("overview.showLess")
+            : t("overview.showAll", { count: items.length })}
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -454,10 +537,12 @@ function AppBars({
   apps,
   total,
   query,
+  searchFor,
 }: {
   apps: Application[]
   total: number
   query: string
+  searchFor: (eim: string) => TableSearch
 }) {
   const { t, locale } = useI18n()
   const max = Math.max(0, ...apps.map((app) => app.resourceCount))
@@ -470,8 +555,8 @@ function AppBars({
           {apps.map((app) => (
             <li key={app.eimId}>
               <Link
-                to="/resources"
-                search={{ s: `app:${app.eimId}` }}
+                to="/"
+                search={searchFor(app.eimId)}
                 className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-1.5 hover:bg-subtle"
               >
                 <span className="flex min-w-0 items-baseline gap-2">
@@ -504,10 +589,10 @@ function AppBars({
 
 function AccountBars({
   accounts,
-  scope,
+  searchFor,
 }: {
   accounts: AccountSummary[]
-  scope: Scope
+  searchFor: (id: string) => TableSearch
 }) {
   const { t, locale } = useI18n()
   const max = Math.max(0, ...accounts.map((account) => account.resourceCount))
@@ -517,10 +602,8 @@ function AccountBars({
       {accounts.map((account) => (
         <li key={account.accountId}>
           <Link
-            to="/resources"
-            search={withScope(scope, {
-              f: { accountId: [account.accountId] },
-            })}
+            to="/"
+            search={searchFor(account.accountId)}
             className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-1.5 hover:bg-subtle"
           >
             <span className="flex min-w-0 items-baseline gap-2">
@@ -533,89 +616,6 @@ function AccountBars({
               {formatNumber(account.resourceCount, locale)}
             </span>
             <Bar value={account.resourceCount} max={max} />
-          </Link>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-function RecentResources({
-  rows,
-  global,
-  back,
-  typeLabels,
-}: {
-  rows: ResourceItem[]
-  global: boolean
-  back: string
-  typeLabels: Map<string, string>
-}) {
-  const { t } = useI18n()
-  if (rows.length === 0) return <Empty />
-  return (
-    <ul className="divide-y rounded-lg border bg-card">
-      {rows.map((row) => (
-        <li key={row.id}>
-          <Link
-            to="/resources/$id"
-            params={{ id: String(row.id) }}
-            search={{ back }}
-            className={cn(
-              "grid grid-cols-1 items-center gap-x-5 gap-y-1 px-4 py-2.5 hover:bg-subtle",
-              global
-                ? "sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_auto] md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
-                : "sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_auto]",
-            )}
-          >
-            <span className="min-w-0">
-              <span className="flex min-w-0 items-center gap-1.5">
-                <span className="truncate font-semibold text-primary">
-                  {row.resourceName ?? row.resourceId}
-                </span>
-                {row.status !== "active" && (
-                  <Badge tone={row.status === "missing" ? "warn" : "neutral"}>
-                    {t(`status.${row.status}`)}
-                  </Badge>
-                )}
-                {row.stale && <Badge>{t("status.stale")}</Badge>}
-              </span>
-              <span className="block truncate font-mono text-xs text-muted-foreground">
-                {row.resourceId}
-              </span>
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm">
-                {row.account.accountName}
-              </span>
-              <span className="flex min-w-0 items-center gap-0.5 font-mono text-xs text-muted-foreground">
-                <span className="truncate">{row.account.accountId}</span>
-                <CopyButton
-                  value={row.account.accountId}
-                  className="size-5 shrink-0"
-                />
-              </span>
-            </span>
-            {global && (
-              <span className="hidden min-w-0 md:block">
-                <span className="block truncate text-sm">
-                  {row.account.eimApp ?? ""}
-                </span>
-                <span className="block truncate font-mono text-xs text-muted-foreground">
-                  {row.account.eimId}
-                </span>
-              </span>
-            )}
-            <span className="min-w-0 text-sm text-muted-foreground sm:text-right">
-              <span className="block truncate">
-                {row.awsRegion === "global"
-                  ? t("region.global")
-                  : row.awsRegion}
-              </span>
-              <span className="block truncate text-xs">
-                {typeLabels.get(row.resourceType) ?? row.resourceType}
-              </span>
-            </span>
           </Link>
         </li>
       ))}

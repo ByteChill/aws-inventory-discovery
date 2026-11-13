@@ -27,7 +27,7 @@ import type { Scope } from "@/lib/scope"
 import { cn } from "@/lib/utils"
 
 const selectClass =
-  "h-9 max-w-[180px] flex-1 rounded-md border border-input bg-card px-2 text-foreground min-[801px]:flex-none"
+  "h-9 max-w-[140px] flex-1 rounded-md border border-input bg-card px-2 text-foreground min-[801px]:flex-none"
 const selectActive = "border-primary bg-primary-soft font-semibold text-primary"
 
 const ALL_STATUSES = ["active", "missing", "deleted"]
@@ -43,19 +43,15 @@ export function ResourceFilters({
   facets,
   columns,
   scope,
-  total,
   hideType,
-  exportHref,
 }: {
   state: TableState
   onStateChange: (next: TableState) => void
   facets: Record<string, Option[]>
   columns: Column[]
   scope: Scope | null
-  total: number
   /** Service and group pages switch types with their own tabs. */
   hideType?: boolean
-  exportHref: (format: "csv" | "jsonl") => string
 }) {
   const { t } = useI18n()
   const [draft, setDraft] = useState(state.q ?? "")
@@ -145,208 +141,226 @@ export function ResourceFilters({
       className="flex flex-wrap items-center gap-2"
       aria-label={t("resources.filter.searchLabel")}
     >
-      <label className="flex h-9 min-w-[200px] flex-1 basis-[220px] items-center gap-2 rounded-md border border-input bg-card px-2.5 text-muted-foreground focus-within:outline-2 focus-within:outline-primary focus-within:outline-offset-1 sm:max-w-[320px]">
-        <Search aria-hidden="true" className="size-4 shrink-0" />
-        <input
-          type="search"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key !== "Enter") return
-            e.preventDefault()
-            onStateChange({
-              ...state,
-              q: draft.trim() || undefined,
-              page: 1,
+      <div className="flex min-w-0 flex-1 basis-[760px] flex-wrap items-center gap-1.5">
+        <label className="flex h-9 min-w-[200px] flex-1 basis-[220px] items-center gap-2 rounded-md border border-input bg-card px-2.5 text-muted-foreground focus-within:outline-2 focus-within:outline-primary focus-within:outline-offset-1 sm:max-w-[220px]">
+          <Search aria-hidden="true" className="size-4 shrink-0" />
+          <input
+            type="search"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return
+              e.preventDefault()
+              onStateChange({
+                ...state,
+                q: draft.trim() || undefined,
+                page: 1,
+              })
+            }}
+            placeholder={t("resources.filter.searchPlaceholder")}
+            aria-label={t("resources.filter.searchPlaceholder")}
+            className="h-full min-w-0 flex-1 bg-transparent text-foreground placeholder:text-muted-foreground focus-visible:outline-0"
+          />
+        </label>
+
+        {scope?.kind !== "acct" && (
+          <select
+            value={env}
+            onChange={(e) =>
+              setFilters({
+                accountType: e.target.value ? [e.target.value] : undefined,
+              })
+            }
+            aria-label={t("resources.group.accountType")}
+            className={cn(selectClass, env && selectActive)}
+          >
+            <option value="">{t("resources.group.accountType")}</option>
+            {(facets.accountType ?? []).map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        )}
+
+        <select
+          value={region}
+          onChange={(e) =>
+            setFilters({
+              awsRegion: e.target.value ? [e.target.value] : undefined,
+            })
+          }
+          aria-label={t("resources.group.awsRegion")}
+          className={cn(selectClass, region && selectActive)}
+        >
+          <option value="">{t("resources.group.awsRegion")}</option>
+          {(facets.awsRegion ?? []).map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+
+        {!hideType && (
+          <select
+            value={selectedType}
+            onChange={(e) =>
+              setFilters({
+                resourceType: e.target.value ? [e.target.value] : undefined,
+              })
+            }
+            aria-label={t("resources.group.resourceType")}
+            className={cn(selectClass, selectedType && selectActive)}
+          >
+            <option value="">{t("resources.group.resourceType")}</option>
+            {(facets.resourceType ?? []).map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        )}
+
+        <select
+          value={status}
+          onChange={(e) => {
+            const value = e.target.value
+            setFilters({
+              status:
+                value === ""
+                  ? undefined
+                  : value === "all"
+                    ? ALL_STATUSES
+                    : [value],
             })
           }}
-          placeholder={t("resources.filter.searchPlaceholder")}
-          aria-label={t("resources.filter.searchPlaceholder")}
-          className="h-full min-w-0 flex-1 bg-transparent text-foreground placeholder:text-muted-foreground focus-visible:outline-0"
-        />
-      </label>
-
-      {scope?.kind !== "acct" && (
-        <select
-          value={env}
-          onChange={(e) =>
-            setFilters({
-              accountType: e.target.value ? [e.target.value] : undefined,
-            })
-          }
-          aria-label={t("resources.group.accountType")}
-          className={cn(selectClass, env && selectActive)}
+          aria-label={t("resources.filter.status")}
+          className={cn(selectClass, status && selectActive)}
         >
-          <option value="">{t("resources.group.accountType")}</option>
-          {(facets.accountType ?? []).map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      )}
-
-      <select
-        value={region}
-        onChange={(e) =>
-          setFilters({
-            awsRegion: e.target.value ? [e.target.value] : undefined,
-          })
-        }
-        aria-label={t("resources.group.awsRegion")}
-        className={cn(selectClass, region && selectActive)}
-      >
-        <option value="">{t("resources.group.awsRegion")}</option>
-        {(facets.awsRegion ?? []).map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
+          <option value="">{t("resources.filter.status")}</option>
+          <option value="missing">{t("status.missing")}</option>
+          <option value="deleted">{t("status.deleted")}</option>
+          <option value="all">
+            {t("resources.filter.allIncludingDeleted")}
           </option>
-        ))}
-      </select>
-
-      {!hideType && (
-        <select
-          value={selectedType}
-          onChange={(e) =>
-            setFilters({
-              resourceType: e.target.value ? [e.target.value] : undefined,
-            })
-          }
-          aria-label={t("resources.group.resourceType")}
-          className={cn(selectClass, selectedType && selectActive)}
-        >
-          <option value="">{t("resources.group.resourceType")}</option>
-          {(facets.resourceType ?? []).map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
         </select>
-      )}
+      </div>
 
-      <select
-        value={status}
-        onChange={(e) => {
-          const value = e.target.value
-          setFilters({
-            status:
-              value === ""
-                ? undefined
-                : value === "all"
-                  ? ALL_STATUSES
-                  : [value],
-          })
-        }}
-        aria-label={t("resources.filter.status")}
-        className={cn(selectClass, status && selectActive)}
-      >
-        <option value="">{t("resources.filter.status")}</option>
-        <option value="missing">{t("status.missing")}</option>
-        <option value="deleted">{t("status.deleted")}</option>
-        <option value="all">{t("resources.filter.allIncludingDeleted")}</option>
-      </select>
-
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button variant="outline" className="px-2.5">
-            <ListFilter />
-            {t("resources.filter.more")}
-            {moreCount > 0 && (
-              <span className="rounded-sm bg-primary-soft px-1.5 text-xs font-semibold text-primary">
-                {moreCount}
-              </span>
-            )}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          className="max-h-[70vh] w-[min(360px,calc(100vw-32px))] overflow-auto p-3"
-        >
-          <div className="flex flex-col gap-4">
-            {scope?.kind !== "acct" && (
-              <Section label={t("resources.group.accountId")}>
+      <div className="ml-auto flex flex-wrap items-center gap-2">
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" className="px-2.5">
+              <ListFilter />
+              {t("resources.filter.more")}
+              {moreCount > 0 && (
+                <span className="rounded-sm bg-primary-soft px-1.5 text-xs font-semibold text-primary">
+                  {moreCount}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            className="max-h-[70vh] w-[min(360px,calc(100vw-32px))] overflow-auto p-3"
+          >
+            <div className="flex flex-col gap-4">
+              {scope?.kind !== "acct" && (
+                <Section label={t("resources.group.accountId")}>
+                  <OptionList
+                    options={facets.accountId ?? []}
+                    selected={asList(state.filters.accountId)}
+                    onChange={(next) =>
+                      setFilters({ accountId: next.length ? next : undefined })
+                    }
+                  />
+                </Section>
+              )}
+              {scope?.kind !== "app" && (
+                <Section label={t("resources.group.eimId")}>
+                  <OptionList
+                    options={facets.eimId ?? []}
+                    selected={asList(state.filters.eimId)}
+                    onChange={(next) =>
+                      setFilters({ eimId: next.length ? next : undefined })
+                    }
+                  />
+                </Section>
+              )}
+              <Section label={t("resources.group.baId")}>
                 <OptionList
-                  options={facets.accountId ?? []}
-                  selected={asList(state.filters.accountId)}
+                  options={facets.baId ?? []}
+                  selected={asList(state.filters.baId)}
                   onChange={(next) =>
-                    setFilters({ accountId: next.length ? next : undefined })
+                    setFilters({ baId: next.length ? next : undefined })
                   }
                 />
               </Section>
-            )}
-            {scope?.kind !== "app" && (
-              <Section label={t("resources.group.eimId")}>
-                <OptionList
-                  options={facets.eimId ?? []}
-                  selected={asList(state.filters.eimId)}
+              <Section label={t("resources.group.tags")}>
+                <TagFilter
+                  value={tagFilters(state.filters)}
                   onChange={(next) =>
-                    setFilters({ eimId: next.length ? next : undefined })
+                    setFilters({
+                      tag: next.tag.length ? next.tag : undefined,
+                      tagMissing: next.tagMissing.length
+                        ? next.tagMissing
+                        : undefined,
+                    })
                   }
                 />
               </Section>
-            )}
-            <Section label={t("resources.group.baId")}>
-              <OptionList
-                options={facets.baId ?? []}
-                selected={asList(state.filters.baId)}
-                onChange={(next) =>
-                  setFilters({ baId: next.length ? next : undefined })
-                }
-              />
-            </Section>
-            <Section label={t("resources.group.tags")}>
-              <TagFilter
-                value={tagFilters(state.filters)}
-                onChange={(next) =>
-                  setFilters({
-                    tag: next.tag.length ? next.tag : undefined,
-                    tagMissing: next.tagMissing.length
-                      ? next.tagMissing
-                      : undefined,
-                  })
-                }
-              />
-            </Section>
-            {typeColumns.map((column) => (
-              <Section key={column.key} label={column.label}>
-                <FilterControl
-                  column={column}
-                  value={state.filters[column.key]}
-                  options={facets[column.key]}
-                  onChange={(value) => setFilters({ [column.key]: value })}
-                />
-              </Section>
-            ))}
-          </div>
-        </PopoverContent>
-      </Popover>
+              {typeColumns.map((column) => (
+                <Section key={column.key} label={column.label}>
+                  <FilterControl
+                    column={column}
+                    value={state.filters[column.key]}
+                    options={facets[column.key]}
+                    onChange={(value) => setFilters({ [column.key]: value })}
+                  />
+                </Section>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
 
-      {hasFilters && (
-        <Button variant="link" onClick={clearAll}>
-          {t("action.clearFilters")}
-        </Button>
-      )}
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" className="ml-auto">
-            <Download />
-            {t("action.export")}
+        {hasFilters && (
+          <Button variant="link" onClick={clearAll}>
+            {t("action.clearFilters")}
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-64">
-          <p className="px-3 py-1.5 text-xs text-muted-foreground">
-            {t("resources.filter.exportTip", { count: total })}
-          </p>
-          <DropdownMenuItem asChild>
-            <a href={exportHref("csv")}>{t("action.exportCsv")}</a>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <a href={exportHref("jsonl")}>{t("action.exportJsonl")}</a>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+        )}
+      </div>
     </search>
+  )
+}
+
+/** Export sits beside the Columns menu so the two actions wrap together. */
+export function ResourceExport({
+  total,
+  exportHref,
+}: {
+  total: number
+  exportHref: (format: "csv" | "jsonl") => string
+}) {
+  const { t } = useI18n()
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline">
+          <Download />
+          {t("action.export")}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-64">
+        <p className="px-3 py-1.5 text-xs text-muted-foreground">
+          {t("resources.filter.exportTip", { count: total })}
+        </p>
+        <DropdownMenuItem asChild>
+          <a href={exportHref("csv")}>{t("action.exportCsv")}</a>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <a href={exportHref("jsonl")}>{t("action.exportJsonl")}</a>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

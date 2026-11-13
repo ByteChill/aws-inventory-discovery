@@ -8,7 +8,7 @@ from pydantic import TypeAdapter
 from sqlalchemy import ColumnElement, FromClause, Subquery, any_, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.core.cache import Cache
+from app.core.cache import Cache, validated
 from app.core.errors import ApiError
 from app.query.cache_keys import params_digest
 from app.query.paging import PagingParams
@@ -114,9 +114,9 @@ def list_applications(
     session: Session, params: ApplicationFilter, cache: Cache
 ) -> Page[Application]:
     key = cache.key("applications", "list", params_digest(params))
-    cached = cache.get(key)
+    cached = validated(_PAGE, cache.get(key))
     if cached is not None:
-        return _PAGE.validate_python(cached)
+        return cached
     applications = _applications(params)
     # Page first, then count resources for that page only. Counting them for every
     # application is needed only to sort by the count.

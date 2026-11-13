@@ -116,7 +116,7 @@ type ScopeCandidate = {
 - 参数：`field`（可重复，允许 `accountId`、`eimId`、`baId`、`accountType`、`awsRegion`、`resourceType`、`status`，以及单一类型时的 `attr.<key>`，后者要求列类型为 `enum` 或 `bool`）、筛选参数。
 - 计算某个字段的分类时，不应用这个字段本身的筛选条件，这样已选中的选项旁边也能显示其他选项的数量；`status` 的分类也一样，不应用默认的「`active` 加 `missing`」，所以能看到各个状态（包括 `deleted`）的数量。计算 `resourceType` 的分类时也不应用 `attr.*` 条件（它们依赖选定的类型）。
 - 返回：`{ [field: string]: FacetBucket[] }`，每个字段最多 200 个选项，按数量倒序；`label` 按 `Accept-Language`：账号是账号名称，EIM 是 EIM 应用名，类型是类型的显示名，状态和环境是本地化的词，`global` 区域显示为「全局」，布尔是「是 / 否」。
-- 缓存：Redis，按字段分别缓存，key `aws-inventory-discovery:facets:<筛选条件的哈希>:<field>:<语言>`，60 秒；同一筛选条件下，不同页面请求的字段集合共用重叠字段。
+- 缓存：Redis，按字段分别缓存，key `aws-inventory-discovery:<DATABASE_SCHEMA>:facets:<筛选条件的哈希>:<field>:<语言>`，60 秒；同一筛选条件下，不同页面请求的字段集合共用重叠字段。
 
 ### `GET /resources/summary`
 - 参数：筛选参数（同 `GET /resources`）。
@@ -182,7 +182,7 @@ type ScopeCandidate = {
   generatedAt: string
 }
 ```
-缓存：Redis，key `aws-inventory-discovery:stats:overview:<语言>`，60 秒。
+缓存：Redis，key `aws-inventory-discovery:<DATABASE_SCHEMA>:stats:overview:<语言>`，60 秒。
 
 ## 5. 账号
 
@@ -246,7 +246,7 @@ type Task = {
 - `sweep`：最近一个还在 `queued` / `running`、并且是定时的（`trigger = schedule`）或范围是全部账号的扫描；没有则为 `null`。`accountsTotal` 是这个请求里有任务的账号数，`accountsDone` 是其中已经没有排队或运行中任务的账号数。`estimatedFinishAt` = 开始时间 + 已用时间 × 总数 ÷ 已完成数，一个账号都没完成时为 `null`。`behindSchedule`：预计完成时间（没有就用现在）晚于开始时间加 `SWEEP_INTERVAL_HOURS`。**接口不返回计划完成时间，所以不能算出「慢了多久」。**
 - `backlog`：`queued` 是已经到时间可以领取的排队任务数（`not_before` 不晚于现在），`oldestWaitSeconds` 是最早那个到时间以来等了多久；`onDemand` 是 `priority = 0`，`scheduled` 是其余。
 - `failures24h`：最近 24 小时内结束的失败任务，按错误码汇总（没有错误码的记为 `internal`）。`missingCount` 是全库状态为 `missing` 的资源数。
-- 缓存：Redis，key `aws-inventory-discovery:scans:summary`，10 秒（dashboard 每 3–5 秒轮询）。
+- 缓存：Redis，key `aws-inventory-discovery:<DATABASE_SCHEMA>:scans:summary`，10 秒（dashboard 每 3–5 秒轮询）。
 
 ### `POST /scans`
 - 请求头：`Idempotency-Key`（可选）。

@@ -9,7 +9,7 @@ from pydantic import TypeAdapter
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.orm import Session
 
-from app.core.cache import Cache
+from app.core.cache import Cache, validated
 from app.query.cache_keys import params_digest
 from app.query.columns import Language, attr_expr, label_of, value_label
 from app.query.filters import ResourceFilter, invalid_filter, single_spec, where
@@ -128,8 +128,14 @@ def facets(
 ) -> dict[str, list[FacetBucket]]:
     fields = list(dict.fromkeys(params.field))
     keys = [cache_key(cache, params, language, field) for field in fields]
-    values: dict[str, Any] = dict(zip(fields, cache.get_many(keys), strict=True))
-    missing = [field for field in fields if values[field] is None]
+    values: dict[str, list[FacetBucket]] = {}
+    missing: list[str] = []
+    for field, raw in zip(fields, cache.get_many(keys), strict=True):
+        cached = validated(_BUCKETS, raw)
+        if cached is None:
+            missing.append(field)
+        else:
+            values[field] = cached
     if missing:
         computed = compute(
             session, registry, params, language, task_retention=task_retention, fields=missing
@@ -143,4 +149,4 @@ def facets(
             }
         )
         values.update(computed)
-    return {field: _BUCKETS.validate_python(values[field]) for field in fields}
+    return {field: values[field] for field in fields}

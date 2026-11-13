@@ -99,7 +99,7 @@
 |---|---|---|
 | `com.amazonaws.ap-east-1.config` | Interface | 扫描 ap-east-1 |
 | `com.amazonaws.ap-east-1.cloudcontrolapi` | Interface | 扫描 ap-east-1 |
-| `com.amazonaws.ap-east-1.ec2` | Interface | 扫描 ap-east-1 时读取 AMI。注意：查询每个账号开启的区域（`ec2:DescribeRegions`）**不在这里**，而是在 `REACHABLE_REGIONS` 里第一个默认开启的区域（默认配置下是 us-east-1，因为 ap-east-1 是 opt-in 区域），见 6.2 |
+| `com.amazonaws.ap-east-1.ec2` | Interface | 扫描 ap-east-1 时读取 AMI。注意：查询每个账号开启的区域（`ec2:DescribeRegions`）**不在这里**，而是在 `REACHABLE_REGIONS` 里第一个默认开启的区域（默认配置下是 us-east-1，因为 ap-east-1 是 opt-in 区域），见 7.2 |
 | `com.amazonaws.ap-east-1.logs` | Interface | 写日志；API 查询任务日志 |
 | `com.amazonaws.ap-east-1.secretsmanager` | Interface | ECS 注入密钥 |
 | `com.amazonaws.ap-east-1.ecr.api`、`com.amazonaws.ap-east-1.ecr.dkr` | Interface | 拉取镜像 |

@@ -4,16 +4,18 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from pydantic import TypeAdapter
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.cache import Cache
+from app.core.cache import Cache, validated
 from app.query.columns import Language, label_of, value_label
 from app.query.tables import ACCOUNT, RESOURCE, A, R
 from app.schemas.resources import AccountTypeCount, StatsOverview, TypeCount
 from app.types.registry import TypeRegistry
 
 UNREACHABLE = ("access_denied", "credential_error")
+_OVERVIEW = TypeAdapter(StatsOverview)
 
 
 def compute(session: Session, registry: TypeRegistry, language: Language) -> StatsOverview:
@@ -69,9 +71,9 @@ def overview(
     session: Session, registry: TypeRegistry, cache: Cache, language: Language
 ) -> StatsOverview:
     key = cache.key("stats", "overview", language)
-    cached = cache.get(key)
+    cached = validated(_OVERVIEW, cache.get(key))
     if cached is not None:
-        return StatsOverview.model_validate(cached)
+        return cached
     result = compute(session, registry, language)
     cache.set(key, result.model_dump(mode="json", by_alias=True))
     return result

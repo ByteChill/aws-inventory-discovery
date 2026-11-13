@@ -9,7 +9,7 @@ from pydantic import TypeAdapter
 from sqlalchemy import ColumnElement, Row, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.core.cache import Cache
+from app.core.cache import Cache, validated
 from app.core.errors import ApiError
 from app.query.cache_keys import params_digest
 from app.query.columns import STALE_AFTER
@@ -93,9 +93,9 @@ def list_accounts(
     session: Session, params: AccountFilter, purge_days: int, cache: Cache
 ) -> Page[AccountSummary]:
     cache_key = cache.key("accounts", "list", str(purge_days), params_digest(params))
-    cached = cache.get(cache_key)
+    cached = validated(_PAGE, cache.get(cache_key))
     if cached is not None:
-        return _PAGE.validate_python(cached)
+        return cached
     conditions: list[ColumnElement[bool]] = [A.active == params.active]
     for values, column in (
         (params.account_type, A.account_type),

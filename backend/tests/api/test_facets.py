@@ -172,6 +172,8 @@ def test_requests_share_one_redis_client(
         created.append(args)
         return from_url(*args, **kwargs)
 
+    # The first import of app.main builds its own module-level app; do that before counting.
+    make_client(REDIS_URL=TEST_REDIS_URL)
     monkeypatch.setattr(redis.Redis, "from_url", counting_from_url)
     client = make_client(REDIS_URL=TEST_REDIS_URL)
 

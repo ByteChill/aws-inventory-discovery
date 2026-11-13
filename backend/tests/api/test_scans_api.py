@@ -390,3 +390,16 @@ def test_the_scan_summary_is_cached_for_ten_seconds(
 
     assert first == second
     assert 0 < redis_client.ttl(key) <= 10
+
+
+@pytest.mark.usefixtures("seeded")
+def test_a_cached_value_of_the_wrong_shape_is_a_miss(
+    make_client: Callable[..., TestClient], redis_client: redis.Redis, schema_name: str
+) -> None:
+    client = make_client(REDIS_URL=TEST_REDIS_URL)
+    redis_client.set(f"aws-inventory-discovery:{schema_name}:scans:summary", '{"nonsense": true}')
+
+    response = client.get(f"{API}/scans/summary")
+
+    assert response.status_code == 200
+    assert response.json()["missingCount"] >= 0

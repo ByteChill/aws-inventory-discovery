@@ -98,6 +98,21 @@ def test_the_list_total_and_the_summary_share_one_cached_count(
     assert counts["resources"] == page["total"]
 
 
+@pytest.mark.usefixtures("seeded")
+def test_an_empty_attribute_value_is_a_filter_not_an_absent_parameter(
+    make_client: Callable[..., TestClient],
+) -> None:
+    client = make_client(REDIS_URL=TEST_REDIS_URL)
+
+    every = client.get("/api/v1/resources?resourceType=AWS::EC2::Instance").json()
+    # `attr.state=` filters on the empty value (`state.name IN ('')`); it must not reuse the
+    # cached count of the unfiltered request.
+    empty = client.get("/api/v1/resources?resourceType=AWS::EC2::Instance&attr.state=").json()
+
+    assert every["total"] > 0
+    assert empty["total"] == 0
+
+
 BULK_REGION = "ap-south-1"
 BULK_ACCOUNTS = 202
 

@@ -233,8 +233,8 @@ def count(
     Paging and sort do not change the count, so they are left out of the key."""
     key = cache.key("resources", "count", params_digest(f, exclude={"page", "page_size", "sort"}))
     cached = cache.get(key)
-    if cached is not None:
-        return int(cached)
+    if isinstance(cached, int) and not isinstance(cached, bool):
+        return cached
     statement = (
         select(func.count())
         .select_from(RESOURCE.join(ACCOUNT, R.account_id == A.account_id))

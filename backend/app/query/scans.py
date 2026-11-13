@@ -8,11 +8,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from botocore.exceptions import BotoCoreError, ClientError
+from pydantic import TypeAdapter
 from pydantic.alias_generators import to_camel
 from sqlalchemy import func, text
 from sqlmodel import Session, col, select
 
-from app.core.cache import Cache
+from app.core.cache import Cache, validated
 from app.core.config import Settings
 from app.core.errors import ApiError
 from app.models import ScanRequest, ScanShard, ScanTask
@@ -45,6 +46,7 @@ LOG_WINDOW_PADDING = timedelta(minutes=1)
 # The dashboard polls the scan summary every 3–5 s; a TTL just above that removes most of
 # the repeated queries without making the progress look stuck.
 SUMMARY_CACHE_SECONDS = 10
+_SUMMARY = TypeAdapter(ScanSummary)
 
 
 def scan_not_found(scan_id: int) -> ApiError:
@@ -253,9 +255,9 @@ def summary(session: Session, settings: Settings, now: datetime | None = None) -
 
 def cached_summary(session: Session, settings: Settings, cache: Cache) -> ScanSummary:
     key = cache.key("scans", "summary")
-    cached = cache.get(key)
+    cached = validated(_SUMMARY, cache.get(key))
     if cached is not None:
-        return ScanSummary.model_validate(cached)
+        return cached
     result = summary(session, settings)
     cache.set(key, result.model_dump(mode="json", by_alias=True), SUMMARY_CACHE_SECONDS)
     return result

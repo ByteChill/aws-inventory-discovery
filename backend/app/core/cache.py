@@ -4,6 +4,7 @@ import random
 from typing import Any, Self
 
 import redis
+from pydantic import TypeAdapter, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ class Cache:
     def from_url(
         cls, url: str | None, schema: str, *, ttl_seconds: int = DEFAULT_TTL_SECONDS
     ) -> Self:
-        if url is None:
+        if not url:  # unset or empty: no cache at all, so a blank variable does not stop start-up
             return cls(None, schema, ttl_seconds=ttl_seconds)
         client = redis.Redis.from_url(
             url,
@@ -103,11 +104,23 @@ class Cache:
             logger.warning("cache write failed: %s", exc)
 
     def _jittered(self, ttl_seconds: int | None) -> int:
-        ttl = self.ttl_seconds if ttl_seconds is None else ttl_seconds
+        ttl = max(1, self.ttl_seconds if ttl_seconds is None else ttl_seconds)
         # Only ever shorter, so an entry never outlives the configured TTL. Enough to keep
         # entries written together from all expiring on the same second.
-        return max(1, ttl - random.randint(0, ttl // 10))
+        return ttl - random.randint(0, ttl // 10)
 
     def close(self) -> None:
         if self._client is not None:
             self._client.close()
+
+
+def validated[T](adapter: TypeAdapter[T], raw: Any) -> T | None:
+    """A cached value read back as `T`, or None (a miss) if it no longer has that shape — the
+    one thing a rolling deploy can leave behind is an entry written under the previous model."""
+    if raw is None:
+        return None
+    try:
+        return adapter.validate_python(raw)
+    except ValidationError as exc:
+        logger.warning("cache value does not match its model, treating it as a miss: %s", exc)
+        return None

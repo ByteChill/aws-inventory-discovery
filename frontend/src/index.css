@@ -106,9 +106,12 @@
 }
 
 @theme {
+  /* Latin first, CJK fallback: English uses the platform UI font (rounder than
+     PingFang's Latin glyphs); Chinese characters fall through to PingFang. */
   --font-sans:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
     "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei",
-    system-ui, -apple-system, "Segoe UI", sans-serif;
+    sans-serif;
   --font-mono:
     ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 

@@ -63,13 +63,42 @@ def _purge_tasks(session: Session, cutoff: datetime) -> int:
         ids = [
             row.id
             for row in session.connection().execute(
-                text("SELECT id FROM t_inv_aws_scan_task WHERE finished_at < :cutoff LIMIT :batch"),
+                text(
+                    "SELECT id FROM t_inv_aws_scan_task WHERE finished_at < :cutoff"
+                    " AND status NOT IN ('queued', 'running') ORDER BY id LIMIT :batch"
+                ),
                 {"cutoff": cutoff, "batch": BATCH_SIZE},
             )
         ]
         if not ids:
             session.rollback()
             return total
+        # Retry may have changed a candidate since the first SELECT. Lock both candidates
+        # and their dependants in task-id order, then recheck retention under those locks.
+        locked = (
+            session.connection()
+            .execute(
+                text("""
+            SELECT id, status, finished_at FROM t_inv_aws_scan_task
+             WHERE id = ANY(:ids) OR coalesced_into = ANY(:ids)
+             ORDER BY id FOR UPDATE
+            """),
+                {"ids": ids},
+            )
+            .all()
+        )
+        candidates = set(ids)
+        ids = [
+            row.id
+            for row in locked
+            if row.id in candidates
+            and row.status not in ("queued", "running")
+            and row.finished_at is not None
+            and row.finished_at < cutoff
+        ]
+        if not ids:
+            session.commit()
+            continue
         # Tasks coalesced into a deleted task keep living for a while; detach them first.
         session.connection().execute(
             text(

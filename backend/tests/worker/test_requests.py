@@ -2,7 +2,7 @@ import threading
 from collections.abc import Callable
 
 import pytest
-from sqlalchemy import Engine
+from sqlalchemy import Engine, event, text
 from sqlmodel import Session, select
 
 from app.aws.account_registry import RegistryAccount
@@ -196,6 +196,50 @@ def test_retry_failed_requeues_only_failed_tasks_of_an_unfinished_request(
     queue.cancel_request(session, created.request.id or 0, NOW)
     with pytest.raises(requests.InvalidRequestState):
         requests.retry_failed(session, created.request.id or 0, NOW)
+
+
+def test_cancellation_winning_during_retry_rolls_back_requeued_tasks(
+    engine: Engine,
+    session: Session,
+    settings: Settings,
+    accounts: list[RegistryAccount],
+) -> None:
+    created = requests.create_scan(
+        session,
+        requests.ScanSpec(account_ids=[PAYMENTS_DEV, PAYMENTS_PROD]),
+        settings,
+        now=NOW,
+    )
+    failed = claim_one(session)
+    queue.fail_task(session, failed, "access_denied", "no access", retryable=False, now=NOW)
+    request_id = created.request.id or 0
+    connection = session.connection()
+    cancelled = False
+
+    def cancel_after_requeue(conn, cursor, statement, parameters, context, executemany):
+        nonlocal cancelled
+        if cancelled or not statement.startswith("UPDATE t_inv_aws_scan_task SET"):
+            return
+        cancelled = True
+        with Session(engine) as other:
+            other.connection().execute(text("SET LOCAL lock_timeout = '2s'"))
+            result = queue.cancel_request(other, request_id, NOW)
+            assert result is not None and result.status == "cancelled"
+
+    event.listen(connection, "after_cursor_execute", cancel_after_requeue)
+    try:
+        with pytest.raises(requests.InvalidRequestState, match="cancelled"):
+            requests.retry_failed(session, request_id, NOW)
+    finally:
+        event.remove(connection, "after_cursor_execute", cancel_after_requeue)
+
+    assert cancelled
+    session.expire_all()
+    assert session.get_one(ScanRequest, request_id).status == "cancelled"
+    assert task_state(session, failed).status == "failed"
+    assert not session.exec(
+        select(ScanTask).where(ScanTask.scan_request_id == request_id, ScanTask.status == "queued")
+    ).all()
 
 
 def test_concurrent_all_account_scans_share_one_full_sweep(

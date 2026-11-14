@@ -397,18 +397,14 @@ def retry_failed(session: Session, scan_request_id: int, now: datetime | None = 
     by a newer task stays failed. A cancelled request can't be retried.
     """
     now = now or utcnow()
-    request = session.exec(
-        select(ScanRequest).where(ScanRequest.id == scan_request_id).with_for_update()
-    ).first()
-    if request is None or request.status == "cancelled":
-        session.rollback()
-        raise InvalidRequestState(
-            "scan request not found" if request is None else "a cancelled scan cannot be retried"
-        )
+    # Lock tasks before the request, including any unique-index waits while requeuing.
+    # Cancellation may win meanwhile; the request check below then rolls back every change.
     failed = session.exec(
-        select(ScanTask).where(
-            ScanTask.scan_request_id == scan_request_id, ScanTask.status == "failed"
-        )
+        select(ScanTask)
+        .where(ScanTask.scan_request_id == scan_request_id, ScanTask.status == "failed")
+        .order_by(col(ScanTask.id))
+        .with_for_update()
+        .execution_options(populate_existing=True)
     ).all()
     requeued = 0
     for task in failed:
@@ -425,6 +421,17 @@ def retry_failed(session: Session, scan_request_id: int, now: datetime | None = 
             session.refresh(task)
             continue
         requeued += 1
+    request = session.exec(
+        select(ScanRequest)
+        .where(ScanRequest.id == scan_request_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).first()
+    if request is None or request.status == "cancelled":
+        session.rollback()
+        raise InvalidRequestState(
+            "scan request not found" if request is None else "a cancelled scan cannot be retried"
+        )
     if requeued:
         request.status = "queued" if request.started_at is None else "running"
         request.finished_at = None

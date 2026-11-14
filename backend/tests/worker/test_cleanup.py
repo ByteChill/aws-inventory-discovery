@@ -2,13 +2,13 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import Engine, func
+from sqlalchemy import Engine, event, func
 from sqlmodel import Session, select
 
 from app.aws.account_registry import RegistryAccount
 from app.core.config import Settings
 from app.models import Account, AccountRegion, Resource, ScanRequest, ScanShard, ScanTask
-from app.worker import cleanup, leases, queue
+from app.worker import cleanup, leases, queue, requests
 from app.worker.scheduler import Scheduler, sync_accounts
 from tests.worker.conftest import (
     IMAGES,
@@ -65,6 +65,47 @@ def test_the_scheduler_purges_finished_tasks_and_requests_after_their_retention(
         "queue-mid",
         "queue-new",
     ]
+
+
+@pytest.mark.parametrize("claim_again", [False, True])
+def test_cleanup_keeps_a_task_retried_after_candidate_selection(
+    engine: Engine,
+    session: Session,
+    accounts: list[RegistryAccount],
+    claim_again: bool,
+) -> None:
+    old = TODAY - timedelta(days=20)
+    refresh(session, "queue-retry", PAYMENTS_DEV, now=old)
+    task = claim_one(session, old)
+    queue.fail_task(session, task, "access_denied", "no access", retryable=False, now=old)
+    retried = False
+    connection = session.connection()
+
+    def retry_after_selection(conn, cursor, statement, parameters, context, executemany):
+        nonlocal retried
+        if retried or not statement.startswith(
+            "SELECT id FROM t_inv_aws_scan_task WHERE finished_at"
+        ):
+            return
+        retried = True
+        with Session(engine) as other:
+            assert requests.retry_failed(other, task.scan_request_id, TODAY) == 1
+            if claim_again:
+                claimed = claim_one(other, TODAY)
+                assert claimed.id == task.id
+
+    event.listen(connection, "after_cursor_execute", retry_after_selection)
+    try:
+        assert cleanup._purge_tasks(session, TODAY - timedelta(days=14)) == 0
+    finally:
+        event.remove(connection, "after_cursor_execute", retry_after_selection)
+
+    assert retried
+    session.expire_all()
+    kept = session.get_one(ScanTask, task.id)
+    assert kept.status == ("running" if claim_again else "queued")
+    assert kept.finished_at is None
+    assert session.get_one(ScanRequest, task.scan_request_id).status == "running"
 
 
 def resource(account_id: str, resource_id: str, status: str, deleted_at: datetime | None):

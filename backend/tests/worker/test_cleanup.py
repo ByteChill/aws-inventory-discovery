@@ -1,8 +1,11 @@
+import threading
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
+import psycopg
 import pytest
-from sqlalchemy import Engine, event, func
+from sqlalchemy import Engine, event, func, text
 from sqlmodel import Session, select
 
 from app.aws.account_registry import RegistryAccount
@@ -174,3 +177,174 @@ def test_cleanup_purges_old_deleted_resources_and_long_inactive_accounts(
     )
     assert count(session, AccountRegion) == 0
     assert count(session, ScanShard) == 0
+
+
+def deactivate_account(session: Session, accounts: list[RegistryAccount]) -> None:
+    """PAYMENTS_DEV left the registry 40 days ago; its active resources are still in the DB."""
+    session.add(resource(PAYMENTS_DEV, "orphan-1", "active", None))
+    session.commit()
+    sync_accounts(
+        session,
+        [a for a in accounts if a.account_id != PAYMENTS_DEV],
+        TODAY - timedelta(days=40),
+    )
+
+
+def wait_for_a_lock(db: psycopg.Connection, *markers: str, timeout: float = 10) -> None:
+    """Wait until some backend is blocked on one of the statements whose text contains a marker."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        waiting = [
+            row[0] or ""
+            for row in db.execute(
+                "SELECT query FROM pg_stat_activity"
+                " WHERE wait_event_type = 'Lock' AND pid <> pg_backend_pid()"
+            ).fetchall()
+        ]
+        if any(marker in query for query in waiting for marker in markers):
+            return
+        time.sleep(0.01)
+    pytest.fail(f"no backend waited for {markers}")
+
+
+def test_reactivation_after_selection_keeps_the_account_and_its_resources(
+    engine: Engine,
+    session: Session,
+    accounts: list[RegistryAccount],
+) -> None:
+    deactivate_account(session, accounts)
+    reactivated = False
+
+    def reactivate_after_selection(conn, cursor, statement, parameters, context, executemany):
+        nonlocal reactivated
+        if reactivated or not statement.lstrip().startswith(
+            "SELECT account_id FROM t_inv_aws_account"
+        ):
+            return
+        reactivated = True
+        # The API's account sync commits while cleanup is between selecting the expired
+        # accounts and deleting their data.
+        with Session(engine) as other:
+            sync_accounts(other, accounts, TODAY)
+
+    connection = session.connection()
+    event.listen(connection, "after_cursor_execute", reactivate_after_selection)
+    try:
+        purged = cleanup._purge_inactive_accounts(
+            session,
+            TODAY - timedelta(days=30),
+        )
+    finally:
+        event.remove(connection, "after_cursor_execute", reactivate_after_selection)
+
+    assert reactivated
+    assert purged == 0
+    session.expire_all()
+    account = session.get_one(Account, PAYMENTS_DEV)
+    assert account.active and account.inactive_since is None
+    assert [r.resource_id for r in session.exec(select(Resource))] == ["orphan-1"]
+
+
+def test_account_sync_waits_for_a_purge_in_progress(
+    engine: Engine,
+    session: Session,
+    accounts: list[RegistryAccount],
+    db: psycopg.Connection,
+) -> None:
+    deactivate_account(session, accounts)
+    syncing, resume = threading.Event(), threading.Event()
+    synced = threading.Event()
+    purged: list[int] = []
+    errors: list[BaseException] = []
+
+    def run_sync() -> None:
+        try:
+            with Session(engine) as own:
+                connection = own.connection()
+
+                def pause_after_upsert(conn, cursor, statement, parameters, context, executemany):
+                    if "INSERT INTO t_inv_aws_account" in statement:
+                        syncing.set()
+                        resume.wait(10)
+
+                event.listen(connection, "after_cursor_execute", pause_after_upsert)
+                try:
+                    sync_accounts(own, accounts, TODAY)
+                finally:
+                    event.remove(connection, "after_cursor_execute", pause_after_upsert)
+            synced.set()
+        except BaseException as exc:
+            errors.append(exc)
+
+    def run_cleanup() -> None:
+        try:
+            with Session(engine) as own:
+                purged.append(
+                    cleanup._purge_inactive_accounts(
+                        own,
+                        TODAY - timedelta(days=30),
+                    )
+                )
+        except BaseException as exc:
+            errors.append(exc)
+
+    sync_thread = threading.Thread(target=run_sync)
+    sync_thread.start()
+    assert syncing.wait(10), "sync did not reach the upsert"
+    cleanup_thread = threading.Thread(target=run_cleanup)
+    cleanup_thread.start()
+    # New code waits for the sync's account lock; old code got as far as deleting the account.
+    wait_for_a_lock(db, "pg_advisory_lock", "DELETE FROM t_inv_aws_account")
+    resume.set()
+    sync_thread.join(10)
+    cleanup_thread.join(10)
+
+    assert not sync_thread.is_alive() and not cleanup_thread.is_alive()
+    assert not errors
+    assert synced.is_set()
+    assert purged == [0]
+    session.expire_all()
+    account = session.get_one(Account, PAYMENTS_DEV)
+    assert account.active and account.inactive_since is None
+    assert [r.resource_id for r in session.exec(select(Resource))] == ["orphan-1"]
+
+
+def test_cleanup_keeps_a_deleted_resource_restored_while_its_batch_waits(
+    engine: Engine,
+    session: Session,
+    accounts: list[RegistryAccount],
+    db: psycopg.Connection,
+) -> None:
+    session.add(resource(IMAGES, "restored", "deleted", TODAY - timedelta(days=40)))
+    session.commit()
+    purged: list[int] = []
+    errors: list[BaseException] = []
+
+    def run_cleanup() -> None:
+        try:
+            with Session(engine) as own:
+                purged.append(cleanup._purge_deleted_resources(own, TODAY - timedelta(days=30)))
+        except BaseException as exc:
+            errors.append(exc)
+
+    with Session(engine) as writer:
+        # A later observation restores the resource, uncommitted: cleanup's batch has already
+        # selected it as deleted and now waits for this row.
+        writer.connection().execute(
+            text(
+                "UPDATE t_inv_aws_resource SET status = 'active', deleted_at = NULL"
+                " WHERE resource_id = 'restored'"
+            )
+        )
+        cleanup_thread = threading.Thread(target=run_cleanup)
+        cleanup_thread.start()
+        wait_for_a_lock(db, "DELETE FROM t_inv_aws_resource")
+        writer.commit()
+    cleanup_thread.join(10)
+
+    assert not cleanup_thread.is_alive()
+    assert not errors
+    assert purged == [0]
+    session.expire_all()
+    restored = session.exec(select(Resource).where(Resource.resource_id == "restored")).one()
+    assert restored.status == "active" and restored.deleted_at is None

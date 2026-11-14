@@ -77,9 +77,18 @@ class AdvisoryLock:
 
 def sync_accounts(session: Session, accounts: list[RegistryAccount], now: datetime) -> None:
     """Make `t_inv_aws_account` match the registry (scanner.md §5.1 step 1): insert new
-    accounts, refresh known ones (re-activating the returning), mark the absent inactive."""
+    accounts, refresh known ones (re-activating the returning), mark the absent inactive.
+
+    Take the per-account purge lock before touching the snapshot, in key order. A cleanup
+    that is already deleting an account therefore finishes first (and the insert below brings
+    the account back if the registry still lists it); if the account is already active again,
+    cleanup rechecks under the same lock and leaves its resources alone.
+    """
     if not accounts:
         raise ValueError("refusing to sync an empty account list")
+    schema = cleanup.schema_of(session)
+    for key in sorted({cleanup.account_sync_key(schema, a.account_id) for a in accounts}):
+        session.connection().execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
     fields = [
         {
             "account_id": a.account_id,

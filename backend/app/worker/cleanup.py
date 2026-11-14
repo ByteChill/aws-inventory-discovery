@@ -5,19 +5,59 @@ so a large backlog never holds a long transaction.
 """
 
 import logging
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import Engine, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session
 
 from app.core.config import Settings
 from app.models.scan import utcnow
+from app.worker.locks import advisory_lock_key
 
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 10_000
+ACCOUNT_SYNC_LOCK_NAME = "aws-inventory-discovery:account-sync"
+
+
+def account_sync_key(schema: str, account_id: str) -> int:
+    """The advisory lock that serialises account snapshot updates with an account purge."""
+    return advisory_lock_key(f"{ACCOUNT_SYNC_LOCK_NAME}:{account_id}", schema)
+
+
+def schema_of(session: Session) -> str:
+    """The schema tables resolve to (make_engine puts DATABASE_SCHEMA first in search_path).
+
+    Both cleanup and `sync_accounts` derive account lock keys from this, not from the raw
+    setting, so an unquoted uppercase DATABASE_SCHEMA still gives them the same key.
+    """
+    return session.connection().execute(text("SELECT current_schema()")).scalar_one()
+
+
+@contextmanager
+def _hold_account_lock(session: Session, key: int) -> Generator[None]:
+    """Hold a session-level advisory lock across the commits of one account's purge.
+
+    The lock lives on its own connection because a Session releases its connection on every
+    commit, which would release a session-level lock with it. It is independent of row locks,
+    so it never joins the shard -> task -> request order.
+    """
+    bind = session.get_bind()
+    engine = bind if isinstance(bind, Engine) else bind.engine
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+        connection.execute(text("SELECT pg_advisory_lock(:key)"), {"key": key})
+        try:
+            yield
+        finally:
+            try:
+                connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": key})
+            except SQLAlchemyError:  # closing the connection releases the lock anyway
+                logger.warning("could not release account purge lock", exc_info=True)
 
 
 @dataclass(frozen=True)
@@ -132,15 +172,18 @@ def _purge_deleted_resources(session: Session, cutoff: datetime) -> int:
     return _delete_in_batches(
         session,
         """
-        DELETE FROM t_inv_aws_resource WHERE id IN (
-            SELECT id FROM t_inv_aws_resource
-             WHERE status = 'deleted' AND deleted_at < :cutoff LIMIT :batch)
+        DELETE FROM t_inv_aws_resource
+         WHERE status = 'deleted' AND deleted_at < :cutoff
+           AND id IN (
+               SELECT id FROM t_inv_aws_resource
+                WHERE status = 'deleted' AND deleted_at < :cutoff LIMIT :batch)
         """,
         {"cutoff": cutoff},
     )
 
 
 def _purge_inactive_accounts(session: Session, cutoff: datetime) -> int:
+    schema = schema_of(session)
     expired = [
         row.account_id
         for row in session.connection().execute(
@@ -152,19 +195,40 @@ def _purge_inactive_accounts(session: Session, cutoff: datetime) -> int:
         )
     ]
     session.rollback()
+    purged = 0
     for account_id in expired:
-        _delete_in_batches(
-            session,
-            """
-            DELETE FROM t_inv_aws_resource WHERE id IN (
-                SELECT id FROM t_inv_aws_resource WHERE account_id = :account_id LIMIT :batch)
-            """,
-            {"account_id": account_id},
-        )
-        for table in ("t_inv_aws_account_region", "t_inv_aws_scan_shard", "t_inv_aws_account"):
-            session.connection().execute(
-                text(f"DELETE FROM {table} WHERE account_id = :account_id"),  # noqa: S608
+        with _hold_account_lock(session, account_sync_key(schema, account_id)):
+            # `sync_accounts` takes the same lock before reactivating an account. Recheck under
+            # it (and under the account row lock) because the account may have returned between
+            # the scan above and this point.
+            eligible = (
+                session.connection()
+                .execute(
+                    text("""
+                SELECT 1 FROM t_inv_aws_account
+                 WHERE account_id = :account_id AND NOT active AND inactive_since < :cutoff
+                 FOR UPDATE
+                """),
+                    {"account_id": account_id, "cutoff": cutoff},
+                )
+                .first()
+            )
+            session.commit()
+            if eligible is None:
+                continue
+            _delete_in_batches(
+                session,
+                """
+                DELETE FROM t_inv_aws_resource WHERE id IN (
+                    SELECT id FROM t_inv_aws_resource WHERE account_id = :account_id LIMIT :batch)
+                """,
                 {"account_id": account_id},
             )
-        session.commit()
-    return len(expired)
+            for table in ("t_inv_aws_account_region", "t_inv_aws_scan_shard", "t_inv_aws_account"):
+                session.connection().execute(
+                    text(f"DELETE FROM {table} WHERE account_id = :account_id"),  # noqa: S608
+                    {"account_id": account_id},
+                )
+            session.commit()
+            purged += 1
+    return purged

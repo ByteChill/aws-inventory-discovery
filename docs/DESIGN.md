@@ -426,7 +426,7 @@ T2  定时扫描写入 q1、q2，observed_at = T0
 | GET | `/resources/lookup?arn=` | 按 ARN 查询，返回列表 |
 | GET | `/resources/{id}` | 详情：Config 格式、实时数据、账号信息 |
 | GET | `/resources/{id}/relationships?direction=out\|in\|both` | 关联资源，分页 |
-| POST | `/resources/refresh?wait=20` | 刷新单个资源。请求体主要用 `{accountId, awsRegion, resourceType, resourceId}`，永远没有歧义，也能刷新库里还没有的资源；也可以只传 `{arn}`（只能刷新库里已有的），但如果这个 ARN 在库里对应多个账号（共享 AMI），返回 `409 ambiguous_arn` 并列出账号。`resourceId` 就是 Config 格式里的 `resourceId`，系统按类型规则在内部换算成 Cloud Control 的 Identifier：库里有就用存着的配置，没有就由类型钩子推出（ECS Service、ECS Cluster 都用 ARN 作为 `resourceId`）。扫描页的「再检查一次」也用它 |
+| POST | `/resources/refresh?wait=20` | 刷新单个资源。请求体主要用 `{accountId, awsRegion, resourceType, resourceId}`，永远没有歧义，也能刷新库里还没有的资源；也可以只传 `{arn}`（只能刷新库里已有的），但如果这个 ARN 在库里对应多个账号（共享 AMI），返回 `409 ambiguous_arn` 并列出账号。`resourceId` 就是 Config 格式里的 `resourceId`，系统按类型规则在内部换算成 Cloud Control 的 Identifier：库里有就用存着的配置，没有就由类型钩子推出（ECS Service、ECS Cluster 都用 ARN 作为 `resourceId`）。扫描页的「再检查一次」也用它。账号已不活跃时按不存在处理（404 `account_not_found`）。 |
 | GET | `/resource-types` | 支持的资源类型，带中英文名称 |
 | GET | `/columns?resourceType=` | 列定义，不传类型时返回通用列；前端据此生成列和筛选控件 |
 | GET | `/stats/overview` | 概览数据 |
@@ -445,7 +445,7 @@ T2  定时扫描写入 q1、q2，observed_at = T0
 | GET | `/tasks/{id}/logs` | 任务日志：API 按任务 ID 和任务的时间范围，实时查 `/aws-inventory-discovery/worker` 日志组；查不到（本地环境没有这个日志组）返回 `dependency_unavailable` |
 | GET | `/scan-scopes?guardState=abnormal` | 数据异常的扫描范围，返回 `scanShardId` |
 | GET | `/scan-scopes/{id}/candidates` | 待核对范围的候选资源，分页；来自触发保护时保存的候选 ID |
-| POST | `/scan-scopes/confirm-change` | 确认是真实变化：`{accountId, awsRegion, resourceType}`；范围不存在返回 `scope_not_found`，当前不是 `abnormal` 返回 `scope_not_abnormal` |
+| POST | `/scan-scopes/confirm-change` | 确认是真实变化：`{accountId, awsRegion, resourceType, guardDetectedAt}`（带上核对时看到的检测时间）；范围不存在返回 `scope_not_found`，当前不是 `abnormal` 返回 `scope_not_abnormal`，检测时间已变化返回 `409 scope_changed` |
 | GET | `/health` | 健康检查：数据库、Redis（数据库不可用时 503，Redis 不可用时仍是 200） |
 
 ### 8.4 单个资源刷新的返回

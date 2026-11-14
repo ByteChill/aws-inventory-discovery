@@ -7,7 +7,10 @@ import { t } from "./i18n"
 // guard metadata changes, and the original values are restored in finally.
 const engine =
   process.env.E2E_CONTAINER_ENGINE ?? (process.env.CI ? "docker" : "podman")
-function guards(action: "prepare" | "restore", snapshot = ""): string {
+function guards(
+  action: "prepare" | "redetect" | "restore",
+  snapshot = "",
+): string {
   return execFileSync(
     engine,
     [
@@ -51,6 +54,13 @@ with engine.begin() as conn:
              WHERE s.id = ANY(:ids)
         """), {"ids": [row["id"] for row in saved]})
         print(json.dumps(saved, default=str))
+    elif sys.argv[1] == "redetect":
+        conn.execute(text("""
+            UPDATE t_inv_aws_scan_shard
+               SET guard_detected_at = now(), candidate_count = 0,
+                   candidate_ids = '[]'::jsonb
+             WHERE id = :id
+        """), {"id": json.load(sys.stdin)})
     else:
         for row in json.load(sys.stdin):
             if row["candidate_ids"] is not None:
@@ -71,10 +81,11 @@ engine.dispose()
   )
 }
 
-test("异常范围超过 200 个：翻页、直接链接、后续页失败重试和不存在状态", async ({
+test("异常范围超过 200 个：翻页、直接链接、读取失败重试和状态变化", async ({
   page,
   context,
 }) => {
+  test.setTimeout(90_000)
   const snapshot = guards("prepare")
   try {
     const response = await page.request.get(
@@ -128,15 +139,13 @@ test("异常范围超过 200 个：翻页、直接链接、后续页失败重试
       page.getByText(target.accountId, { exact: true }).first(),
     ).toBeVisible()
 
-    // A fresh tab has no query cache or previous list page. Fail the later page,
-    // then retry against the real API: an incomplete lookup must not say missing.
+    // A fresh tab has no query cache or previous list page. Fail the scope read
+    // itself, then retry against the real API: a failed read must not say missing.
     const direct = await context.newPage()
-    let failLaterPage = true
-    await direct.route(/\/api\/v1\/scan-scopes\?/, async (route) => {
-      if (
-        new URL(route.request().url()).searchParams.get("page") === "2" &&
-        failLaterPage
-      ) {
+    await direct.bringToFront() // a background tab does not poll
+    let failLookup = true
+    await direct.route(/\/api\/v1\/scan-scopes\/\d+$/, async (route) => {
+      if (failLookup) {
         await route.abort("failed")
       } else {
         await route.continue()
@@ -147,7 +156,7 @@ test("异常范围超过 200 个：翻页、直接链接、后续页失败重试
     await expect(
       direct.getByRole("button", { name: t("action.retry") }),
     ).toBeVisible({ timeout: 20_000 })
-    failLaterPage = false
+    failLookup = false
     await direct.getByRole("button", { name: t("action.retry") }).click()
     await expect(direct.getByText(t("scanScope.noteTitle"))).toBeVisible()
     const candidates = await direct.request.get(
@@ -160,8 +169,34 @@ test("异常范围超过 200 个：翻页、直接链接、后续页失败重试
         name: t("preview.row", {
           name: first.resourceName ?? first.resourceId,
         }),
+        exact: true,
       }),
     ).toBeVisible()
+
+    // Keep the page open while another scan changes and then clears the guard.
+    // A new detection must refresh candidates and close the old confirmation.
+    await direct
+      .getByRole("button", { name: t("action.confirmChange") })
+      .click()
+    await expect(direct.getByRole("dialog")).toBeVisible()
+    guards("redetect", JSON.stringify(target.scanShardId))
+    await expect(direct.getByRole("dialog")).toHaveCount(0, { timeout: 20_000 })
+    await expect(direct.getByText(t("scanScope.empty"))).toBeVisible()
+    await expect(
+      direct.getByRole("row", {
+        name: t("preview.row", {
+          name: first.resourceName ?? first.resourceId,
+        }),
+        exact: true,
+      }),
+    ).toHaveCount(0)
+    guards("restore", snapshot)
+    await expect(direct.getByText(t("scanScope.notFoundPage"))).toBeVisible({
+      timeout: 20_000,
+    })
+    await expect(
+      direct.getByRole("button", { name: t("action.confirmChange") }),
+    ).toHaveCount(0)
 
     await direct.goto("scan-scopes/9007199254740991")
     await expect(direct.getByText(t("scanScope.notFoundPage"))).toBeVisible()

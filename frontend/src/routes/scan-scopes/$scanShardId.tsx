@@ -69,7 +69,12 @@ function ScopePage() {
         isEmpty={!scope}
         emptyMessage={t("scanScope.notFoundPage")}
       >
-        {scope && <Detail scope={scope} />}
+        {scope && (
+          <Detail
+            key={`${scope.scanShardId}:${scope.guardDetectedAt}`}
+            scope={scope}
+          />
+        )}
       </QueryRegion>
     </Page>
   )
@@ -116,10 +121,12 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
       scope.resourceType,
     [types.data, scope.resourceType],
   )
-  const candidates = useScopeCandidates(scope.scanShardId, state.q, {
-    page: state.page,
-    pageSize: state.pageSize,
-  })
+  const candidates = useScopeCandidates(
+    scope.scanShardId,
+    state.q,
+    { page: state.page, pageSize: state.pageSize },
+    scope.guardDetectedAt,
+  )
   const total = candidates.data?.total ?? 0
   const pages = Math.max(1, Math.ceil(total / state.pageSize))
   const accountName = account.data?.accountName ?? scope.accountId

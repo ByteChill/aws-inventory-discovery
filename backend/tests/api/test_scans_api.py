@@ -250,6 +250,9 @@ def test_scan_scopes_and_confirming_an_abnormal_one(api: TestClient, db_engine: 
     (abnormal,) = api.get(f"{API}/scan-scopes").json()["items"]
     assert abnormal["candidateCount"] == 30 and abnormal["resourceType"] == SCOPE["resourceType"]
     assert isinstance(abnormal["scanShardId"], int)
+    # A direct link reads one scope by id, independent of its page in the list.
+    assert api.get(f"{API}/scan-scopes/{abnormal['scanShardId']}").json() == abnormal
+    assert error_of(api.get(f"{API}/scan-scopes/999999999"), 404)["code"] == "scope_not_found"
     assert api.get(f"{API}/scans/summary").json()["abnormalScopeCount"] == 1
 
     confirmed = api.post(

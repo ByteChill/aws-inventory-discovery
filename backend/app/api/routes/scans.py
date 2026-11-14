@@ -190,6 +190,11 @@ def list_scan_scopes(
     return scans_query.list_scopes(session, params.guard_state, params.page, params.page_size)
 
 
+@scopes_router.get("/{scan_shard_id}")
+def get_scan_scope(scan_shard_id: int, session: SessionDep) -> ScanScopeOut:
+    return scans_query.get_scope(session, scan_shard_id)
+
+
 @scopes_router.get("/{scan_shard_id}/candidates")
 def list_scope_candidates(
     scan_shard_id: int, params: Annotated[CandidateParams, Query()], session: SessionDep

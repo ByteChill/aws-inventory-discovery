@@ -13,6 +13,7 @@ import {
   confirmScopeChange,
   createScan,
   getScan,
+  getScanScope,
   getTask,
   getTaskLogs,
   type ListResourcesData,
@@ -29,6 +30,7 @@ import {
   type ScanSpec,
   scanSummary,
 } from "@/client"
+import { isApiError } from "@/lib/errors"
 
 type ScansQuery = NonNullable<ListScansData["query"]>
 type TasksQuery = NonNullable<Parameters<typeof listScanTasks>[0]["query"]>
@@ -135,28 +137,30 @@ export function useAbnormalScopes(page: number, pageSize: number) {
   })
 }
 
-/** A direct link must work regardless of which list page the reader visited. */
+/** A direct link reads the scope itself, not a page of the list (which others can shift). */
 export function useAbnormalScope(scanShardId: number) {
   return useQuery({
     queryKey: ["scan-scopes", "detail", scanShardId],
-    queryFn: async ({ signal }) => {
+    queryFn: async () => {
       if (!Number.isSafeInteger(scanShardId) || scanShardId <= 0) return null
-      for (let page = 1; ; page++) {
-        const data = (
-          await listScanScopes({
-            query: { guardState: "abnormal", page, pageSize: 200 },
-            signal,
+      try {
+        const scope = (
+          await getScanScope({
+            path: { scan_shard_id: scanShardId },
             throwOnError: true,
           })
         ).data
-        const scope = data.items.find((s) => s.scanShardId === scanShardId)
-        if (scope) return scope
-        if (page * data.pageSize >= data.total) return null
+        // A cleared guard has nothing to review anymore.
+        return scope.guardState === "abnormal" ? scope : null
+      } catch (e) {
+        if (isApiError(e) && e.code === "scope_not_found") return null
+        throw e
       }
     },
-    // Poll only while it is not found: a found scope's fields barely change, and
-    // polling one on a later page would re-read every page in front of it.
-    refetchInterval: (query) => (query.state.data === null ? 15_000 : false),
+    // The guard can clear or change while the page is open; the candidates follow
+    // `guardDetectedAt` (Detail remounts with a new detection).
+    refetchInterval:
+      Number.isSafeInteger(scanShardId) && scanShardId > 0 ? 15_000 : false,
   })
 }
 
@@ -165,9 +169,10 @@ export function useScopeCandidates(
   scanShardId: number | undefined,
   q: string | undefined,
   paging: { page: number; pageSize: number },
+  guardDetectedAt: string | null,
 ) {
   return useQuery({
-    queryKey: ["scope-candidates", scanShardId, q, paging],
+    queryKey: ["scope-candidates", scanShardId, guardDetectedAt, q, paging],
     queryFn: async () =>
       (
         await listScopeCandidates({
@@ -177,7 +182,6 @@ export function useScopeCandidates(
         })
       ).data,
     enabled: scanShardId !== undefined,
-    placeholderData: keepPreviousData,
   })
 }
 

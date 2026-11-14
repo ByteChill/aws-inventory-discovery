@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 from datetime import timedelta
 from typing import Any
 
@@ -11,7 +9,8 @@ from pydantic import TypeAdapter
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.orm import Session
 
-from app.core.cache import Cache
+from app.core.cache import Cache, validated
+from app.query.cache_keys import params_digest
 from app.query.columns import Language, attr_expr, label_of, value_label
 from app.query.filters import ResourceFilter, invalid_filter, single_spec, where
 from app.query.tables import ACCOUNT, RESOURCE, A, R
@@ -20,7 +19,6 @@ from app.types.columns import column_paths
 from app.types.registry import TypeRegistry
 
 MAX_BUCKETS = 200
-CACHE_SECONDS = 60
 
 # facet field -> (value column, column the label comes from or None)
 COMMON_FIELDS: dict[str, tuple[ColumnElement[Any], ColumnElement[Any] | None]] = {
@@ -32,19 +30,17 @@ COMMON_FIELDS: dict[str, tuple[ColumnElement[Any], ColumnElement[Any] | None]] =
     "resourceType": (R.resource_type, None),
     "status": (R.status, None),
 }
-_BUCKETS = TypeAdapter(dict[str, list[FacetBucket]])
+_BUCKETS = TypeAdapter(list[FacetBucket])
 
 
 class FacetParams(ResourceFilter):
     field: list[str] = []
 
 
-def cache_key(cache: Cache, params: FacetParams, language: Language) -> str:
-    body = params.model_dump(mode="json", by_alias=True)
-    digest = hashlib.sha256(
-        json.dumps({"filter": body, "language": language}, sort_keys=True).encode()
-    ).hexdigest()
-    return cache.key("facets", digest)
+def cache_key(cache: Cache, digest: str, language: Language, field: str) -> str:
+    """One entry per (filter, field, language): a request for a different set of fields reuses
+    the entries it shares with earlier requests instead of computing them again."""
+    return cache.key("facets", digest, field, language)
 
 
 def _bucket_label(
@@ -83,9 +79,10 @@ def compute(
     language: Language,
     *,
     task_retention: timedelta,
+    fields: list[str],
 ) -> dict[str, list[FacetBucket]]:
     result: dict[str, list[FacetBucket]] = {}
-    for field in dict.fromkeys(params.field):
+    for field in fields:
         value, label = _field_columns(field, params, registry)
         total = func.count().label("total")
         statement = (
@@ -129,10 +126,28 @@ def facets(
     *,
     task_retention: timedelta,
 ) -> dict[str, list[FacetBucket]]:
-    key = cache_key(cache, params, language)
-    cached = cache.get(key)
-    if cached is not None:
-        return _BUCKETS.validate_python(cached)
-    result = compute(session, registry, params, language, task_retention=task_retention)
-    cache.set(key, _BUCKETS.dump_python(result, mode="json", by_alias=True), CACHE_SECONDS)
-    return result
+    fields = list(dict.fromkeys(params.field))
+    digest = params_digest(params, exclude={"field"})  # the same for every field
+    keys = [cache_key(cache, digest, language, field) for field in fields]
+    values: dict[str, list[FacetBucket]] = {}
+    missing: list[str] = []
+    for field, raw in zip(fields, cache.get_many(keys), strict=True):
+        cached = validated(_BUCKETS, raw)
+        if cached is None:
+            missing.append(field)
+        else:
+            values[field] = cached
+    if missing:
+        computed = compute(
+            session, registry, params, language, task_retention=task_retention, fields=missing
+        )
+        cache.set_many(
+            {
+                cache_key(cache, digest, language, field): _BUCKETS.dump_python(
+                    buckets, mode="json", by_alias=True
+                )
+                for field, buckets in computed.items()
+            }
+        )
+        values.update(computed)
+    return {field: values[field] for field in fields}

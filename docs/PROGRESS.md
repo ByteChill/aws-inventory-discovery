@@ -20,7 +20,7 @@
 | M7 部署 | 完成（待平台创建资源后实际验证） |
 | M8 上线确认 | 未开始 |
 
-**MVP1 完成，已合并到 main**：两批共 15 个资源类型、完整的扫描和写入流程、API、dashboard、本地环境和部署文件。后端 344 个测试通过（`cd backend && uv run pytest`，需要 `podman compose up -d postgres redis`），Playwright 端到端测试 11 个通过（`cd frontend && npm run e2e`，需要本地栈），CI 工作流（`.github/workflows/ci.yml`）已在 GitHub 上通过。剩下的是真实环境的确认（见 M1、M8）。
+**MVP1 完成，已合并到 main**：两批共 15 个资源类型、完整的扫描和写入流程、API、dashboard、本地环境和部署文件。后端 354 个测试通过（`cd backend && uv run pytest`，需要 `podman compose up -d postgres redis`），Playwright 端到端测试 11 个通过（`cd frontend && npm run e2e`，需要本地栈），CI 工作流（`.github/workflows/ci.yml`）已在 GitHub 上通过。剩下的是真实环境的确认（见 M1、M8）。
 
 设计阶段已完成：[DESIGN.md](DESIGN.md)、[DECISIONS.md](DECISIONS.md)、[specs/](specs/)。实现中发现的偏差已经同步到这些文档（DECISIONS D-21 起）。
 
@@ -77,6 +77,7 @@
 - [x] 新 dashboard 需要的三个接口：`GET /applications`（按 EIM 汇总活跃账号、环境数和资源数）；资源列表、分类和导出的 `scanRequestId`（按请求里任务的已解析范围，取当前清单）；`GET /scan-scopes/{id}/candidates`（候选 ID 和 ARN 存在 `scan_shard.candidate_ids`，迁移 0005，范围恢复正常时清空）
 - [x] 这三个接口的独立评审（Claude 一轮、DeepSeek V4.1 Flash 一轮，2026-11-13）发现的问题已修复：`config_group` 只覆盖 Config 能提供的类型；超过任务保留期的扫描改按请求记录的范围计算（D-33）；应用列表先分页再统计资源数，`total` 和列表按同一组计数；候选接口不再把整个候选列表读进进程；「已清理」候选的测试数据改为来自样本。迁移 0005 之前已经异常的范围没有候选明细，已写进 [specs/api.md](specs/api.md)
 - [x] 健康检查；统一错误格式；Redis 缓存
+- [x] 缓存层（2026-11-14）：专用 ElastiCache for Valkey（D-34，见 deploy/CHECKLIST.md 第 2 节）；api 进程内共享一个 Redis 客户端；分类计数按字段缓存，筛选后的资源计数由列表 `total` 和 `/resources/summary` 共用，账号、应用列表、概览统计和扫描页摘要进缓存；TTL 由 `CACHE_TTL_SECONDS` 控制（默认 60 秒，扫描摘要 10 秒）；缓存值形状不符或 Redis 不可用都当作未命中，`/health` 用同一个客户端探测
 - [x] 测试：主要接口的行为
 
 ## M6 Dashboard

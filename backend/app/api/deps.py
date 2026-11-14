@@ -1,14 +1,12 @@
-from collections.abc import Iterator
 from functools import lru_cache
 from typing import Annotated, Any
 
 import boto3
 from botocore.config import Config
-from fastapi import Depends, Header, Query
+from fastapi import Depends, Header, Query, Request
 from sqlmodel import Session
 
 from app.core.cache import Cache
-from app.core.config import get_settings
 from app.core.db import get_read_session, get_session
 from app.query.accounts import AccountFilter
 from app.query.applications import ApplicationFilter
@@ -46,13 +44,9 @@ def get_logs_client() -> Any:
     )
 
 
-def get_cache() -> Iterator[Cache]:
-    settings = get_settings()
-    cache = Cache.from_url(settings.REDIS_URL, settings.DATABASE_SCHEMA)
-    try:
-        yield cache
-    finally:
-        cache.close()
+def get_cache(request: Request) -> Cache:
+    """The cache built once per app in `create_app`; requests only borrow it."""
+    return request.app.state.cache
 
 
 def get_language(accept_language: Annotated[str | None, Header()] = None) -> Language:

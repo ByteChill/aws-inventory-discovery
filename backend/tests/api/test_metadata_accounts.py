@@ -6,9 +6,12 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
+import redis
 from fastapi.testclient import TestClient
 
 from app.types.registry import TypeRegistry
+from tests.api.conftest import TEST_REDIS_URL
 from tests.support.seed import DEV_ACCOUNT, IMAGES_ACCOUNT, MAIN_ACCOUNT, Seeded
 
 EN = {"Accept-Language": "en-US,en;q=0.9"}
@@ -117,3 +120,18 @@ def test_unknown_account_is_a_404(client: TestClient) -> None:
 
         assert response.status_code == 404
         assert response.json()["code"] == "account_not_found"
+
+
+@pytest.mark.usefixtures("seeded")
+def test_the_accounts_list_is_cached(
+    make_client: Callable[..., TestClient], redis_client: redis.Redis, schema_name: str
+) -> None:
+    client = make_client(REDIS_URL=TEST_REDIS_URL)
+
+    first = client.get("/api/v1/accounts").json()
+    second = client.get("/api/v1/accounts").json()
+    keys = list(redis_client.scan_iter(f"aws-inventory-discovery:{schema_name}:accounts:list:*"))
+
+    assert first == second
+    assert len(keys) == 1
+    assert 0 < redis_client.ttl(keys[0]) <= 60

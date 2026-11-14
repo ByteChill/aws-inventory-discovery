@@ -5,8 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+import pytest
+import redis
 from fastapi.testclient import TestClient
 
+from tests.api.conftest import TEST_REDIS_URL
 from tests.support.seed import Seeded
 
 
@@ -86,3 +89,20 @@ def test_application_errors(get_json: Callable[..., Any], client: TestClient) ->
     bad_sort = client.get("/api/v1/applications?sort=bogus")
     assert bad_sort.status_code == 400
     assert bad_sort.json()["code"] == "invalid_sort"
+
+
+@pytest.mark.usefixtures("seeded")
+def test_the_applications_list_is_cached(
+    make_client: Callable[..., TestClient], redis_client: redis.Redis, schema_name: str
+) -> None:
+    client = make_client(REDIS_URL=TEST_REDIS_URL)
+
+    first = client.get("/api/v1/applications").json()
+    second = client.get("/api/v1/applications").json()
+    keys = list(
+        redis_client.scan_iter(f"aws-inventory-discovery:{schema_name}:applications:list:*")
+    )
+
+    assert first == second
+    assert len(keys) == 1
+    assert 0 < redis_client.ttl(keys[0]) <= 60

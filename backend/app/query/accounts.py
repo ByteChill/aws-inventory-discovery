@@ -5,10 +5,13 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from pydantic import TypeAdapter
 from sqlalchemy import ColumnElement, Row, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.cache import Cache, validated
 from app.core.errors import ApiError
+from app.query.cache_keys import params_digest
 from app.query.columns import STALE_AFTER
 from app.query.paging import PagingParams
 from app.query.search import like_pattern
@@ -33,6 +36,7 @@ RESOURCE_COUNT = (
     .scalar_subquery()
 )
 ACCESS_DENIED_MARKS = ("accessdenied", "access_denied", "unauthorized")
+_PAGE = TypeAdapter(Page[AccountSummary])
 
 
 class AccountFilter(PagingParams):
@@ -85,7 +89,13 @@ def _account_select() -> Any:
     )
 
 
-def list_accounts(session: Session, params: AccountFilter, purge_days: int) -> Page[AccountSummary]:
+def list_accounts(
+    session: Session, params: AccountFilter, purge_days: int, cache: Cache
+) -> Page[AccountSummary]:
+    cache_key = cache.key("accounts", "list", str(purge_days), params_digest(params))
+    cached = validated(_PAGE, cache.get(cache_key))
+    if cached is not None:
+        return cached
     conditions: list[ColumnElement[bool]] = [A.active == params.active]
     for values, column in (
         (params.account_type, A.account_type),
@@ -118,12 +128,14 @@ def list_accounts(session: Session, params: AccountFilter, purge_days: int) -> P
     total = session.execute(
         select(func.count()).select_from(ACCOUNT).where(*conditions)
     ).scalar_one()
-    return Page(
+    page = Page(
         items=[AccountSummary(**_summary(row, purge_days)) for row in rows],
         page=params.page,
         page_size=params.page_size,
         total=total,
     )
+    cache.set(cache_key, _PAGE.dump_python(page, mode="json", by_alias=True))
+    return page
 
 
 def _require(session: Session, account_id: str) -> Row[Any]:

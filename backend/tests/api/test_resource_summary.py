@@ -8,9 +8,12 @@ from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
+import redis
+from fastapi.testclient import TestClient
 from sqlalchemy import Engine, delete, insert
 
 from app.query.tables import ACCOUNT, RESOURCE
+from tests.api.conftest import TEST_REDIS_URL
 from tests.support.seed import Seeded
 
 
@@ -74,6 +77,40 @@ def test_a_type_column_filter_is_applied(get_json: Callable[..., Any], seeded: S
 
     assert counts["resources"] == get_json(f"/api/v1/resources?pageSize=1&{query}")["total"]
     assert counts["resourceTypes"] == 1
+
+
+@pytest.mark.usefixtures("seeded")
+def test_the_list_total_and_the_summary_share_one_cached_count(
+    make_client: Callable[..., TestClient],
+    redis_client: redis.Redis,
+    schema_name: str,
+) -> None:
+    client = make_client(REDIS_URL=TEST_REDIS_URL)
+    query = "awsRegion=us-east-1"
+
+    counts = client.get(f"/api/v1/resources/summary?{query}").json()
+    # Paging and sort do not change the count, so this reuses the entry the summary wrote.
+    page = client.get(f"/api/v1/resources?pageSize=2&page=2&sort=resourceName&{query}").json()
+    keys = list(redis_client.scan_iter(f"aws-inventory-discovery:{schema_name}:resources:count:*"))
+
+    assert len(keys) == 1
+    assert counts["resources"] > 0
+    assert counts["resources"] == page["total"]
+
+
+@pytest.mark.usefixtures("seeded")
+def test_an_empty_attribute_value_is_a_filter_not_an_absent_parameter(
+    make_client: Callable[..., TestClient],
+) -> None:
+    client = make_client(REDIS_URL=TEST_REDIS_URL)
+
+    every = client.get("/api/v1/resources?resourceType=AWS::EC2::Instance").json()
+    # `attr.state=` filters on the empty value (`state.name IN ('')`); it must not reuse the
+    # cached count of the unfiltered request.
+    empty = client.get("/api/v1/resources?resourceType=AWS::EC2::Instance&attr.state=").json()
+
+    assert every["total"] > 0
+    assert empty["total"] == 0
 
 
 BULK_REGION = "ap-south-1"

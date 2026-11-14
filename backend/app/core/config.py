@@ -3,7 +3,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # backend/app/core/config.py -> repo root
@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     DATABASE_READ_URL: str | None = None
     DATABASE_SCHEMA: str
     REDIS_URL: str | None = None
+    # How long cached facets and overview numbers stay valid. Entries are written with a
+    # slightly shorter random TTL so they do not all expire on the same second.
+    CACHE_TTL_SECONDS: int = Field(default=60, ge=1)
 
     ACCOUNT_REGISTRY_URL: str | None = None
     CREDENTIAL_SERVICE_URL: str | None = None

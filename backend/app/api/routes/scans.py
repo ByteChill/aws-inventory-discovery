@@ -4,7 +4,7 @@ from fastapi import APIRouter, Body, Header, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
-from app.api.deps import LogsClientDep, RegistryDep, SessionDep
+from app.api.deps import CacheDep, LogsClientDep, RegistryDep, SessionDep
 from app.api.support import check_resource_type, ensure_accounts, refresh_accounts
 from app.core.config import get_settings
 from app.core.db import get_engine
@@ -65,8 +65,8 @@ class CandidateParams(PagingParams):
 
 
 @router.get("/summary")
-def scan_summary(session: SessionDep) -> ScanSummary:
-    return scans_query.summary(session, get_settings())
+def scan_summary(session: SessionDep, cache: CacheDep) -> ScanSummary:
+    return scans_query.cached_summary(session, get_settings(), cache)
 
 
 @router.post("", status_code=201)

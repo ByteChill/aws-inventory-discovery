@@ -3,6 +3,7 @@ from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
+import redis
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
@@ -38,6 +39,17 @@ def db_engine(schema_name: str) -> Iterator[Engine]:
         yield engine
     finally:
         engine.dispose()
+
+
+@pytest.fixture
+def redis_client(schema_name: str) -> Iterator[redis.Redis]:
+    """The real cache, with this test schema's keys emptied first so a test only sees what it
+    writes itself. Other schemas — a local stack sharing the instance — keep their entries."""
+    client = redis.Redis.from_url(TEST_REDIS_URL, socket_connect_timeout=1, socket_timeout=1)
+    for key in client.scan_iter(f"aws-inventory-discovery:{schema_name}:*"):
+        client.delete(key)
+    yield client
+    client.close()
 
 
 @pytest.fixture

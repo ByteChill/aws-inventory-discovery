@@ -23,3 +23,15 @@ def test_health_is_503_when_database_is_down(
 
     assert response.status_code == 503
     assert response.json()["database"] == "unavailable"
+
+
+def test_a_malformed_redis_url_does_not_stop_the_api(
+    make_client: Callable[..., TestClient],
+) -> None:
+    # A token that was not URL-encoded; the cache is simply off, the API still serves.
+    client = make_client(REDIS_URL="not a url")
+
+    response = client.get("/api/v1/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"database": "ok", "redis": "unavailable"}

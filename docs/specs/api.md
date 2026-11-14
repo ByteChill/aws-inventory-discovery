@@ -290,7 +290,7 @@ type Task = {
 - 返回：`Page<ScopeCandidate>`。候选来自触发保护时保存的候选资源 ID（`scan_shard.candidate_ids`），按资源 ID 排序。资源还在库里时返回库里的名称、ARN 和状态；已经清理的 `id` 为 `null`，`inventoryStatus` 为 `purged`。范围当前不是 `abnormal` 时返回空页。迁移 0005 之前触发保护的范围没有保存候选：`candidateCount` 大于 0，这里仍返回空页，下一次触发保护后才有。
 
 ### `POST /scan-scopes/confirm-change`
-请求体：`{ "accountId", "awsRegion", "resourceType" }`（账号必须是 12 位数字，类型必须认识，否则 422 `validation_error`）。范围从没扫描过返回 404 `scope_not_found`；当前不是 `abnormal` 返回 409 `scope_not_abnormal`。否则把这个范围设为 `confirmed`，记录 `guardConfirmedBy`（`X-Caller-Id`，没有就记 `api`），并立即为它创建一个按需 `shard` 任务（请求的 `target` 是 `{accountId, awsRegion, resourceType}`）。返回：`{ scanRequestId: number }`。这个 `shard` 完成后，这个范围里没看到的资源逐个按 R5 第 4 步确认，不会直接删除。
+请求体：`{ "accountId", "awsRegion", "resourceType", "guardDetectedAt" }`（账号必须是 12 位数字，类型必须认识，否则 422 `validation_error`）。`guardDetectedAt` 是核对页看到的检测时间；范围在这之后又有新的检测时返回 409 `scope_changed`，不确认新的候选集。范围从没扫描过返回 404 `scope_not_found`；当前不是 `abnormal` 返回 409 `scope_not_abnormal`。否则把这个范围设为 `confirmed`，记录 `guardConfirmedBy`（`X-Caller-Id`，没有就记 `api`），并立即为它创建一个按需 `shard` 任务（请求的 `target` 是 `{accountId, awsRegion, resourceType}`）。返回：`{ scanRequestId: number }`。这个 `shard` 完成后，这个范围里没看到的资源逐个按 R5 第 4 步确认，不会直接删除。
 
 ## 7. 健康检查
 

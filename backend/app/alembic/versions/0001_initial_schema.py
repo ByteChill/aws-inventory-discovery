@@ -155,11 +155,12 @@ def upgrade() -> None:
     sa.Column('from_resource_id', sa.BigInteger(), nullable=False),
     sa.Column('to_resource_type', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('to_resource_key', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('to_resource_field', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('to_resource_id', sa.BigInteger(), nullable=True),
     sa.Column('relation_name', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.ForeignKeyConstraint(['from_resource_id'], ['t_inv_aws_resource.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['to_resource_id'], ['t_inv_aws_resource.id'], ondelete='SET NULL'),
-    sa.PrimaryKeyConstraint('from_resource_id', 'to_resource_type', 'to_resource_key', 'relation_name')
+    sa.PrimaryKeyConstraint('from_resource_id', 'to_resource_type', 'to_resource_key', 'to_resource_field', 'relation_name')
     )
     op.create_index('ix_t_inv_aws_resource_relation_to', 't_inv_aws_resource_relation', ['to_resource_id'], unique=False)
 

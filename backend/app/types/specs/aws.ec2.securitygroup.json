@@ -32,6 +32,13 @@
       "SecurityGroupEgress"
     ]
   },
+  "derivedRelationships": [
+    {
+      "name": "VPC",
+      "toType": "AWS::EC2::VPC",
+      "fromPath": "vpcId"
+    }
+  ],
   "columns": [
     {
       "key": "vpcId",

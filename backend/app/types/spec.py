@@ -128,6 +128,29 @@ class Column(SpecModel):
         return self
 
 
+class DerivedRelationship(SpecModel):
+    # The name shown next to the edge in the dashboard.
+    name: str
+    # The target's resource type.
+    to_type: str
+    # Compare `fromPath`'s value with the target's resourceId or ARN.
+    to_field: Literal["resourceId", "arn"] = "resourceId"
+    # A Config path in this type's `configuration`. `[]` traverses every element of an array.
+    from_path: str
+
+    @model_validator(mode="after")
+    def _valid_path(self) -> Self:
+        if not self.name or not self.to_type or not self.from_path:
+            raise ValueError("name, toType and fromPath are required")
+        for segment in self.from_path.split("."):
+            if not segment or segment.endswith("[][]") or segment == "[]":
+                raise ValueError(f"invalid derived relationship path {self.from_path!r}")
+            key = segment.removesuffix("[]")
+            if not key or "[" in key or "]" in key:
+                raise ValueError(f"invalid derived relationship path {self.from_path!r}")
+        return self
+
+
 class ResourceTypeSpec(SpecModel):
     type_name: str
     label: Label
@@ -136,6 +159,7 @@ class ResourceTypeSpec(SpecModel):
     sources: Sources
     mapping: Mapping = Mapping()
     redact: list[RedactRule] = []
+    derived_relationships: list[DerivedRelationship] = []
     volatile: list[str] = []
     columns: list[Column] = []
 
@@ -144,6 +168,13 @@ class ResourceTypeSpec(SpecModel):
         keys = [column.key for column in self.columns]
         if len(keys) != len(set(keys)):
             raise ValueError("duplicate column keys")
+        return self
+
+    @model_validator(mode="after")
+    def _unique_relationships(self) -> Self:
+        names = [relationship.name for relationship in self.derived_relationships]
+        if len(names) != len(set(names)):
+            raise ValueError("duplicate derived relationship names")
         return self
 
     @classmethod

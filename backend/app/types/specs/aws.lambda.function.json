@@ -47,6 +47,18 @@
       "mode": "values"
     }
   ],
+  "derivedRelationships": [
+    {
+      "name": "Subnet",
+      "toType": "AWS::EC2::Subnet",
+      "fromPath": "vpcConfig.subnetIds[]"
+    },
+    {
+      "name": "SecurityGroup",
+      "toType": "AWS::EC2::SecurityGroup",
+      "fromPath": "vpcConfig.securityGroupIds[]"
+    }
+  ],
   "columns": [
     {
       "key": "runtime",

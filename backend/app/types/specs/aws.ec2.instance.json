@@ -54,6 +54,23 @@
       "mode": "drop"
     }
   ],
+  "derivedRelationships": [
+    {
+      "name": "Subnet",
+      "toType": "AWS::EC2::Subnet",
+      "fromPath": "subnetId"
+    },
+    {
+      "name": "Image",
+      "toType": "AWS::EC2::Image",
+      "fromPath": "imageId"
+    },
+    {
+      "name": "VPC",
+      "toType": "AWS::EC2::VPC",
+      "fromPath": "vpcId"
+    }
+  ],
   "columns": [
     {
       "key": "instanceType",

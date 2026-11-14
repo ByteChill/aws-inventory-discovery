@@ -61,6 +61,9 @@
 - [x] 上线前并发修复（2026-11-14）：资源写入、删除判断、统计、租约取得/续约/释放、区域与 recorder 保存、子任务和确认任务创建都在事务内核对 claim_token（先锁 shard 再锁 task）；清理锁定候选后复查保留期，重试改为 task → request 锁顺序并在取消胜出时回滚；Config 删除证据使用 configurationItemCaptureTime；用真实 handler 的「暂停 → 回收 → 重新领取」回归测试覆盖
 - [x] 上线前清理修复（2026-11-15）：不活跃账号清理与账号快照更新共用按账号的 advisory lock，锁内复查资格；资源保留清理在删除语句外层重复判断状态和保留期，写入方恢复的资源不会被删；新增 3 个真实 Postgres 并发回归测试
 - [x] 上线前日志安全（2026-11-15）：Config 记录、Cloud Control 标签校验失败、捕获时间不合法或字段转换出错时，任务 `error_message` 和日志都不带原始值；新增 4 个用官方样本变形的回归测试
+- [x] 关系表增强（2026-11-15）：类型配置可以显式声明 `derivedRelationships`，支持 `[]` 数组路径和按 `resourceId`/ARN 解析目标；Writer 每次写入按当前 `configuration` 重算派生关系（Config 关系优先、同一实际目标去重、字段消失时删除旧边）；登记 ECS Service → TaskDefinition / Cluster / Target Group、EC2 Instance → Subnet / Image / VPC、Subnet / SecurityGroup / Target Group → VPC、Target Group → Load Balancer、Lambda → Subnet / SecurityGroup、Secret → Rotation Lambda
+- [x] 关系边界复核（2026-11-15）：迟到解析改为写入提交后先锁来源资源，再更新关系，复查 claim token；覆盖双方并发写入、ARN 后补、同范围歧义、跨账号/区域隔离、数组移除和旧观测重放。未上线，不保留兼容迁移或回填命令；目标字段直接进入初始 schema。后端 386 项、devtools 10 项及 Ruff / ty 通过；本地重建数据库和扫描后，60 个 ECS Service、60 个 Lambda、120 个 Target Group 均有关系。
+- [x] 关系增强本地验收（2026-11-15）：前端 TypeScript / Biome / build 通过，Playwright 12 项通过、1 项按设计跳过；更新镜像后重扫 880 个任务全部成功，未产生资源新增、变更或删除；资源 JSON 与关系表数量一致，已解析目标无重复边。
 
 ## M4 数据源
 - [x] 凭证提供器（`RefreshableCredentials` + 凭证服务 ②）

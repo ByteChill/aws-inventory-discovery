@@ -34,6 +34,7 @@ from app.types.mapping import (
 )
 from app.types.redact import MASK, redact_configuration, redact_live_raw
 from app.types.registry import RegistryError, TypeRegistry, validate_hooks
+from app.types.relationships import effective_relationships, values_at_path
 from app.types.spec import ResourceTypeSpec
 
 FIXTURES = Path(__file__).parent / "fixtures" / "aws"
@@ -149,6 +150,82 @@ def test_native_type_needs_both_hooks() -> None:
     validate_hooks(REGISTRY, {"AWS::EC2::Image": Hooks(list_live=stub, get_live=stub)})
     with pytest.raises(RegistryError, match="AWS::EC2::Image"):
         validate_hooks(REGISTRY, {"AWS::EC2::Image": Hooks(list_live=stub)})
+
+
+def test_derived_relationship_to_an_unknown_type_fails_when_the_registry_loads(
+    tmp_path: Path,
+) -> None:
+    specs_dir = Path(__file__).parents[1] / "app" / "types" / "specs"
+    shutil.copytree(specs_dir, tmp_path / "specs")
+    broken = tmp_path / "specs" / "aws.ecs.service.json"
+    data = load(broken)
+    data["derivedRelationships"][0]["toType"] = "AWS::ECS::Nope"
+    broken.write_text(json.dumps(data))
+    with pytest.raises(RegistryError, match=r"aws\.ecs\.service\.json.*unknown type"):
+        TypeRegistry.from_directory(tmp_path / "specs")
+
+
+def test_derived_relationship_path_rejects_invalid_array_syntax(tmp_path: Path) -> None:
+    specs_dir = Path(__file__).parents[1] / "app" / "types" / "specs"
+    shutil.copytree(specs_dir, tmp_path / "specs")
+    broken = tmp_path / "specs" / "aws.ecs.service.json"
+    data = load(broken)
+    data["derivedRelationships"][0]["fromPath"] = "LoadBalancers[0].TargetGroupArn"
+    broken.write_text(json.dumps(data))
+    with pytest.raises(RegistryError, match=r"(?s)aws\.ecs\.service\.json.*invalid derived"):
+        TypeRegistry.from_directory(tmp_path / "specs")
+
+
+def test_array_paths_visit_every_element_including_nested_arrays() -> None:
+    lambda_config = load(FIXTURES / "aws.lambda.function" / "config_item.json")["configuration"]
+    assert values_at_path(lambda_config, "vpcConfig.subnetIds[]") == ["subnet-0bb1c79de301436ee"]
+
+    taskdef_config = load(FIXTURES / "aws.ecs.taskdefinition" / "config_item.json")["configuration"]
+    assert values_at_path(taskdef_config, "ContainerDefinitions[].Environment[].Name") == [
+        "MYSQL_ROOT_PASSWORD",
+        "MYSQL_DATABASE",
+    ]
+
+
+def test_derived_relationships_are_recomputed_from_the_current_configuration() -> None:
+    spec = REGISTRY.get("AWS::ECS::Service")
+    configuration = load(FIXTURES / "aws.ecs.service" / "config_item.json")["configuration"]
+    first = effective_relationships(spec, configuration)
+    assert {r["relationshipName"] for r in first} == {"TaskDefinition", "Cluster"}
+    assert all(r["origin"] == "derived" for r in first)
+
+    without_taskdef = {
+        key: value for key, value in configuration.items() if key != "TaskDefinition"
+    }
+    second = effective_relationships(spec, without_taskdef, first)
+    assert [r["relationshipName"] for r in second] == ["Cluster"]
+
+
+def test_an_arn_reference_keeps_the_target_field_on_the_derived_edge() -> None:
+    spec = REGISTRY.get("AWS::SecretsManager::Secret")
+    item = load(FIXTURES / "aws.secretsmanager.secret" / "config_item.json")
+    derived = effective_relationships(spec, item["configuration"])
+
+    lambda_edges = [r for r in derived if r["resourceType"] == "AWS::Lambda::Function"]
+    assert len(lambda_edges) == 1
+    assert lambda_edges[0]["origin"] == "derived"
+    assert lambda_edges[0]["toField"] == "arn"
+    assert lambda_edges[0]["resourceId"] == item["configuration"]["RotationLambdaARN"]
+
+
+def test_config_edges_keep_priority_and_take_the_derived_name_when_missing() -> None:
+    spec = REGISTRY.get("AWS::Lambda::Function")
+    item = load(FIXTURES / "aws.lambda.function" / "config_item.json")
+    relationships = effective_relationships(spec, item["configuration"], item["relationships"])
+
+    subnet_edges = [
+        relationship
+        for relationship in relationships
+        if relationship["resourceType"] == "AWS::EC2::Subnet"
+    ]
+    assert len(subnet_edges) == 1
+    assert subnet_edges[0].get("origin") != "derived"
+    assert subnet_edges[0]["relationshipName"] == "Subnet"
 
 
 # --------------------------------------------------------------------------- mapping

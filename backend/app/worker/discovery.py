@@ -45,7 +45,7 @@ class Observation:
     live_raw: dict[str, Any] | None  # raw Cloud Control properties or native response
     observed_at: datetime
     source: Source
-    relationships: list[dict[str, Any]] | None = None  # only Config provides them
+    relationships: list[dict[str, Any]] | None = None  # Config's; derived ones are Writer's job
 
 
 @dataclass

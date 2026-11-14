@@ -46,6 +46,19 @@
       "TargetGroupAttributes"
     ]
   },
+  "derivedRelationships": [
+    {
+      "name": "LoadBalancer",
+      "toType": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "toField": "arn",
+      "fromPath": "loadBalancerArns[]"
+    },
+    {
+      "name": "VPC",
+      "toType": "AWS::EC2::VPC",
+      "fromPath": "vpcId"
+    }
+  ],
   "columns": [
     {
       "key": "protocol",

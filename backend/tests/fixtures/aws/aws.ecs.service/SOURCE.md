@@ -1,5 +1,14 @@
 # SOURCE: AWS::ECS::Service
 
+## relationship_properties.json
+
+The `loadBalancers` array is extracted from the response in Example 2 of
+https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_CreateService.html.
+Only key casing is converted to the CloudFormation/Config shape documented at
+https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-ecs-service-loadbalancer.html.
+Values are unchanged. This property fragment exercises multiple target groups without
+claiming that the existing `test-service` fixture has a load balancer.
+
 Config schema: https://raw.githubusercontent.com/awslabs/aws-config-resource-schema/master/config/properties/resource-types/AWS::ECS::Service.properties.json
 CloudFormation schema: `aws-ecs-service.json` in https://schema.cloudformation.us-east-1.amazonaws.com/CloudformationSchema.zip (primaryIdentifier = `ServiceArn` + `Cluster`)
 Native API sample: https://docs.aws.amazon.com/AmazonECS/latest/APIReference/API_DescribeServices.html (first example: service `test-service` in cluster `telemetry`)

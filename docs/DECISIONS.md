@@ -162,3 +162,9 @@
 - **原因**：缓存丢失只影响速度，不影响数据正确性；CMD 让本地和线上都用 `redis.Redis`，不需要 cluster-aware 客户端；自定义端口满足安全规范；专用实例避免共享缓存的内存、淘汰策略和 `FLUSHDB` 风险；Multi-AZ 避免节点故障时把查询压力打回 Aurora；Valkey 比 Redis OSS 便宜，仍在积极开发。
 - **否决**：ElastiCache Serverless（固定 6379/6380，不能自定义端口；强制 cluster mode enabled，客户端要换成 `RedisCluster`，本地环境也要另起集群或加配置分支）；共用现有 Redis（噪声邻居、内存策略不可控、cluster mode 未知）；MemoryDB（持久化数据库，不是缓存）；cluster mode enabled（数据量不需要分片，客户端和跨 slot 限制不值得）。
 - **备注**：D-02 的任务队列选择不受影响；D-03 的「Redis 只做缓存」不变。
+
+### D-35 关系 = Config 提供 + 类型配置显式声明的派生关系
+- **结论**：关系有两个来源：Config 的 `relationships`，以及类型配置里的 `derivedRelationships`。派生路径支持 `[]` 数组，一条规则可以产生多条边；`toField` 指定按目标类型的 `resourceId`（默认）或 ARN 解析，范围是同一账号、同一区域（全局目标不限区域）。Config 关系优先；同一目标重复时只保留 Config 的边。每次写入按当前 `configuration` 重算，字段消失时删除旧派生边。派生边带 `origin: "derived"`，Config 边不带 `origin`。关系仍不参与内容哈希。
+- **原因**：Config 的 relationships 并不覆盖所有明确引用，例如 ECS Service 的 `relationships` 为空，但 `configuration.TaskDefinition` 是一条约定的 ARN。只靠 Config 会丢边；允许通用推导又需要猜字段和类型，容易产生错误的图。显式声明把每个类型的关系规则集中在一个可校验、可测试的地方，启动时还能检查目标类型是否存在。
+- **补充原因**：很多资源没有独立于 ARN 的 `resourceId`，而配置字段也经常用 ARN 指向名称型 ID；只支持 resourceId 会漏掉 Lambda 等常见引用。数组路径则覆盖 ECS 负载均衡、Lambda VPC 配置这类一对多关系。
+- **否决**：通用或模糊的关系推导；只保留 Config 关系，让巡检等上层功能各自做 join。

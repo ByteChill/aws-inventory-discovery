@@ -33,6 +33,24 @@
       "LoadBalancers"
     ]
   },
+  "derivedRelationships": [
+    {
+      "name": "TaskDefinition",
+      "toType": "AWS::ECS::TaskDefinition",
+      "fromPath": "TaskDefinition"
+    },
+    {
+      "name": "Cluster",
+      "toType": "AWS::ECS::Cluster",
+      "fromPath": "Cluster"
+    },
+    {
+      "name": "TargetGroup",
+      "toType": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "toField": "arn",
+      "fromPath": "LoadBalancers[].TargetGroupArn"
+    }
+  ],
   "columns": [
     {
       "key": "cluster",

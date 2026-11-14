@@ -6,9 +6,13 @@ thing the tests set by hand; resource data always comes from the simulated AWS r
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from threading import Barrier, local
 from typing import Any
 
 import pytest
@@ -24,7 +28,7 @@ from app.models.scan import ScanRequest, ScanShard
 from app.types.mapping import ConfigTag, to_config_item
 from app.types.registry import TypeRegistry
 from app.worker.discovery import Discovery, Observation
-from app.worker.writer import ResourceWriter
+from app.worker.writer import RelationJob, ResourceWriter
 from tests.conftest import AwsEnv
 
 REGISTRY = TypeRegistry.from_directory()
@@ -231,6 +235,305 @@ def test_relation_to_a_resource_inserted_later_is_resolved_late(
     (vpc,) = rows(session, "AWS::EC2::VPC").values()
     session.expire_all()
     assert session.exec(to_vpc).one().to_resource_id == vpc.id
+
+
+def test_derived_relationships_come_from_the_configuration_and_resolve_to_row_ids(
+    writer: ResourceWriter, disc: Discovery, session: Session
+) -> None:
+    sweep = disc.sweep_config(
+        ["AWS::ECS::Service", "AWS::ECS::TaskDefinition", "AWS::ECS::Cluster"]
+    )
+    writer.write([o for group in sweep.by_type.values() for o in group])
+
+    (service,) = rows(session, "AWS::ECS::Service").values()
+    (taskdef,) = rows(session, "AWS::ECS::TaskDefinition").values()
+    (cluster,) = rows(session, "AWS::ECS::Cluster").values()
+    derived = {r["relationshipName"]: r for r in service.relationships if r.get("origin")}
+    assert derived["TaskDefinition"]["resourceId"] == taskdef.resource_id
+    assert derived["Cluster"]["resourceId"] == cluster.resource_id
+
+    relations = session.exec(
+        select(ResourceRelation).where(ResourceRelation.from_resource_id == service.id)
+    ).all()
+    resolved = {r.relation_name: r.to_resource_id for r in relations}
+    assert resolved["TaskDefinition"] == taskdef.id
+    assert resolved["Cluster"] == cluster.id
+
+
+def test_array_paths_derive_every_reference_and_resolve_them(
+    writer: ResourceWriter, disc: Discovery, session: Session
+) -> None:
+    sweep = disc.sweep_config(["AWS::EC2::Subnet", "AWS::Lambda::Function"])
+    (lambda_obs,) = sweep.by_type["AWS::Lambda::Function"]
+    observations = [
+        *sweep.by_type["AWS::EC2::Subnet"],
+        replace(lambda_obs, relationships=[]),  # isolate the derived edges
+        *live(disc, "AWS::EC2::SecurityGroup"),
+    ]
+    writer.write(observations)
+
+    (function,) = rows(session, "AWS::Lambda::Function").values()
+    derived = {
+        relationship["relationshipName"]: relationship
+        for relationship in function.relationships
+        if relationship.get("origin") == "derived"
+    }
+    assert set(derived) == {"Subnet", "SecurityGroup"}
+
+    subnets = rows(session, "AWS::EC2::Subnet")
+    groups = rows(session, "AWS::EC2::SecurityGroup")
+    relations = session.exec(
+        select(ResourceRelation).where(ResourceRelation.from_resource_id == function.id)
+    ).all()
+    resolved = {relation.relation_name: relation.to_resource_id for relation in relations}
+    assert resolved["Subnet"] == subnets[derived["Subnet"]["resourceId"]].id
+    assert resolved["SecurityGroup"] == groups[derived["SecurityGroup"]["resourceId"]].id
+
+
+def test_ecs_target_group_array_is_replaced_and_stale_data_cannot_restore_removed_edges(
+    writer: ResourceWriter, disc: Discovery, session: Session
+) -> None:
+    (service_obs,) = live(disc, "AWS::ECS::Service")
+    properties = json.loads(
+        (
+            Path(__file__).parents[1] / "fixtures/aws/aws.ecs.service/relationship_properties.json"
+        ).read_text()
+    )
+    configuration = {**service_obs.item.configuration, **properties}
+    service_obs = replace(
+        service_obs,
+        item=service_obs.item.model_copy(update={"configuration": configuration}),
+    )
+    writer.write([service_obs])
+    (service,) = rows(session, "AWS::ECS::Service").values()
+    target_query = select(ResourceRelation).where(
+        ResourceRelation.from_resource_id == service.id,
+        ResourceRelation.to_resource_type == "AWS::ElasticLoadBalancingV2::TargetGroup",
+    )
+    edges = session.exec(target_query).all()
+    assert {edge.to_resource_key for edge in edges} == {
+        entry["TargetGroupArn"] for entry in properties["LoadBalancers"]
+    }
+    assert all(edge.to_resource_field == "arn" for edge in edges)
+    configuration = {key: value for key, value in configuration.items() if key != "LoadBalancers"}
+    writer.write(
+        [
+            replace(
+                service_obs,
+                item=service_obs.item.model_copy(update={"configuration": configuration}),
+                observed_at=T0 + minutes(1),
+            )
+        ]
+    )
+    assert writer.write([service_obs]).stale == 1
+    session.expire_all()
+    assert session.exec(target_query).all() == []
+    assert not any(
+        edge["resourceType"] == "AWS::ElasticLoadBalancingV2::TargetGroup"
+        for edge in service.relationships
+    )
+
+
+def test_arn_references_resolve_and_are_late_resolved(
+    writer: ResourceWriter, disc: Discovery, session: Session
+) -> None:
+    target_groups = live(disc, "AWS::ElasticLoadBalancingV2::TargetGroup")
+    writer.write(target_groups)
+    target_rows = rows(session, "AWS::ElasticLoadBalancingV2::TargetGroup")
+    assert target_rows
+    assert all(
+        relation.to_resource_id is None
+        for relation in session.exec(
+            select(ResourceRelation).where(
+                ResourceRelation.to_resource_type == "AWS::ElasticLoadBalancingV2::LoadBalancer"
+            )
+        ).all()
+    )
+
+    writer.write(live(disc, "AWS::ElasticLoadBalancingV2::LoadBalancer"))
+
+    load_balancers = rows(session, "AWS::ElasticLoadBalancingV2::LoadBalancer")
+    assert load_balancers
+    resolved = session.exec(
+        select(ResourceRelation).where(
+            ResourceRelation.to_resource_type == "AWS::ElasticLoadBalancingV2::LoadBalancer"
+        )
+    ).all()
+    assert resolved
+    assert all(
+        relation.to_resource_id in {row.id for row in load_balancers.values()}
+        for relation in resolved
+    )
+
+
+def test_config_wins_when_an_arn_derived_edge_late_resolves_to_the_same_target(
+    writer: ResourceWriter, disc: Discovery, session: Session
+) -> None:
+    sweep = disc.sweep_config(["AWS::Lambda::Function", "AWS::SecretsManager::Secret"])
+    (secret_obs,) = sweep.by_type["AWS::SecretsManager::Secret"]
+    (lambda_obs,) = sweep.by_type["AWS::Lambda::Function"]
+    writer.write([secret_obs])
+
+    (secret,) = rows(session, "AWS::SecretsManager::Secret").values()
+    assert (
+        len(
+            [
+                relationship
+                for relationship in secret.relationships
+                if relationship["resourceType"] == "AWS::Lambda::Function"
+            ]
+        )
+        == 2
+    )
+
+    writer.write([lambda_obs])
+
+    (lambda_row,) = rows(session, "AWS::Lambda::Function").values()
+    (secret,) = rows(session, "AWS::SecretsManager::Secret").values()
+    lambda_edges = [
+        relationship
+        for relationship in secret.relationships
+        if relationship["resourceType"] == "AWS::Lambda::Function"
+    ]
+    assert len(lambda_edges) == 1
+    assert lambda_edges[0].get("origin") != "derived"
+    relations = session.exec(
+        select(ResourceRelation).where(
+            ResourceRelation.from_resource_id == secret.id,
+            ResourceRelation.to_resource_type == "AWS::Lambda::Function",
+        )
+    ).all()
+    assert len(relations) == 1
+    assert relations[0].to_resource_id == lambda_row.id
+    assert relations[0].relation_name == lambda_edges[0]["relationshipName"] == "RotationLambda"
+    assert secret.observed_at == secret.last_changed_at == secret_obs.observed_at
+
+
+def test_concurrent_source_and_target_writes_resolve_after_both_commit(
+    writer: ResourceWriter, disc: Discovery, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sweep = disc.sweep_config(["AWS::Lambda::Function", "AWS::SecretsManager::Secret"])
+    observations = [observation for group in sweep.by_type.values() for observation in group]
+    rendezvous = Barrier(2, timeout=10)
+    thread_state = local()
+    replace_relations = writer._replace_relations
+
+    def overlap(db: Session, jobs: list[RelationJob]) -> None:
+        replace_relations(db, jobs)
+        if not getattr(thread_state, "waited", False):
+            thread_state.waited = True
+            rendezvous.wait()
+
+    monkeypatch.setattr(writer, "_replace_relations", overlap)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(writer.write, [observation]) for observation in observations]
+        assert sum(future.result(timeout=15).new for future in futures) == 2
+
+    (secret,) = rows(session, "AWS::SecretsManager::Secret").values()
+    (function,) = rows(session, LAMBDA).values()
+    relation = session.exec(
+        select(ResourceRelation).where(ResourceRelation.from_resource_id == secret.id)
+    ).one()
+    assert relation.to_resource_id == function.id
+    assert relation.to_resource_field == "resourceId"
+    assert relation.relation_name == secret.relationships[0]["relationshipName"]
+    assert len(secret.relationships) == 1
+
+
+def test_arn_resolution_stays_in_account_region_and_does_not_guess_ambiguous_targets(
+    writer: ResourceWriter, disc: Discovery, session: Session, aws: AwsEnv
+) -> None:
+    sweep = disc.sweep_config(["AWS::Lambda::Function", "AWS::SecretsManager::Secret"])
+    (function_obs,) = sweep.by_type[LAMBDA]
+    (secret_obs,) = sweep.by_type["AWS::SecretsManager::Secret"]
+    source = replace(secret_obs, relationships=[])
+    other_account = aws.account_ids[1]
+    entry = next(
+        entry
+        for entry in seed.build_registry(aws.account_ids)
+        if entry["account_id"] == other_account
+    )
+    session.add(Account(**entry, registry_fetched_at=T0))
+    session.commit()
+    for overrides in ({"account_id": other_account}, {"aws_region": "eu-west-2"}):
+        writer.write([replace(function_obs, item=function_obs.item.model_copy(update=overrides))])
+    writer.write([source])
+    (secret,) = rows(session, "AWS::SecretsManager::Secret").values()
+
+    def edge() -> ResourceRelation:
+        session.expire_all()
+        return session.exec(
+            select(ResourceRelation).where(ResourceRelation.from_resource_id == secret.id)
+        ).one()
+
+    assert edge().to_resource_id is None
+    writer.write([function_obs])
+    assert edge().to_resource_id is not None
+    duplicate = replace(
+        function_obs,
+        item=function_obs.item.model_copy(
+            update={"resource_id": function_obs.item.resource_id + "-duplicate"}
+        ),
+    )
+    writer.write([duplicate])
+    assert edge().to_resource_id is None
+
+
+def test_existing_target_receiving_an_arn_resolves_incoming_edges(
+    writer: ResourceWriter, disc: Discovery, session: Session
+) -> None:
+    sweep = disc.sweep_config(["AWS::Lambda::Function", "AWS::SecretsManager::Secret"])
+    (function_obs,) = sweep.by_type[LAMBDA]
+    (secret_obs,) = sweep.by_type["AWS::SecretsManager::Secret"]
+    writer.write(
+        [
+            replace(function_obs, item=function_obs.item.model_copy(update={"arn": None})),
+            replace(secret_obs, relationships=[]),
+        ]
+    )
+    (secret,) = rows(session, "AWS::SecretsManager::Secret").values()
+    (function,) = rows(session, LAMBDA).values()
+    unchanged_at = function.last_changed_at
+    relation_query = select(ResourceRelation).where(ResourceRelation.from_resource_id == secret.id)
+    assert session.exec(relation_query).one().to_resource_id is None
+    assert (
+        writer.write(
+            [replace(function_obs, observed_at=function_obs.observed_at + minutes(1))]
+        ).unchanged
+        == 1
+    )
+    session.expire_all()
+    assert session.exec(relation_query).one().to_resource_id == function.id
+    assert function.last_changed_at == unchanged_at
+
+
+def test_a_config_relationship_is_not_duplicated_by_the_derived_one(
+    writer: ResourceWriter, disc: Discovery, session: Session
+) -> None:
+    sweep = disc.sweep_config(["AWS::EC2::VPC", "AWS::EC2::Subnet"])
+    writer.write([o for group in sweep.by_type.values() for o in group])
+
+    (subnet,) = rows(session, "AWS::EC2::Subnet").values()
+    vpc_edges = [r for r in subnet.relationships if r["resourceType"] == "AWS::EC2::VPC"]
+    assert len(vpc_edges) == 1
+    assert vpc_edges[0].get("origin") != "derived"
+
+
+def test_a_cloud_control_write_keeps_config_relationships_and_recomputes_derived_ones(
+    writer: ResourceWriter, disc: Discovery, session: Session
+) -> None:
+    sweep = disc.sweep_config(["AWS::EC2::VPC", "AWS::EC2::Subnet"])
+    writer.write([o for group in sweep.by_type.values() for o in group])
+    (config_subnet,) = rows(session, "AWS::EC2::Subnet").values()
+    before = [dict(r) for r in config_subnet.relationships]
+
+    live_subnet = next(
+        o for o in live(disc, "AWS::EC2::Subnet") if o.item.resource_id == config_subnet.resource_id
+    )
+    writer.write([live_subnet])
+
+    (subnet,) = rows(session, "AWS::EC2::Subnet").values()
+    assert subnet.relationships == before
 
 
 # --- deletion (R5, R6) ------------------------------------------------------------------------
@@ -440,11 +743,11 @@ def test_a_relationship_only_change_updates_the_relations_but_is_not_a_resource_
 ) -> None:
     sweep = disc.sweep_config(["AWS::EC2::VPC", "AWS::EC2::Subnet"])
     writer.write([o for group in sweep.by_type.values() for o in group])
-    (vpc,) = rows(session, "AWS::EC2::VPC").values()
     (subnet_obs,) = sweep.by_type["AWS::EC2::Subnet"]
     full = subnet_obs.relationships or []
-    without_vpc = [r for r in full if r["resourceType"] != "AWS::EC2::VPC"]
-    assert 0 < len(without_vpc) < len(full)
+    instance_id = next(r["resourceId"] for r in full if r["resourceType"] == "AWS::EC2::Instance")
+    without_instance = [r for r in full if r["resourceType"] != "AWS::EC2::Instance"]
+    assert 0 < len(without_instance) < len(full)
 
     def targets() -> dict[str, int | None]:
         session.expire_all()
@@ -454,18 +757,22 @@ def test_a_relationship_only_change_updates_the_relations_but_is_not_a_resource_
         ).all()
         return {r.to_resource_key: r.to_resource_id for r in found}
 
-    dropped = replace(subnet_obs, relationships=without_vpc, observed_at=T0 + minutes(1))
+    def edges(relationships: list[dict[str, Any]]) -> set[tuple[str, str]]:
+        return {(r["resourceType"], r["resourceId"]) for r in relationships}
+
+    dropped = replace(subnet_obs, relationships=without_instance, observed_at=T0 + minutes(1))
     counts = writer.write([dropped])
 
     assert (counts.updated, counts.unchanged) == (0, 1)
     (subnet,) = rows(session, "AWS::EC2::Subnet").values()
-    assert subnet.relationships == without_vpc
+    assert edges(subnet.relationships) == edges(without_instance)
     assert subnet.last_changed_at == subnet_obs.observed_at  # not a resource change
     assert subnet.observed_at == T0 + minutes(1)
-    assert vpc.resource_id not in targets()
+    assert instance_id not in targets()
 
     regained = replace(subnet_obs, relationships=full, observed_at=T0 + minutes(2))
     assert writer.write([regained]).updated == 0
-    assert targets()[vpc.resource_id] == vpc.id  # resolved again
+    assert targets()[instance_id] is None  # the instance is not inventoried
     (subnet,) = rows(session, "AWS::EC2::Subnet").values()
-    assert subnet.relationships == full and subnet.last_changed_at == subnet_obs.observed_at
+    assert edges(subnet.relationships) == edges(full)
+    assert subnet.last_changed_at == subnet_obs.observed_at

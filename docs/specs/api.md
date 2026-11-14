@@ -28,7 +28,7 @@ type Error = { code: string; message: string; details?: Record<string, unknown> 
 | 400 | `invalid_filter` | 筛选参数不合法：**不认识的查询参数**（资源列表、分类计数、导出只认第 8.2 节的参数和 `attr.*`），没指定单一类型就使用 `attr.*`，`attr.*` 的列不存在或不可筛选、取值和列类型不符、或对这个类型的列不适用（比如对文本列用 `.gte`），分类计数的 `field` 不支持 |
 | 400 | `invalid_sort` | 排序字段不允许（资源列表、导出、账号列表、应用列表） |
 | 404 | `resource_not_found` | 资源不存在（详情、按 ARN 查询、刷新一个库里没有的 ARN 或 AWS 里也不存在的资源） |
-| 404 | `account_not_found` | 账号不在账号快照里，查询账号清单服务后也没有；`POST /scans` 里 `details.accountIds` 列出这些账号，也包括已经不活跃的账号 |
+| 404 | `account_not_found` | 账号不在账号快照里，查询账号清单服务后也没有，或已经不再活跃（扫描和刷新单个资源都按不存在处理）；`POST /scans` 里 `details.accountIds` 也列出已经不活跃的账号 |
 | 404 | `scan_not_found` / `task_not_found` | |
 | 404 | `scope_not_found` | 确认异常范围时，这个范围从没扫描过（`t_inv_aws_scan_shard` 里没有） |
 | 404 | `not_found` | 路径不存在 |
@@ -38,6 +38,7 @@ type Error = { code: string; message: string; details?: Record<string, unknown> 
 | 409 | `scan_not_cancellable` | 扫描已经结束 |
 | 409 | `scan_cancelled` | 对已取消的扫描重试失败的任务 |
 | 409 | `scope_not_abnormal` | 确认异常范围时，这个范围当前不是 `abnormal`（`details.guardState`） |
+| 409 | `scope_changed` | 确认异常范围时，这个范围在上次读取之后又有新的检测（请求的 `guardDetectedAt` 已不是当前检测时间）；刷新候选后重新确认 |
 | 422 | `validation_error` | 请求体或参数校验失败（FastAPI 默认的校验错误，转为统一格式，`details.errors` 里带字段错误；也包括未知的 `resourceType`、不能换算成 Cloud Control Identifier 的 `resourceId`、未知的导出列，以及账号列表、扫描列表等接口收到不认识的参数） |
 | 422 | `scope_too_large` | 按需扫描超过 `MAX_SCAN_ACCOUNTS` 个账号（`details.limit`、`details.requested`） |
 | 502 | `refresh_failed` | 刷新单个资源失败，而且库里没有这个资源可以返回（`details.taskId`、`details.errorCode`）；库里有时返回 200 加 `refreshError` |

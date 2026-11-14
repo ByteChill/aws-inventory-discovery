@@ -164,14 +164,12 @@ test("异常范围超过 200 个：翻页、直接链接、读取失败重试和
     )
     expect(candidates.ok()).toBeTruthy()
     const first = (await candidates.json()).items[0]
-    await expect(
-      direct.getByRole("row", {
-        name: t("preview.row", {
-          name: first.resourceName ?? first.resourceId,
-        }),
-        exact: true,
-      }),
-    ).toBeVisible()
+    // Two ECS task-definition revisions share one name; identify the row by its
+    // resource ID, which is unique.
+    const firstRow = direct
+      .getByRole("row")
+      .filter({ hasText: first.resourceId })
+    await expect(firstRow).toBeVisible()
 
     // Keep the page open while another scan changes and then clears the guard.
     // A new detection must refresh candidates and close the old confirmation.
@@ -182,14 +180,7 @@ test("异常范围超过 200 个：翻页、直接链接、读取失败重试和
     guards("redetect", JSON.stringify(target.scanShardId))
     await expect(direct.getByRole("dialog")).toHaveCount(0, { timeout: 20_000 })
     await expect(direct.getByText(t("scanScope.empty"))).toBeVisible()
-    await expect(
-      direct.getByRole("row", {
-        name: t("preview.row", {
-          name: first.resourceName ?? first.resourceId,
-        }),
-        exact: true,
-      }),
-    ).toHaveCount(0)
+    await expect(firstRow).toHaveCount(0)
     guards("restore", snapshot)
     await expect(direct.getByText(t("scanScope.notFoundPage"))).toBeVisible({
       timeout: 20_000,

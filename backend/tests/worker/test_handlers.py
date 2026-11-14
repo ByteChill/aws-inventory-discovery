@@ -9,11 +9,13 @@ scanned account: the seed tool's own technique.
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -26,8 +28,10 @@ from app.core.config import Settings
 from app.models import Account, Resource, ScanRequest, ScanTask
 from app.models.scan import utcnow
 from app.types.registry import TypeRegistry
+from app.types.spec import CloudControlSource, Sources
 from app.worker import queue, requests
 from app.worker.discovery import Discovery, Observation
+from app.worker.errors import TaskLost
 from app.worker.handlers import Scanner, TaskContext
 from app.worker.main import Worker
 from app.worker.writer import ResourceWriter
@@ -36,6 +40,7 @@ from tests.conftest import AWS_REGIONS, AwsEnv
 REGISTRY = TypeRegistry.from_directory()
 REGION = AWS_REGIONS[0]
 QUEUE = "AWS::SQS::Queue"
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "aws"
 FINAL = ("succeeded", "failed", "cancelled", "skipped")
 
 
@@ -83,7 +88,12 @@ def one_item_pages(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def add_task(
-    session: Session, account: str, kind: str, resource_type: str | None, source: str
+    session: Session,
+    account: str,
+    kind: str,
+    resource_type: str | None,
+    source: str,
+    resource_id: str | None = None,
 ) -> ScanTask:
     request = requests.create_sweep_request(
         session, [], trigger="api", priority=0, scope={"all": False}
@@ -92,12 +102,76 @@ def add_task(
     (task,) = requests.add_tasks(
         session,
         request.id,
-        [requests.NewTask(kind, account, REGION, resource_type, None, source)],
+        [requests.NewTask(kind, account, REGION, resource_type, resource_id, source)],
     )
     request.status, request.started_at, request.finished_at = "queued", None, None
     session.add(request)
     session.commit()
     return task
+
+
+def claimed_task(
+    session: Session,
+    account: str,
+    kind: str,
+    resource_type: str | None,
+    source: str,
+    resource_id: str | None = None,
+) -> ScanTask:
+    task = add_task(session, account, kind, resource_type, source, resource_id)
+    claimed = queue.claim_task(session, "worker-old", per_account_concurrency=1000)
+    assert claimed is not None and claimed.id == task.id
+    return claimed
+
+
+def reclaim_while_paused(session: Session, task: ScanTask) -> ScanTask:
+    """Reap and re-claim `task` while its old handler is blocked before a write."""
+    later = utcnow() + queue.HEARTBEAT_TIMEOUT + timedelta(seconds=1)
+    assert queue.reap_lost_tasks(session, later).requeued == [task.id]
+    fresh = queue.claim_task(session, "worker-new", per_account_concurrency=1000, now=later)
+    assert fresh is not None and fresh.id == task.id
+    return fresh
+
+
+def pause_handler_across_reclaim(
+    engine: Engine,
+    scanner: Scanner,
+    session: Session,
+    task: ScanTask,
+    handler: Callable[[ScanTask, TaskContext], dict[str, Any] | None],
+    monkeypatch: pytest.MonkeyPatch,
+    writer_method: str,
+) -> tuple[ScanTask, BaseException | None]:
+    """Run `handler` in a thread, block it just before `writer_method`, then reap and re-claim
+    the task. The handler resumes after the new claim exists and can only be refused."""
+    paused, resume = threading.Event(), threading.Event()
+    real = getattr(scanner.writer, writer_method)
+
+    def pause(*args: Any, **kwargs: Any) -> Any:
+        paused.set()
+        assert resume.wait(20)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(scanner.writer, writer_method, pause)
+    errors: list[BaseException] = []
+    context = TaskContext(
+        lambda: Session(engine, expire_on_commit=False), "worker-old", threading.Event()
+    )
+
+    def run() -> None:
+        try:
+            handler(task, context)
+        except BaseException as exc:  # surfaced in the test thread below
+            errors.append(exc)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    assert paused.wait(20), f"handler never reached writer.{writer_method}"
+    fresh = reclaim_while_paused(session, task)
+    resume.set()
+    thread.join(timeout=20)
+    assert not thread.is_alive()
+    return fresh, errors[0] if errors else None
 
 
 def wait_for(condition: Callable[[], bool], timeout: float = 20.0) -> None:
@@ -153,6 +227,23 @@ def resources(session: Session, account: str) -> dict[str, Resource]:
         select(Resource).where(Resource.account_id == account, Resource.resource_type == QUEUE)
     ).all()
     return {r.resource_id: r for r in found}
+
+
+def queue_config_item() -> dict[str, Any]:
+    return json.loads((FIXTURES / "aws.sqs.queue" / "config_item.json").read_text())
+
+
+def config_only(registry: TypeRegistry) -> TypeRegistry:
+    """The same registry with SQS read through Config only, as some future types will be."""
+    specs = {spec.type_name: spec for spec in registry}
+    specs[QUEUE] = specs[QUEUE].model_copy(
+        update={
+            "sources": Sources(
+                config=True, cloud_control=CloudControlSource(read=False, list=False)
+            )
+        }
+    )
+    return TypeRegistry(specs)
 
 
 # --- paging checkpoints (item 3) -------------------------------------------------------------
@@ -267,6 +358,50 @@ def test_a_graceful_stop_requeues_the_task_and_keeps_the_pages_already_written(
     assert lease is None  # released for whoever takes the task next
 
 
+# --- writes are fenced by the current claim, not just checked between pages -------------------
+
+
+def test_a_reclaimed_shard_cannot_write_a_page(
+    engine: Engine,
+    session: Session,
+    scanner: Scanner,
+    account_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task = claimed_task(session, account_id, "shard", QUEUE, "cloudcontrol")
+
+    fresh, error = pause_handler_across_reclaim(
+        engine, scanner, session, task, scanner.shard, monkeypatch, "write"
+    )
+
+    assert isinstance(error, TaskLost)
+    assert resources(session, account_id) == {}
+    assert fresh.claim_token != task.claim_token
+    assert session.get_one(ScanTask, task.id).stats is None
+
+
+def test_a_reclaimed_shard_cannot_mark_anything_missing(
+    aws: AwsEnv,
+    engine: Engine,
+    session: Session,
+    scanner: Scanner,
+    account_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ghost = ghost_queue(aws, account_id, engine, scanner)
+    task = claimed_task(session, account_id, "shard", QUEUE, "cloudcontrol")
+
+    fresh, error = pause_handler_across_reclaim(
+        engine, scanner, session, task, scanner.shard, monkeypatch, "finish_scope"
+    )
+
+    assert isinstance(error, TaskLost)
+    stored = resources(session, account_id)
+    assert stored[ghost].status == "active"  # the deletion step never ran
+    assert session.get_one(ScanTask, task.id).stats == {"new": 2}
+    assert fresh.id == task.id
+
+
 # --- stats survive failures and retries (item 4) --------------------------------------------
 
 
@@ -358,6 +493,136 @@ def test_a_partial_confirm_missing_counts_the_resources_it_settled(
     assert (done.stats or {})["restored"] == 1
     request = session.get_one(ScanRequest, task.scan_request_id)
     assert (request.counts or {})["tasks"] == {"failed": 1}
+
+
+def test_a_reclaimed_resource_read_cannot_record_gone(
+    aws: AwsEnv,
+    engine: Engine,
+    session: Session,
+    scanner: Scanner,
+    account_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    obs = (
+        Discovery(aws.session(account_id), account_id, REGION, REGISTRY)
+        .scan_live(QUEUE)
+        .observations[0]
+    )
+    observed_at = utcnow() - timedelta(days=1)
+    scanner.writer.write([replace(obs, observed_at=observed_at)])
+    aws.admin(
+        "DELETE",
+        "/resources",
+        params={"account_id": account_id, "region": REGION, "type_name": QUEUE,
+                "identifier": obs.item.resource_id},
+    )  # fmt: skip
+    task = claimed_task(
+        session, account_id, "resource", QUEUE, "cloudcontrol", obs.item.resource_id
+    )
+
+    fresh, error = pause_handler_across_reclaim(
+        engine, scanner, session, task, scanner.resource, monkeypatch, "record_gone"
+    )
+
+    assert isinstance(error, TaskLost)
+    row = resources(session, account_id)[obs.item.resource_id]
+    assert (row.status, row.observed_at, row.last_task_id) == ("active", observed_at, None)
+    assert fresh.id == task.id
+    assert session.get_one(ScanTask, task.id).stats is None
+
+
+def test_a_reclaimed_confirm_missing_cannot_count_a_failed_check(
+    aws: AwsEnv,
+    engine: Engine,
+    session: Session,
+    scanner: Scanner,
+    account_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    obs = (
+        Discovery(aws.session(account_id), account_id, REGION, REGISTRY)
+        .scan_live(QUEUE)
+        .observations[0]
+    )
+    written_at = utcnow() - timedelta(days=2)
+    scanner.writer.write([replace(obs, observed_at=written_at)])
+    scanner.writer.finish_scope(
+        account_id=account_id,
+        region=REGION,
+        resource_type=QUEUE,
+        seen_ids=[],
+        observed_at=utcnow() - timedelta(days=1),
+        complete=True,
+    )
+    aws.admin("POST", "/errors", json={"error": "AccessDenied", "operation": "GetResource"})
+    task = claimed_task(session, account_id, "confirm_missing", QUEUE, "cloudcontrol")
+
+    fresh, error = pause_handler_across_reclaim(
+        engine, scanner, session, task, scanner.confirm_missing, monkeypatch, "record_check_failed"
+    )
+
+    assert isinstance(error, TaskLost)
+    row = resources(session, account_id)[obs.item.resource_id]
+    assert (row.status, row.missing_checks) == ("missing", 0)
+    assert fresh.id == task.id
+    assert session.get_one(ScanTask, task.id).stats is None
+
+
+def test_config_confirm_missing_uses_the_item_capture_time_as_its_observation(
+    aws: AwsEnv,
+    engine: Engine,
+    session: Session,
+    scanner: Scanner,
+    account_id: str,
+) -> None:
+    captured = datetime(2026, 11, 6, 9, 15, 22, 401000, tzinfo=UTC)
+    obs = (
+        Discovery(aws.session(account_id), account_id, REGION, REGISTRY)
+        .scan_live(QUEUE)
+        .observations[0]
+    )
+    scanner.writer.write([replace(obs, observed_at=captured - timedelta(days=1))])
+    scanner.writer.finish_scope(
+        account_id=account_id,
+        region=REGION,
+        resource_type=QUEUE,
+        seen_ids=[],
+        observed_at=captured - timedelta(hours=1),
+        complete=True,
+    )
+    item = queue_config_item()
+    item["resourceId"] = obs.item.resource_id  # the fixture's account id, remapped like seed
+    aws.admin(
+        "PUT",
+        "/resources",
+        json={
+            "account_id": account_id,
+            "region": REGION,
+            "type_name": QUEUE,
+            "config_item": {
+                **item,
+                "configurationItemStatus": "ResourceDeleted",
+                "configurationItemCaptureTime": captured.isoformat(),
+            },
+        },
+    )
+    registry = config_only(REGISTRY)
+    config_scanner = Scanner(
+        scanner.settings,
+        registry,
+        ResourceWriter(engine, registry, scanner.settings),
+        aws.credential_service(),
+    )
+    task = claimed_task(session, account_id, "confirm_missing", QUEUE, "config")
+    context = TaskContext(
+        lambda: Session(engine, expire_on_commit=False), "worker-1", threading.Event()
+    )
+
+    stats = config_scanner.confirm_missing(task, context)
+
+    row = resources(session, account_id)[obs.item.resource_id]
+    assert (row.status, row.deleted_at, row.observed_at) == ("deleted", captured, captured)
+    assert (stats or {})["deleted"] == 1
 
 
 # --- account access status (item 7) ---------------------------------------------------------

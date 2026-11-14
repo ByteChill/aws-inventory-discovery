@@ -187,6 +187,30 @@ def test_lease_of_a_dead_worker_expires_and_failures_are_recorded(
     assert state.last_succeeded_at is None
 
 
+def test_a_reaped_claim_cannot_take_or_extend_a_lease_before_the_next_claimant(
+    session: Session, scheduler: Scheduler, accounts: list[RegistryAccount]
+) -> None:
+    holder = hold_lease(session)
+    expires = shard_state(session).lease_expires_at
+    later = NOW + timedelta(minutes=3)
+    assert queue.reap_lost_tasks(session, later).requeued == [holder.id]
+
+    # The task is queued for whoever claims it next; the old handler must not slip in first.
+    assert not leases.release_lease(session, holder, lease_scope(), success=True, now=later)
+    leases.renew_leases(session, {holder.id or 0: holder.claim_token or ""}, later)
+    assert leases.try_acquire(session, holder, lease_scope(), later) is LeaseState.LOST
+    state = shard_state(session)
+    assert (state.lease_task_id, state.lease_token, state.lease_expires_at) == (
+        holder.id,
+        holder.claim_token,
+        expires,
+    )
+
+    fresh = claim_one(session, later)
+    assert leases.acquire_or_settle(session, fresh, later) is LeaseState.ACQUIRED
+    assert shard_state(session).lease_task_id == fresh.id
+
+
 def test_a_requeued_task_fences_out_the_stalled_worker(
     session: Session, scheduler: Scheduler, accounts: list[RegistryAccount]
 ) -> None:

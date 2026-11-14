@@ -147,6 +147,10 @@ def config_path_of(spec: ResourceTypeSpec, cc_path: Path) -> Path:
 
 
 class ConfigTag(BaseModel):
+    # Raw AWS values may be secrets or environment values: validation errors reach the task's
+    # error_message and the worker log, so never include the offending input.
+    model_config = ConfigDict(hide_input_in_errors=True)
+
     key: str
     value: str
 
@@ -154,7 +158,11 @@ class ConfigTag(BaseModel):
 class ConfigItem(BaseModel):
     """A Config-format record without the parts the Writer owns (relationships, capture time)."""
 
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        hide_input_in_errors=True,  # see ConfigTag
+    )
 
     arn: str | None
     resource_id: str
@@ -216,7 +224,9 @@ def _transform_at(node: Any, segments: list[str], fn: Callable[[Any], Any], labe
     try:
         node[key] = [fn(v) for v in node[key]] if isinstance(node[key], list) else fn(node[key])
     except (ValueError, TypeError) as exc:
-        raise MappingError(f"transform of {label} failed: {exc}") from exc
+        # The failed conversion may quote the raw value (and values can be secrets): keep the
+        # field and the kind of failure only.
+        raise MappingError(f"transform of {label} failed ({type(exc).__name__})") from None
 
 
 def convert_tags(spec: ResourceTypeSpec, properties: dict[str, Any]) -> list[ConfigTag]:

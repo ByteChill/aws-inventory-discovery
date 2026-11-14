@@ -32,6 +32,8 @@ from app.types.redact import redact_configuration, redact_live_raw
 from app.types.registry import TypeRegistry
 from app.types.spec import ResourceTypeSpec
 from app.worker.discovery import Observation, Source
+from app.worker.errors import TaskLost
+from app.worker.leases import Scope, takes_lease
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +82,48 @@ def add_task_stats(db: Session, task_id: int | None, **deltas: int) -> None:
         ),
         {"deltas": json.dumps(deltas), "id": task_id},
     )
+
+
+def lock_worker_claim(db: Session, task: ScanTask, scopes: Collection[Scope] = ()) -> None:
+    """Fence a mutation until commit, taking scope locks before the task lock.
+
+    Use UPDATE locks immediately: the writer also updates task stats, so a shared lock
+    followed by an upgrade could deadlock concurrent transactions of the same claim.
+    Resource refreshes have no scope lease; their task lock still fences every write.
+    """
+    if takes_lease(task):
+        for scope in sorted(set(scopes)):
+            shard = (
+                db.connection()
+                .execute(
+                    text("""
+                SELECT lease_task_id, lease_token FROM t_inv_aws_scan_shard
+                 WHERE account_id = :a AND region = :r AND resource_type = :t
+                   FOR UPDATE
+                """),
+                    {"a": scope.account_id, "r": scope.region, "t": scope.resource_type},
+                )
+                .first()
+            )
+            if (
+                shard is None
+                or shard.lease_task_id != task.id
+                or shard.lease_token != task.claim_token
+            ):
+                raise TaskLost
+    owned = (
+        db.connection()
+        .execute(
+            text("""
+        SELECT 1 FROM t_inv_aws_scan_task
+         WHERE id = :id AND status = 'running' AND claim_token = :token FOR UPDATE
+        """),
+            {"id": task.id, "token": task.claim_token or ""},
+        )
+        .first()
+    )
+    if owned is None:
+        raise TaskLost
 
 
 def key_of(obs: Observation) -> Key:
@@ -145,10 +189,14 @@ class ResourceWriter:
         self,
         observations: Iterable[Observation],
         *,
-        task_id: int | None = None,
+        task: ScanTask | None = None,
         scan_request_id: int | None = None,
     ) -> WriteCounts:
-        """Write observations in transactions of at most 500."""
+        """Write observations in transactions of at most 500.
+
+        Workers must supply their claimed task. Omitting it is reserved for imports/seeding.
+        """
+        task_id = task.id if task is not None else None
         total = WriteCounts()
         for chunk in batched(observations, BATCH_SIZE, strict=False):
             latest: dict[Key, Observation] = {}
@@ -157,6 +205,8 @@ class ResourceWriter:
                 if current is None or obs.observed_at > current.observed_at:
                     latest[key_of(obs)] = obs
             with Session(self.engine) as db, db.begin():
+                if task is not None:
+                    lock_worker_claim(db, task, [Scope(*key[:3]) for key in latest])
                 counts = self._apply(db, latest, task_id)
                 add_task_stats(
                     db,
@@ -431,7 +481,7 @@ class ResourceWriter:
         observed_at: datetime,
         complete: bool,
         cutoff: datetime | None = None,
-        task_id: int | None = None,
+        task: ScanTask | None = None,
     ) -> ScopeOutcome:
         """First piece of deletion evidence after a scan. Does nothing unless `complete`.
 
@@ -456,6 +506,8 @@ class ResourceWriter:
                 )
                 .with_for_update()
             ).one()
+            if task is not None:
+                lock_worker_claim(db, task, [Scope(account_id, region, resource_type)])
             in_scope = (
                 col(Resource.account_id) == account_id,
                 col(Resource.aws_region) == region,
@@ -535,7 +587,7 @@ class ResourceWriter:
                     col(Resource.absent_in_scan_at).is_not(None),
                 )
             ).one()
-            add_task_stats(db, task_id, missing=len(candidates))
+            add_task_stats(db, task.id if task is not None else None, missing=len(candidates))
             return ScopeOutcome(True, len(candidates), "normal", pending)
 
     def record_gone(
@@ -546,7 +598,7 @@ class ResourceWriter:
         resource_type: str,
         resource_id: str,
         observed_at: datetime,
-        task_id: int | None = None,
+        task: ScanTask | None = None,
         source: Source = "cloudcontrol",
     ) -> GoneOutcome:
         """A by-ID read explicitly said the resource does not exist (second piece of evidence).
@@ -556,7 +608,10 @@ class ResourceWriter:
         `observed_at` / `observed_source` under that same guard, so an older in-flight listing
         can no longer restore the resource. Errors never reach here.
         """
+        task_id = task.id if task is not None else None
         with Session(self.engine) as db, db.begin():
+            if task is not None:
+                lock_worker_claim(db, task, [Scope(account_id, region, resource_type)])
             row = db.exec(
                 select(Resource)
                 .where(
@@ -590,10 +645,18 @@ class ResourceWriter:
             return outcome
 
     def record_check_failed(
-        self, *, account_id: str, region: str, resource_type: str, resource_id: str
+        self,
+        *,
+        account_id: str,
+        region: str,
+        resource_type: str,
+        resource_id: str,
+        task: ScanTask | None = None,
     ) -> None:
         """A by-ID read errored: the resource stays missing; count the failed check."""
         with Session(self.engine) as db, db.begin():
+            if task is not None:
+                lock_worker_claim(db, task, [Scope(account_id, region, resource_type)])
             db.exec(
                 update(Resource)
                 .where(
@@ -606,19 +669,33 @@ class ResourceWriter:
                 .values(missing_checks=Resource.missing_checks + 1)
             )
 
-    def confirm_guard(self, *, account_id: str, region: str, resource_type: str, by: str) -> None:
-        """An administrator accepted an abnormal scope: the next scan may mark it missing."""
+    def confirm_guard(
+        self,
+        *,
+        account_id: str,
+        region: str,
+        resource_type: str,
+        by: str,
+        detected_at: datetime | None = None,
+    ) -> bool:
+        """An administrator accepted an abnormal scope: the next scan may mark it missing.
+
+        Only the detection the administrator reviewed is confirmed; a guard that tripped
+        again meanwhile matches no row and the caller reports the conflict.
+        """
         with Session(self.engine) as db, db.begin():
-            db.exec(
+            result = db.exec(
                 update(ScanShard)
                 .where(
                     col(ScanShard.account_id) == account_id,
                     col(ScanShard.region) == region,
                     col(ScanShard.resource_type) == resource_type,
                     col(ScanShard.guard_state) == "abnormal",
+                    col(ScanShard.guard_detected_at).is_not_distinct_from(detected_at),
                 )
                 .values(guard_state="confirmed", guard_confirmed_by=by)
             )
+            return bool(result.rowcount)
 
     # --- account access status (scanner.md section 10) ------------------------------------
 

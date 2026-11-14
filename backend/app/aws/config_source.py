@@ -92,10 +92,18 @@ def detect_recorder(client: Any) -> RecorderState:
 
 
 def capture_time(value: Any) -> datetime:
-    """`configurationItemCaptureTime` as a UTC datetime (epoch seconds or ISO 8601)."""
+    """`configurationItemCaptureTime` as a UTC datetime (epoch seconds or ISO 8601).
+
+    The message never quotes the raw value: it reaches the task's error_message and the log.
+    """
     if isinstance(value, int | float):
         return datetime.fromtimestamp(value, UTC)
-    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
+    if not isinstance(value, str):
+        raise ValueError("configurationItemCaptureTime is not a number or a string")
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
+    except ValueError:
+        raise ValueError("configurationItemCaptureTime is not an ISO 8601 timestamp") from None
 
 
 def select_pages(client: Any, type_names: Sequence[str]) -> Iterator[list[dict[str, Any]]]:

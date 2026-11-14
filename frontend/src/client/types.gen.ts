@@ -290,6 +290,10 @@ export type ConfirmChangeBody = {
      * Resourcetype
      */
     resourceType: string;
+    /**
+     * Guarddetectedat
+     */
+    guardDetectedAt?: string | null;
 };
 
 /**
@@ -2771,6 +2775,36 @@ export type ListScanScopesResponses = {
 };
 
 export type ListScanScopesResponse = ListScanScopesResponses[keyof ListScanScopesResponses];
+
+export type GetScanScopeData = {
+    body?: never;
+    path: {
+        /**
+         * Scan Shard Id
+         */
+        scan_shard_id: number;
+    };
+    query?: never;
+    url: '/api/v1/scan-scopes/{scan_shard_id}';
+};
+
+export type GetScanScopeErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetScanScopeError = GetScanScopeErrors[keyof GetScanScopeErrors];
+
+export type GetScanScopeResponses = {
+    /**
+     * Successful Response
+     */
+    200: ScanScopeOut;
+};
+
+export type GetScanScopeResponse = GetScanScopeResponses[keyof GetScanScopeResponses];
 
 export type ListScopeCandidatesData = {
     body?: never;

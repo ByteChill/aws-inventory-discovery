@@ -7,7 +7,7 @@ export type ApiError = {
   details?: Record<string, unknown>
 }
 
-function isApiError(e: unknown): e is ApiError {
+export function isApiError(e: unknown): e is ApiError {
   return (
     typeof e === "object" &&
     e !== null &&

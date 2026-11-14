@@ -266,6 +266,28 @@ def cached_summary(session: Session, settings: Settings, cache: Cache) -> ScanSu
 # --------------------------------------------------------------------------- scopes
 
 
+SCOPES = """
+    SELECT s.id AS scan_shard_id, s.account_id, s.region, s.resource_type, s.guard_state,
+           s.guard_detected_at, coalesce(s.candidate_count, 0) AS candidate_count,
+           (SELECT count(*) FROM t_inv_aws_resource r
+             WHERE r.account_id = s.account_id AND r.aws_region = s.region
+               AND r.resource_type = s.resource_type AND r.status = 'active') AS active_count
+      FROM t_inv_aws_scan_shard s
+"""
+
+
+def get_scope(session: Session, scan_shard_id: int) -> ScanScopeOut:
+    row = (
+        session.connection()
+        .execute(text(f"{SCOPES} WHERE s.id = :id"), {"id": scan_shard_id})
+        .mappings()
+        .first()
+    )
+    if row is None:
+        raise ApiError(404, "scope_not_found", "扫描范围不存在", {"id": scan_shard_id})
+    return ScanScopeOut.model_validate(row)
+
+
 def list_scopes(
     session: Session, guard_state: str, page: int, page_size: int
 ) -> Page[ScanScopeOut]:
@@ -275,34 +297,17 @@ def list_scopes(
     rows = (
         session.connection()
         .execute(
-            text("""
-        SELECT s.id, s.account_id, s.region, s.resource_type, s.guard_state,
-               s.guard_detected_at,
-               coalesce(s.candidate_count, 0) AS candidates,
-               (SELECT count(*) FROM t_inv_aws_resource r
-                 WHERE r.account_id = s.account_id AND r.aws_region = s.region
-                   AND r.resource_type = s.resource_type AND r.status = 'active') AS active
-          FROM t_inv_aws_scan_shard s WHERE s.guard_state = :state
+            text(f"""
+        {SCOPES} WHERE s.guard_state = :state
          ORDER BY s.guard_detected_at DESC NULLS LAST, s.account_id, s.region, s.resource_type
          LIMIT :limit OFFSET :offset
         """),
             {"state": guard_state, "limit": page_size, "offset": (page - 1) * page_size},
         )
+        .mappings()
         .all()
     )
-    items = [
-        ScanScopeOut(
-            scan_shard_id=r.id,
-            account_id=r.account_id,
-            region=r.region,
-            resource_type=r.resource_type,
-            guard_state=r.guard_state,
-            guard_detected_at=r.guard_detected_at,
-            candidate_count=r.candidates,
-            active_count=r.active,
-        )
-        for r in rows
-    ]
+    items = [ScanScopeOut.model_validate(row) for row in rows]
     return Page(items=items, page=page, page_size=page_size, total=total)
 
 

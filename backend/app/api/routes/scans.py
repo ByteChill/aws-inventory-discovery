@@ -190,6 +190,11 @@ def list_scan_scopes(
     return scans_query.list_scopes(session, params.guard_state, params.page, params.page_size)
 
 
+@scopes_router.get("/{scan_shard_id}")
+def get_scan_scope(scan_shard_id: int, session: SessionDep) -> ScanScopeOut:
+    return scans_query.get_scope(session, scan_shard_id)
+
+
 @scopes_router.get("/{scan_shard_id}/candidates")
 def list_scope_candidates(
     scan_shard_id: int, params: Annotated[CandidateParams, Query()], session: SessionDep
@@ -219,12 +224,15 @@ def confirm_scope_change(
         )
     session.rollback()
     writer = ResourceWriter(get_engine(), registry, get_settings())
-    writer.confirm_guard(
+    confirmed = writer.confirm_guard(
         account_id=body.account_id,
         region=body.aws_region,
         resource_type=body.resource_type,
         by=x_caller_id or "api",
+        detected_at=body.guard_detected_at,
     )
+    if not confirmed:
+        raise ApiError(409, "scope_changed", "这个范围在上次读取后有变化，请刷新后再确认")
     spec = registry.get(body.resource_type)
     request = requests.create_scope_scan(
         session,

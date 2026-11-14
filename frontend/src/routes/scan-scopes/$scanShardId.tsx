@@ -14,7 +14,7 @@ import {
   useResourceTypes,
 } from "@/api/hooks"
 import {
-  useAbnormalScopes,
+  useAbnormalScope,
   useConfirmChange,
   useScopeCandidates,
 } from "@/api/scans"
@@ -42,12 +42,10 @@ function ScopePage() {
   const { t } = useI18n()
   const { scanShardId } = Route.useParams()
   const id = Number(scanShardId)
-  const scopes = useAbnormalScopes()
-  const scope = Number.isInteger(id)
-    ? scopes.data?.items.find((s) => s.scanShardId === id)
-    : undefined
+  const scopes = useAbnormalScope(id)
+  const scope = scopes.data
 
-  if (scopes.data && !scope)
+  if (scopes.isSuccess && scope === null)
     return (
       <Page>
         <PageHeader title={t("scanScope.title")} />
@@ -71,7 +69,12 @@ function ScopePage() {
         isEmpty={!scope}
         emptyMessage={t("scanScope.notFoundPage")}
       >
-        {scope && <Detail scope={scope} />}
+        {scope && (
+          <Detail
+            key={`${scope.scanShardId}:${scope.guardDetectedAt}`}
+            scope={scope}
+          />
+        )}
       </QueryRegion>
     </Page>
   )
@@ -118,12 +121,19 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
       scope.resourceType,
     [types.data, scope.resourceType],
   )
-  const candidates = useScopeCandidates(scope.scanShardId, state.q, {
-    page: state.page,
-    pageSize: state.pageSize,
-  })
+  const candidates = useScopeCandidates(
+    scope.scanShardId,
+    state.q,
+    { page: state.page, pageSize: state.pageSize },
+    scope.guardDetectedAt,
+  )
   const total = candidates.data?.total ?? 0
   const pages = Math.max(1, Math.ceil(total / state.pageSize))
+  // A new detection can shrink the list under an open page number.
+  useEffect(() => {
+    if (candidates.data && state.page > pages)
+      setState({ ...state, page: pages })
+  }, [candidates.data, pages, state, setState])
   const accountName = account.data?.accountName ?? scope.accountId
   // Candidates carry only identity; the preview reads the full row by id.
   const [previewId, setPreviewId] = useState<number>()
@@ -486,6 +496,7 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
                   accountId: scope.accountId,
                   awsRegion: scope.region,
                   resourceType: scope.resourceType,
+                  guardDetectedAt: scope.guardDetectedAt,
                 },
                 {
                   onSuccess: (scan) => {

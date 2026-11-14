@@ -267,4 +267,6 @@ ECS 停止任务时发送 SIGTERM，`stopTimeout` 为 120 秒：
 - 删除 `deleted_at` 早于 `DELETED_PURGE_DAYS` 天的资源。
 - 删除 `inactive_since` 早于 `INACTIVE_ACCOUNT_PURGE_DAYS` 天的账号，以及它的资源、区域和范围记录。
 
+任务、资源、账号三步的删除都在事务里锁定候选并复查资格：任务已经结束且早于保留期，资源仍是 `deleted` 且早于保留期，账号仍不活跃且 `inactive_since` 早于保留期。账号清理与 `sync_accounts` 共用按账号的 advisory lock，清理期间恢复活跃的账号不会被删，清理不会为等待这个锁而卡住；资源清理在 `DELETE` 外层重复状态和保留期条件，等锁之后重新判断。请求清理只删除已经没有任务的请求，由 `NOT EXISTS` 保证。
+
 每次最多删除 10,000 行，循环直到完成，避免长事务。

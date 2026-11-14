@@ -70,24 +70,6 @@ def try_acquire(
         raise ValueError(f"task {task.id} is a single-resource refresh: it takes no lease")
     now = now or utcnow()
     key = {"a": scope.account_id, "r": scope.region, "t": scope.resource_type}
-    if not _owns_claim(session, task):
-        return LeaseState.LOST
-    # A confirm_missing task follows the scan that just succeeded: R3 doesn't apply to it.
-    if not is_on_demand(task) and task.kind != "confirm_missing":
-        last_ok = (
-            session.connection()
-            .execute(
-                text("""
-            SELECT last_succeeded_at FROM t_inv_aws_scan_shard
-             WHERE account_id = :a AND region = :r AND resource_type = :t
-            """),
-                key,
-            )
-            .scalar()
-        )
-        if last_ok is not None and last_ok > now - FRESHNESS_WINDOW:
-            session.rollback()
-            return LeaseState.FRESH
     session.connection().execute(
         text("""
         INSERT INTO t_inv_aws_scan_shard (account_id, region, resource_type)
@@ -95,6 +77,24 @@ def try_acquire(
         """),
         key,
     )
+    last_ok = (
+        session.connection()
+        .execute(
+            text("""
+        SELECT last_succeeded_at FROM t_inv_aws_scan_shard
+         WHERE account_id = :a AND region = :r AND resource_type = :t FOR UPDATE
+        """),
+            key,
+        )
+        .scalar()
+    )
+    if not _owns_claim(session, task):
+        return LeaseState.LOST
+    # A confirm_missing task follows the scan that just succeeded: R3 doesn't apply to it.
+    if not is_on_demand(task) and task.kind != "confirm_missing":
+        if last_ok is not None and last_ok > now - FRESHNESS_WINDOW:
+            session.rollback()
+            return LeaseState.FRESH
     row = (
         session.connection()
         .execute(
@@ -128,7 +128,7 @@ def _owns_claim(session: Session, task: ScanTask) -> bool:
         .execute(
             text("""
         SELECT 1 FROM t_inv_aws_scan_task
-         WHERE id = :id AND status = 'running' AND claim_token = :token
+         WHERE id = :id AND status = 'running' AND claim_token = :token FOR UPDATE
         """),
             {"id": task.id, "token": task.claim_token or ""},
         )
@@ -161,8 +161,6 @@ def park_pending(
     """
     now = now or utcnow()
     key = {"a": scope.account_id, "r": scope.region, "t": scope.resource_type}
-    if not _owns_claim(session, task):
-        return
     shard = (
         session.connection()
         .execute(
@@ -185,6 +183,8 @@ def park_pending(
             {"ids": [i for i in (task.id, shard.pending_task_id) if i is not None]},
         )
     }
+    if not _owns_claim(session, task):
+        return
     old = held.get(shard.pending_task_id) if shard.pending_task_id not in (None, task.id) else None
     replace = old is None or covers(old, task)
     if old is not None and replace:
@@ -259,25 +259,58 @@ def renew_leases(session: Session, claims: Mapping[int, str], now: datetime | No
     if not claims:
         return
     ids = sorted(claims)
-    session.connection().execute(
-        text("""
-        WITH mine AS (
-            SELECT s.account_id, s.region, s.resource_type FROM t_inv_aws_scan_shard s
-              JOIN unnest(CAST(:ids AS bigint[]), CAST(:tokens AS text[])) AS c(id, token)
-                ON c.id = s.lease_task_id AND c.token = s.lease_token
-             ORDER BY s.account_id, s.region, s.resource_type
-               FOR UPDATE OF s)
-        UPDATE t_inv_aws_scan_shard s SET lease_expires_at = :expires
-          FROM mine
-         WHERE (s.account_id, s.region, s.resource_type)
-             = (mine.account_id, mine.region, mine.resource_type)
+    held = (
+        session.connection()
+        .execute(
+            text("""
+        SELECT s.account_id, s.region, s.resource_type, s.lease_task_id
+          FROM t_inv_aws_scan_shard s
+          JOIN unnest(CAST(:ids AS bigint[]), CAST(:tokens AS text[])) AS c(id, token)
+            ON c.id = s.lease_task_id AND c.token = s.lease_token
+         ORDER BY s.account_id, s.region, s.resource_type
+           FOR UPDATE OF s
         """),
-        {
-            "ids": ids,
-            "tokens": [claims[i] for i in ids],
-            "expires": (now or utcnow()) + LEASE_TTL,
-        },
+            {"ids": ids, "tokens": [claims[i] for i in ids]},
+        )
+        .all()
     )
+    if not held:
+        session.rollback()
+        return
+    # Shard rows are locked; now lock the claims, by id, before deciding to extend anything.
+    tasks = {
+        row.id: row
+        for row in session.connection().execute(
+            text("""
+            SELECT id, status, claim_token FROM t_inv_aws_scan_task
+             WHERE id = ANY(:ids) ORDER BY id FOR UPDATE
+            """),
+            {"ids": sorted({row.lease_task_id for row in held})},
+        )
+    }
+    owned = [
+        row
+        for row in held
+        if (task := tasks.get(row.lease_task_id)) is not None
+        and task.status == "running"
+        and task.claim_token == claims[row.lease_task_id]
+    ]
+    if owned:
+        session.connection().execute(
+            text("""
+            UPDATE t_inv_aws_scan_shard s SET lease_expires_at = :expires
+              FROM unnest(CAST(:accounts AS text[]), CAST(:regions AS text[]),
+                          CAST(:types AS text[])) AS m(account_id, region, resource_type)
+             WHERE (s.account_id, s.region, s.resource_type)
+                 = (m.account_id, m.region, m.resource_type)
+            """),
+            {
+                "accounts": [row.account_id for row in owned],
+                "regions": [row.region for row in owned],
+                "types": [row.resource_type for row in owned],
+                "expires": (now or utcnow()) + LEASE_TTL,
+            },
+        )
     session.commit()
 
 
@@ -299,32 +332,14 @@ def release_lease(
     or the task was claimed again).
     """
     now = now or utcnow()
-    row = (
+    held = (
         session.connection()
         .execute(
             text("""
-        WITH held AS (
-            SELECT account_id, region, resource_type, pending_task_id
-              FROM t_inv_aws_scan_shard
-             WHERE account_id = :a AND region = :r AND resource_type = :t
-               AND lease_task_id = :task_id AND lease_token = :token
-               FOR UPDATE)
-        UPDATE t_inv_aws_scan_shard s
-           SET lease_task_id = NULL, lease_token = NULL, lease_expires_at = NULL,
-               last_task_id = :task_id,
-               last_succeeded_at = CASE WHEN CAST(:success AS boolean) THEN :now
-                                        ELSE s.last_succeeded_at END,
-               consecutive_failures = CASE WHEN CAST(:success AS boolean) THEN 0
-                                           WHEN CAST(:success AS boolean) IS FALSE
-                                                THEN s.consecutive_failures + 1
-                                           ELSE s.consecutive_failures END,
-               last_error_code = CASE WHEN CAST(:success AS boolean) IS FALSE THEN :error_code
-                                      ELSE s.last_error_code END,
-               pending_task_id = NULL
-          FROM held
-         WHERE (s.account_id, s.region, s.resource_type)
-             = (held.account_id, held.region, held.resource_type)
-        RETURNING held.pending_task_id AS pending
+        SELECT pending_task_id FROM t_inv_aws_scan_shard
+         WHERE account_id = :a AND region = :r AND resource_type = :t
+           AND lease_task_id = :task_id AND lease_token = :token
+           FOR UPDATE
         """),
             {
                 "a": scope.account_id,
@@ -332,23 +347,62 @@ def release_lease(
                 "t": scope.resource_type,
                 "task_id": task.id,
                 "token": task.claim_token or "",
-                "success": success,
-                "error_code": error_code,
-                "now": now,
             },
         )
         .first()
     )
-    if row is None:
+    if held is None:
         session.rollback()
         return False
-    if row.pending is not None:
+    pending = held.pending_task_id
+    # Shard, then tasks by id (queue.py): the claim and the task it wakes together.
+    locked = {
+        row.id: row
+        for row in session.connection().execute(
+            text("""
+            SELECT id, status, claim_token FROM t_inv_aws_scan_task
+             WHERE id = ANY(:ids) ORDER BY id FOR UPDATE
+            """),
+            {"ids": sorted({i for i in (task.id, pending) if i is not None})},
+        )
+    }
+    mine = locked.get(task.id)
+    if mine is None or mine.status != "running" or mine.claim_token != (task.claim_token or ""):
+        session.rollback()
+        return False
+    session.connection().execute(
+        text("""
+        UPDATE t_inv_aws_scan_shard
+           SET lease_task_id = NULL, lease_token = NULL, lease_expires_at = NULL,
+               last_task_id = :task_id,
+               last_succeeded_at = CASE WHEN CAST(:success AS boolean) THEN :now
+                                        ELSE last_succeeded_at END,
+               consecutive_failures = CASE WHEN CAST(:success AS boolean) THEN 0
+                                           WHEN CAST(:success AS boolean) IS FALSE
+                                                THEN consecutive_failures + 1
+                                           ELSE consecutive_failures END,
+               last_error_code = CASE WHEN CAST(:success AS boolean) IS FALSE THEN :error_code
+                                      ELSE last_error_code END,
+               pending_task_id = NULL
+         WHERE account_id = :a AND region = :r AND resource_type = :t
+        """),
+        {
+            "a": scope.account_id,
+            "r": scope.region,
+            "t": scope.resource_type,
+            "task_id": task.id,
+            "success": success,
+            "error_code": error_code,
+            "now": now,
+        },
+    )
+    if pending is not None:
         session.connection().execute(
             text("""
             UPDATE t_inv_aws_scan_task SET not_before = :now
              WHERE id = :id AND status = 'queued'
             """),
-            {"id": row.pending, "now": now},
+            {"id": pending, "now": now},
         )
     session.commit()
     return True

@@ -45,7 +45,7 @@ from app.worker import leases, queue, requests
 from app.worker.discovery import AWS_ERRORS, Discovery, Observation, Source, plan_sources
 from app.worker.errors import TaskCancelled, TaskError, TaskLost, TaskStopped
 from app.worker.locks import lock_child_enqueue
-from app.worker.writer import ACCESS_TASK_KINDS, ResourceWriter
+from app.worker.writer import ACCESS_TASK_KINDS, ResourceWriter, lock_worker_claim
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +165,7 @@ class Scanner:
     ) -> None:
         """Queue one confirm_missing task for the scope unless one is already waiting."""
         with ctx.new_session() as session:
+            lock_worker_claim(session, task)
             waiting = session.exec(
                 select(ScanTask.id).where(
                     ScanTask.kind == "confirm_missing",
@@ -218,7 +219,7 @@ class Scanner:
         except NoDescribeRegionsRegion as exc:
             raise TaskError("internal", str(exc), retryable=False) from exc
         now = utcnow()
-        self._save_regions(task.account_id, described, now)
+        self._save_regions(task, described, now)
         scannable = sorted(
             region
             for region, opt_in in described.items()
@@ -233,7 +234,7 @@ class Scanner:
             disc = self._discovery(aws, task, region)
             recorder = RecorderState()
             if not on_demand:  # on-demand scans never read Config
-                recorder = self._detect_recorder(disc, task.account_id, region)
+                recorder = self._detect_recorder(disc, task, region)
             plan = plan_sources(
                 self.registry, recorder, on_demand=on_demand, type_names=wanted_types
             )
@@ -258,7 +259,8 @@ class Scanner:
         created, skipped = self._add_children(ctx, task, planned)
         return {"regions": len(scannable), "tasks": created, "skipped": skipped}
 
-    def _save_regions(self, account_id: str, described: dict[str, str], now: datetime) -> None:
+    def _save_regions(self, task: ScanTask, described: dict[str, str], now: datetime) -> None:
+        account_id = task.account_id
         rows = [
             {
                 "account_id": account_id,
@@ -271,6 +273,7 @@ class Scanner:
         ]
         statement = pg_insert(AccountRegion.__table__).values(rows)  # ty: ignore[unresolved-attribute]
         with Session(self.writer.engine) as session, session.begin():
+            lock_worker_claim(session, task)
             session.connection().execute(
                 statement.on_conflict_do_update(
                     index_elements=["account_id", "region"],
@@ -281,7 +284,7 @@ class Scanner:
                 )
             )
 
-    def _detect_recorder(self, disc: Discovery, account_id: str, region: str) -> RecorderState:
+    def _detect_recorder(self, disc: Discovery, task: ScanTask, region: str) -> RecorderState:
         """The region's Config recorder, saved on the region row. A failure means "plan Cloud
         Control for everything": the shards then report the real error themselves."""
         try:
@@ -293,7 +296,8 @@ class Scanner:
             )  # fmt: skip
             return RecorderState()
         with Session(self.writer.engine) as session, session.begin():
-            row = session.get(AccountRegion, (account_id, region))
+            lock_worker_claim(session, task)
+            row = session.get(AccountRegion, (task.account_id, region))
             if row is not None:
                 row.config_recorder = recorder.as_json()
                 session.add(row)
@@ -319,6 +323,7 @@ class Scanner:
             scheduled = not leases.is_on_demand(task)
             if scheduled:
                 lock_child_enqueue(session, self.settings.DATABASE_SCHEMA, task.account_id)
+            lock_worker_claim(session, task)
             existing = {
                 (t.kind, t.region, t.resource_type)
                 for t in session.exec(
@@ -393,7 +398,7 @@ class Scanner:
         pages = disc.config_pages(list(held))
         for page in pages:
             mine = [obs for obs in page if obs.resource_type in held]
-            self.writer.write(mine, task_id=task.id)
+            self.writer.write(mine, task=task)
             for obs in mine:
                 seen[obs.resource_type].add(obs.item.resource_id)
             ctx.checkpoint(task)  # after the page, before the next read
@@ -409,7 +414,7 @@ class Scanner:
                 observed_at=pages.query_started_at,
                 complete=pages.complete,
                 cutoff=self.writer.config_cutoff(pages.query_started_at),
-                task_id=task.id,
+                task=task,
             )
             self._release(ctx, task, scope, error)
             if outcome.confirm_pending:
@@ -433,7 +438,7 @@ class Scanner:
         pages = disc.live_pages(task.resource_type)
         seen: set[str] = set()
         for page in pages:  # read, write and check in page by page, inside the lease
-            self.writer.write(page, task_id=task.id)
+            self.writer.write(page, task=task)
             seen.update(obs.item.resource_id for obs in page)
             ctx.checkpoint(task)
         if pages.complete:
@@ -445,7 +450,7 @@ class Scanner:
             seen_ids=seen,
             observed_at=pages.observed_at,
             complete=pages.complete,
-            task_id=task.id,
+            task=task,
         )
         error = None if pages.complete else pages.errors[0]
         self._release(ctx, task, scope, error)
@@ -492,11 +497,11 @@ class Scanner:
                 resource_type=task.resource_type,
                 resource_id=task.resource_id,
                 observed_at=started,
-                task_id=task.id,
+                task=task,
                 source=self._live_source(task.resource_type),
             )
             return self._result(ctx, task, result=outcome)
-        self.writer.write([found], task_id=task.id)
+        self.writer.write([found], task=task)
         return self._result(ctx, task, result="found")
 
     def _live_source(self, resource_type: str) -> Source:
@@ -528,7 +533,7 @@ class Scanner:
         hooks = self.hooks.get(task.resource_type, Hooks())
         by_config = not spec.sources.cloud_control.read and hooks.get_live is None
         errors: list[ScanError] = []
-        deleted_ids: set[str] = set()
+        deleted_at: dict[str, datetime] = {}
         if by_config:  # no by-ID read: Config's ResourceDeleted status is the evidence
             client = make_client(aws, "config", client_region(task.region))
             keys = [(task.resource_type, rid) for rid, _ in pending]
@@ -537,15 +542,15 @@ class Scanner:
             except AWS_ERRORS as exc:
                 errors.append(classify(exc))
                 statuses = {}
-            deleted_ids = {key[1] for key, status in statuses.items() if status.deleted}
+            deleted_at = {
+                key[1]: status.captured_at for key, status in statuses.items() if status.deleted
+            }
         for resource_id, configuration in pending:
             ctx.checkpoint(task)  # every by-ID read may end in a deletion
             started = datetime.now(UTC)
             try:
                 if by_config:
-                    found: Observation | Gone | None = (
-                        Gone() if resource_id in deleted_ids else None
-                    )
+                    found: Observation | Gone | None = Gone() if resource_id in deleted_at else None
                 else:
                     found = disc.fetch(task.resource_type, resource_id, configuration)
             except (*AWS_ERRORS, MappingError) as exc:
@@ -560,12 +565,12 @@ class Scanner:
                     region=task.region,
                     resource_type=task.resource_type,
                     resource_id=resource_id,
-                    observed_at=started,
-                    task_id=task.id,
+                    observed_at=deleted_at[resource_id] if by_config else started,
+                    task=task,
                     source="config" if by_config else self._live_source(task.resource_type),
                 )
             else:
-                self.writer.write([found], task_id=task.id)
+                self.writer.write([found], task=task)
         error = errors[0] if errors else None
         self._release(ctx, task, scope, error)
         if error is not None:
@@ -579,4 +584,5 @@ class Scanner:
             region=task.region,
             resource_type=task.resource_type,
             resource_id=resource_id,
+            task=task,
         )

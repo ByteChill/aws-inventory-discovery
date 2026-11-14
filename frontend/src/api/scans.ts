@@ -13,6 +13,7 @@ import {
   confirmScopeChange,
   createScan,
   getScan,
+  getScanScope,
   getTask,
   getTaskLogs,
   type ListResourcesData,
@@ -29,6 +30,7 @@ import {
   type ScanSpec,
   scanSummary,
 } from "@/client"
+import { isApiError } from "@/lib/errors"
 
 type ScansQuery = NonNullable<ListScansData["query"]>
 type TasksQuery = NonNullable<Parameters<typeof listScanTasks>[0]["query"]>
@@ -119,13 +121,46 @@ export function useTaskLogs(id: number) {
   })
 }
 
-export function useAbnormalScopes() {
+export function useAbnormalScopes(page: number, pageSize: number) {
   return useQuery({
-    queryKey: ["scan-scopes"],
-    queryFn: async () =>
-      (await listScanScopes({ query: { pageSize: 200 }, throwOnError: true }))
-        .data,
+    queryKey: ["scan-scopes", "list", page, pageSize],
+    queryFn: async ({ signal }) =>
+      (
+        await listScanScopes({
+          query: { guardState: "abnormal", page, pageSize },
+          signal,
+          throwOnError: true,
+        })
+      ).data,
+    placeholderData: keepPreviousData,
     refetchInterval: 15_000,
+  })
+}
+
+/** A direct link reads the scope itself, not a page of the list (which others can shift). */
+export function useAbnormalScope(scanShardId: number) {
+  return useQuery({
+    queryKey: ["scan-scopes", "detail", scanShardId],
+    queryFn: async () => {
+      if (!Number.isSafeInteger(scanShardId) || scanShardId <= 0) return null
+      try {
+        const scope = (
+          await getScanScope({
+            path: { scan_shard_id: scanShardId },
+            throwOnError: true,
+          })
+        ).data
+        // A cleared guard has nothing to review anymore.
+        return scope.guardState === "abnormal" ? scope : null
+      } catch (e) {
+        if (isApiError(e) && e.code === "scope_not_found") return null
+        throw e
+      }
+    },
+    // The guard can clear or change while the page is open; the candidates follow
+    // `guardDetectedAt` (Detail remounts with a new detection).
+    refetchInterval:
+      Number.isSafeInteger(scanShardId) && scanShardId > 0 ? 15_000 : false,
   })
 }
 
@@ -134,9 +169,10 @@ export function useScopeCandidates(
   scanShardId: number | undefined,
   q: string | undefined,
   paging: { page: number; pageSize: number },
+  guardDetectedAt: string | null,
 ) {
   return useQuery({
-    queryKey: ["scope-candidates", scanShardId, q, paging],
+    queryKey: ["scope-candidates", scanShardId, guardDetectedAt, q, paging],
     queryFn: async () =>
       (
         await listScopeCandidates({
@@ -146,7 +182,6 @@ export function useScopeCandidates(
         })
       ).data,
     enabled: scanShardId !== undefined,
-    placeholderData: keepPreviousData,
   })
 }
 
@@ -249,6 +284,7 @@ export function useConfirmChange() {
       accountId: string
       awsRegion: string
       resourceType: string
+      guardDetectedAt: string | null
     }) => (await confirmScopeChange({ body, throwOnError: true })).data,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["scan-scopes"] })

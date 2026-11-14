@@ -84,10 +84,12 @@
 
 | 安全组 | 入站 | 出站 |
 |---|---|---|
-| `aws-inventory-discovery-api` | 8000 来自已有 ALB 的安全组 `<alb-sg>` | Aurora (5432)、Redis (16379)、VPC endpoint (443) |
+| `aws-inventory-discovery-api` | 8000 来自已有 ALB 的安全组 `<alb-sg>` | Aurora (5432)、Redis (16379)、账号清单服务 ① (443)、VPC endpoint (443) |
 | `aws-inventory-discovery-worker` | 无 | Aurora (5432)、Redis (16379)、两个内部服务 (443)、VPC endpoint（本地和远端）(443) |
 | `aws-inventory-discovery-redis` | 16379 来自 `aws-inventory-discovery-api`、`aws-inventory-discovery-worker` | 无 |
 | `aws-inventory-discovery-endpoints`（每个区域一个） | 443 来自 ap-east-1 VPC 网段 | 无 |
+
+API 在发起全量扫描和扫描快照里没有的账号时会读取账号清单服务 ①，所以出站要放行到它；不需要凭证服务 ②。
 
 已有 ALB 的安全组如果限制出站，要放行到 `aws-inventory-discovery-api` 的 8000。
 

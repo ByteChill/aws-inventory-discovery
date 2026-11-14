@@ -281,6 +281,9 @@ type Task = {
 ### `GET /scan-scopes`
 参数：`guardState`（`normal` / `abnormal` / `confirmed`，默认 `abnormal`）、分页。返回：`Page<{ scanShardId: number; accountId; region; resourceType; guardState; guardDetectedAt; candidateCount: number; activeCount: number }>`，按检测时间倒序。`candidateCount` 是触发保护的那次扫描想标为「可能已删除」的资源数（`scan_shard.candidate_count`），`activeCount` 是现在这个范围里 `active` 的资源数。
 
+### `GET /scan-scopes/{id}`
+返回一个范围的当前状态，字段同 `GET /scan-scopes` 的列表项；不存在返回 404 `scope_not_found`。核对页直接打开链接时用它，不依赖列表分页。
+
 ### `GET /scan-scopes/{id}/candidates`
 - `id` 是 `GET /scan-scopes` 返回的 `scanShardId`；不存在返回 404 `scope_not_found`。
 - 参数：`q`（名称、资源 ID、ARN，包含匹配）、分页。

@@ -129,6 +129,11 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
   )
   const total = candidates.data?.total ?? 0
   const pages = Math.max(1, Math.ceil(total / state.pageSize))
+  // A new detection can shrink the list under an open page number.
+  useEffect(() => {
+    if (candidates.data && state.page > pages)
+      setState({ ...state, page: pages })
+  }, [candidates.data, pages, state, setState])
   const accountName = account.data?.accountName ?? scope.accountId
   // Candidates carry only identity; the preview reads the full row by id.
   const [previewId, setPreviewId] = useState<number>()
@@ -491,6 +496,7 @@ function Detail({ scope }: { scope: ScanScopeOut }) {
                   accountId: scope.accountId,
                   awsRegion: scope.region,
                   resourceType: scope.resourceType,
+                  guardDetectedAt: scope.guardDetectedAt,
                 },
                 {
                   onSuccess: (scan) => {

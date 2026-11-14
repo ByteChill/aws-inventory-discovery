@@ -290,6 +290,10 @@ export type ConfirmChangeBody = {
      * Resourcetype
      */
     resourceType: string;
+    /**
+     * Guarddetectedat
+     */
+    guardDetectedAt?: string | null;
 };
 
 /**

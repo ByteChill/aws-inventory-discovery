@@ -22,7 +22,6 @@ from tests.api.conftest import TEST_REDIS_URL
 from tests.conftest import NOWHERE, TEST_DATABASE_URL
 from tests.support.seed import (
     AWS_FIXTURES,
-    DEV_ACCOUNT,
     IMAGES_ACCOUNT,
     MAIN_ACCOUNT,
     Seeded,
@@ -183,7 +182,7 @@ def test_summary_reports_the_backlog(api: TestClient) -> None:
 def test_refresh_without_waiting_is_202_and_shares_the_inflight_task(
     api: TestClient, seeded: Seeded
 ) -> None:
-    row = seeded.where(account_id=DEV_ACCOUNT, resource_type="AWS::SQS::Queue")[0]
+    row = seeded.where(account_id=MAIN_ACCOUNT, resource_type="AWS::EC2::VPC")[0]
     body = {
         "accountId": row["account_id"],
         "awsRegion": row["aws_region"],
@@ -200,7 +199,7 @@ def test_refresh_without_waiting_is_202_and_shares_the_inflight_task(
     assert (task["kind"], task["resourceId"]) == ("resource", row["resource_id"])
 
 
-def test_refresh_rejects_bad_requests(api: TestClient, seeded: Seeded) -> None:
+def test_refresh_rejects_bad_requests(api: TestClient, seeded: Seeded, db_engine: Engine) -> None:
     key = {"accountId": MAIN_ACCOUNT, "awsRegion": "us-east-1", "resourceId": "x"}
     for path, body in (
         ("/resources/refresh?wait=21", {"arn": "arn:aws:x"}),
@@ -215,6 +214,29 @@ def test_refresh_rejects_bad_requests(api: TestClient, seeded: Seeded) -> None:
     )
     missing_arn = error_of(api.post(f"{API}/resources/refresh", json={"arn": "arn:aws:nope"}), 404)
     assert missing_arn["code"] == "resource_not_found"
+    # An account that left the organization must not queue a refresh that races its purge.
+    with db_engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE t_inv_aws_account SET active = false, inactive_since = now()"
+                " WHERE account_id = :a"
+            ),
+            {"a": MAIN_ACCOUNT},
+        )
+    try:
+        inactive = {**key, "resourceType": "AWS::SQS::Queue"}
+        assert error_of(api.post(f"{API}/resources/refresh", json=inactive), 404)["code"] == (
+            "account_not_found"
+        )
+    finally:
+        with db_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "UPDATE t_inv_aws_account SET active = true, inactive_since = NULL"
+                    " WHERE account_id = :a"
+                ),
+                {"a": MAIN_ACCOUNT},
+            )
 
 
 def test_refresh_by_arn_that_is_in_two_accounts_is_ambiguous(
@@ -255,8 +277,15 @@ def test_scan_scopes_and_confirming_an_abnormal_one(api: TestClient, db_engine: 
     assert error_of(api.get(f"{API}/scan-scopes/999999999"), 404)["code"] == "scope_not_found"
     assert api.get(f"{API}/scans/summary").json()["abnormalScopeCount"] == 1
 
+    # Confirming a detection the reader never saw must not confirm a newer one.
+    stale = {**SCOPE, "guardDetectedAt": "2000-01-01T00:00:00Z"}
+    assert error_of(api.post(f"{API}/scan-scopes/confirm-change", json=stale), 409)["code"] == (
+        "scope_changed"
+    )
     confirmed = api.post(
-        f"{API}/scan-scopes/confirm-change", json=SCOPE, headers={"X-Caller-Id": "alice"}
+        f"{API}/scan-scopes/confirm-change",
+        json={**SCOPE, "guardDetectedAt": abnormal["guardDetectedAt"]},
+        headers={"X-Caller-Id": "alice"},
     )
 
     assert confirmed.status_code == 200

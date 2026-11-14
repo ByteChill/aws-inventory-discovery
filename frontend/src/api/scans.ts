@@ -284,6 +284,7 @@ export function useConfirmChange() {
       accountId: string
       awsRegion: string
       resourceType: string
+      guardDetectedAt: string | null
     }) => (await confirmScopeChange({ body, throwOnError: true })).data,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["scan-scopes"] })

@@ -3712,6 +3712,18 @@
             "type": "string",
             "minLength": 1,
             "title": "Resourcetype"
+          },
+          "guardDetectedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guarddetectedat"
           }
         },
         "additionalProperties": false,

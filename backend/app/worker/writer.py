@@ -669,19 +669,33 @@ class ResourceWriter:
                 .values(missing_checks=Resource.missing_checks + 1)
             )
 
-    def confirm_guard(self, *, account_id: str, region: str, resource_type: str, by: str) -> None:
-        """An administrator accepted an abnormal scope: the next scan may mark it missing."""
+    def confirm_guard(
+        self,
+        *,
+        account_id: str,
+        region: str,
+        resource_type: str,
+        by: str,
+        detected_at: datetime | None = None,
+    ) -> bool:
+        """An administrator accepted an abnormal scope: the next scan may mark it missing.
+
+        Only the detection the administrator reviewed is confirmed; a guard that tripped
+        again meanwhile matches no row and the caller reports the conflict.
+        """
         with Session(self.engine) as db, db.begin():
-            db.exec(
+            result = db.exec(
                 update(ScanShard)
                 .where(
                     col(ScanShard.account_id) == account_id,
                     col(ScanShard.region) == region,
                     col(ScanShard.resource_type) == resource_type,
                     col(ScanShard.guard_state) == "abnormal",
+                    col(ScanShard.guard_detected_at).is_not_distinct_from(detected_at),
                 )
                 .values(guard_state="confirmed", guard_confirmed_by=by)
             )
+            return bool(result.rowcount)
 
     # --- account access status (scanner.md section 10) ------------------------------------
 

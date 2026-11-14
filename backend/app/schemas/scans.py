@@ -151,6 +151,8 @@ class ConfirmChangeBody(ApiModel):
     account_id: str = Field(pattern=r"^\d{12}$")
     aws_region: str = Field(min_length=1)
     resource_type: str = Field(min_length=1)
+    # The detection the reader reviewed; a newer detection must not be confirmed unseen.
+    guard_detected_at: datetime | None = None
 
 
 class RefreshByKey(ApiModel):

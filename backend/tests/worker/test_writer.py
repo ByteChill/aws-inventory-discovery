@@ -294,7 +294,13 @@ def test_mass_disappearance_is_held_until_confirmed_then_checked_one_by_one(
     assert {c["resourceId"] for c in shard.candidate_ids or []} == {o.item.resource_id for o in obs}
     assert {c["arn"] for c in shard.candidate_ids or []} == {o.item.arn for o in obs}
 
-    writer.confirm_guard(account_id=account, region=REGION, resource_type=TASKDEF, by="admin")
+    assert writer.confirm_guard(
+        account_id=account,
+        region=REGION,
+        resource_type=TASKDEF,
+        by="admin",
+        detected_at=shard.guard_detected_at,
+    )
     confirmed = finish(writer, [], TASKDEF, T0 + minutes(20), account_id=account)
     assert confirmed.missing == 2 and confirmed.confirm_pending == 2
     assert {r.status for r in rows(session, TASKDEF).values()} == {"missing"}  # not deleted

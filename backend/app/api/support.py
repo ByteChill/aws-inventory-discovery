@@ -8,7 +8,7 @@ import time
 from collections.abc import Sequence
 
 from sqlalchemy import text
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.aws.account_registry import AccountRegistryClient, RegistryError
 from app.core.config import Settings
@@ -44,10 +44,17 @@ def check_resource_id(type_name: str, resource_id: str) -> None:
 
 
 def ensure_accounts(session: Session, settings: Settings, account_ids: Sequence[str]) -> None:
-    """The accounts must be in the snapshot; unknown ones are looked up in the account
-    registry (the snapshot refreshes only once per sweep). Raises 404 `account_not_found`."""
-    known = set(session.exec(select(Account.account_id).where(Account.account_id.in_(account_ids))))  # ty: ignore[unresolved-attribute]
-    unknown = [a for a in dict.fromkeys(account_ids) if a not in known]
+    """The accounts must be in the snapshot and active; unknown ones are looked up in the
+    account registry (the snapshot refreshes only once per sweep). Raises 404
+    `account_not_found` for accounts the registry does not have or still marks inactive."""
+    active_before = set(
+        session.exec(
+            select(Account.account_id).where(
+                col(Account.account_id).in_(account_ids), col(Account.active)
+            )
+        )
+    )
+    unknown = [a for a in dict.fromkeys(account_ids) if a not in active_before]
     if not unknown:
         return
     found: set[str] = set()
@@ -60,7 +67,14 @@ def ensure_accounts(session: Session, settings: Settings, account_ids: Sequence[
         found = {a.account_id for a in accounts}
         if found.intersection(unknown):
             sync_accounts(session, accounts, utcnow())
-    missing = [a for a in unknown if a not in found]
+    active = set(
+        session.exec(
+            select(Account.account_id).where(
+                col(Account.account_id).in_(unknown), col(Account.active)
+            )
+        )
+    )
+    missing = [a for a in unknown if a not in active]
     if missing:
         raise ApiError(404, "account_not_found", "账号不存在", {"accountIds": missing})
 

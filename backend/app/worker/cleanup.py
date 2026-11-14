@@ -40,24 +40,32 @@ def schema_of(session: Session) -> str:
 
 
 @contextmanager
-def _hold_account_lock(session: Session, key: int) -> Generator[None]:
+def _hold_account_lock(session: Session, key: int) -> Generator[bool]:
     """Hold a session-level advisory lock across the commits of one account's purge.
 
     The lock lives on its own connection because a Session releases its connection on every
     commit, which would release a session-level lock with it. It is independent of row locks,
-    so it never joins the shard -> task -> request order.
+    so it never joins the shard -> task -> request order. Yields whether the lock was taken:
+    a sync that holds it for long must not stall the whole cleanup, so that account waits for
+    the next run.
     """
     bind = session.get_bind()
     engine = bind if isinstance(bind, Engine) else bind.engine
     with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
-        connection.execute(text("SELECT pg_advisory_lock(:key)"), {"key": key})
+        locked = connection.execute(
+            text("SELECT pg_try_advisory_lock(:key)"), {"key": key}
+        ).scalar_one()
         try:
-            yield
+            yield bool(locked)
         finally:
-            try:
-                connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": key})
-            except SQLAlchemyError:  # closing the connection releases the lock anyway
-                logger.warning("could not release account purge lock", exc_info=True)
+            if locked:
+                try:
+                    connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": key})
+                except SQLAlchemyError:
+                    # Rollback does not release a session-level lock: drop the connection so
+                    # the lock goes with it instead of returning locked to the pool.
+                    logger.warning("could not release account purge lock", exc_info=True)
+                    connection.invalidate()
 
 
 @dataclass(frozen=True)
@@ -197,7 +205,13 @@ def _purge_inactive_accounts(session: Session, cutoff: datetime) -> int:
     session.rollback()
     purged = 0
     for account_id in expired:
-        with _hold_account_lock(session, account_sync_key(schema, account_id)):
+        with _hold_account_lock(session, account_sync_key(schema, account_id)) as locked:
+            if not locked:
+                logger.warning(
+                    "account purge lock is busy, leaving the account for the next run",
+                    extra={"account_id": account_id},
+                )
+                continue
             # `sync_accounts` takes the same lock before reactivating an account. Recheck under
             # it (and under the account row lock) because the account may have returned between
             # the scan above and this point.

@@ -87,8 +87,15 @@ def sync_accounts(session: Session, accounts: list[RegistryAccount], now: dateti
     if not accounts:
         raise ValueError("refusing to sync an empty account list")
     schema = cleanup.schema_of(session)
-    for key in sorted({cleanup.account_sync_key(schema, a.account_id) for a in accounts}):
-        session.connection().execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
+    keys = sorted({cleanup.account_sync_key(schema, a.account_id) for a in accounts})
+    # One round trip; the subquery keeps the ascending order the lock protocol relies on.
+    session.connection().execute(
+        text(
+            "SELECT pg_advisory_xact_lock(k) FROM"
+            " (SELECT unnest(CAST(:keys AS bigint[])) AS k ORDER BY 1) AS ordered"
+        ),
+        {"keys": keys},
+    )
     fields = [
         {
             "account_id": a.account_id,

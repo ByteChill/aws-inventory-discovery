@@ -245,11 +245,10 @@ def test_reactivation_after_selection_keeps_the_account_and_its_resources(
     assert [r.resource_id for r in session.exec(select(Resource))] == ["orphan-1"]
 
 
-def test_account_sync_waits_for_a_purge_in_progress(
+def test_account_sync_holds_the_purge_off_a_reactivating_account(
     engine: Engine,
     session: Session,
     accounts: list[RegistryAccount],
-    db: psycopg.Connection,
 ) -> None:
     deactivate_account(session, accounts)
     syncing, resume = threading.Event(), threading.Event()
@@ -293,13 +292,14 @@ def test_account_sync_waits_for_a_purge_in_progress(
     assert syncing.wait(10), "sync did not reach the upsert"
     cleanup_thread = threading.Thread(target=run_cleanup)
     cleanup_thread.start()
-    # New code waits for the sync's account lock; old code got as far as deleting the account.
-    wait_for_a_lock(db, "pg_advisory_lock", "DELETE FROM t_inv_aws_account")
+    # The sync holds the account lock, so cleanup leaves the account for the next run
+    # instead of waiting for it or deleting it.
+    cleanup_thread.join(10)
+    assert not cleanup_thread.is_alive()
     resume.set()
     sync_thread.join(10)
-    cleanup_thread.join(10)
 
-    assert not sync_thread.is_alive() and not cleanup_thread.is_alive()
+    assert not sync_thread.is_alive()
     assert not errors
     assert synced.is_set()
     assert purged == [0]

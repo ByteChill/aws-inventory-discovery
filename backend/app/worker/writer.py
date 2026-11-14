@@ -215,11 +215,12 @@ class ResourceWriter:
                 if current is None or obs.observed_at > current.observed_at:
                     latest[key_of(obs)] = obs
             written_ids: list[int] = []
+            unresolved_ids: set[int] = set()
             scopes = [Scope(*key[:3]) for key in latest]
             with Session(self.engine) as db, db.begin():
                 if task is not None:
                     lock_worker_claim(db, task, scopes)
-                counts = self._apply(db, latest, task_id, written_ids)
+                counts = self._apply(db, latest, task_id, written_ids, unresolved_ids)
                 add_task_stats(
                     db,
                     task_id,
@@ -240,7 +241,7 @@ class ResourceWriter:
                         ),
                         {"new": counts.new, "updated": counts.updated, "id": scan_request_id},
                     )
-            self._resolve_dangling_relations(written_ids, task=task, scopes=scopes)
+            self._resolve_dangling_relations(written_ids, unresolved_ids, task=task, scopes=scopes)
             total.add(counts)
         return total
 
@@ -250,6 +251,7 @@ class ResourceWriter:
         batch: dict[Key, Observation],
         task_id: int | None,
         written_ids: list[int],
+        unresolved_ids: set[int],
     ) -> WriteCounts:
         counts = WriteCounts()
         keys = sorted(batch)
@@ -263,6 +265,8 @@ class ResourceWriter:
             select(Resource)
             .where(tuple_(*identity).in_(keys))
             .order_by(*identity)
+            # SQLAlchemy's key_share=True compiles to FOR NO KEY UPDATE. This must serialise
+            # resource writers; do not "correct" it to FOR KEY SHARE, which breaks R4.
             .with_for_update(key_share=True)
         ).all()
         existing = {(r.account_id, r.aws_region, r.resource_type, r.resource_id): r for r in rows}
@@ -311,7 +315,7 @@ class ResourceWriter:
             row.observed_at = obs.observed_at
             row.observed_source = obs.source
             row.last_task_id = task_id
-            row.arn = values["arn"]
+            row.arn = values["arn"] or row.arn
             self._stamp_source_time(row, obs)
             if obs.live_raw is not None:
                 row.live_raw = values["live_raw"]
@@ -332,7 +336,6 @@ class ResourceWriter:
                     )
             else:
                 for name in (
-                    "arn",
                     "resource_name",
                     "tags",
                     "configuration",
@@ -380,13 +383,14 @@ class ResourceWriter:
             counts.new += len(done)
             lost_race = {k: o for k, o in new_obs.items() if k not in done}
             if lost_race:  # another writer inserted it first: take the update path
-                counts.add(self._apply(db, lost_race, task_id, written_ids))
-        self._replace_relations(db, relation_jobs)
+                counts.add(self._apply(db, lost_race, task_id, written_ids, unresolved_ids))
+        unresolved_ids.update(self._replace_relations(db, relation_jobs))
         return counts
 
     def _resolve_dangling_relations(
         self,
         written_ids: list[int],
+        unresolved_ids: set[int],
         *,
         task: ScanTask | None = None,
         scopes: Collection[Scope] = (),
@@ -397,44 +401,51 @@ class ResourceWriter:
         Rechecking both directions lets the last of two concurrent writers see the other's
         committed row. Reconciliation uses current stored data and preserves observation times.
         """
-        if not written_ids:
+        targets = sorted(set(written_ids))
+        if not targets and not unresolved_ids:
             return
         with Session(self.engine) as db, db.begin():
             if task is not None:
                 lock_worker_claim(db, task, scopes)
-            source_ids = (
+            incoming_ids = (
                 db.connection()
                 .execute(
                     text("""
                 SELECT DISTINCT rel.from_resource_id
-                  FROM t_inv_aws_resource_relation rel
-                  JOIN t_inv_aws_resource f ON f.id = rel.from_resource_id
-                  JOIN t_inv_aws_resource n
-                    ON n.account_id = f.account_id
-                   AND (n.aws_region = f.aws_region OR n.aws_region = 'global')
-                   AND n.resource_type = rel.to_resource_type
-                 WHERE n.id = ANY(CAST(:ids AS bigint[]))
+                  FROM t_inv_aws_resource n
+                  JOIN t_inv_aws_resource_relation rel
+                    ON rel.to_resource_type = n.resource_type
                    AND (
                      rel.to_resource_id = n.id
                      OR (rel.to_resource_field = 'resourceId'
                          AND rel.to_resource_key = n.resource_id)
-                     OR (rel.to_resource_field = 'arn' AND rel.to_resource_key = n.arn)
+                     OR (rel.to_resource_field = 'arn'
+                         AND n.arn <> '' AND rel.to_resource_key = n.arn)
                    )
+                  JOIN t_inv_aws_resource f
+                    ON f.id = rel.from_resource_id
+                   AND n.account_id = f.account_id
+                   AND (n.aws_region = f.aws_region OR n.aws_region = 'global')
+                 WHERE n.id = ANY(CAST(:ids AS bigint[]))
                 """),
-                    {"ids": written_ids},
+                    {"ids": targets},
                 )
                 .scalars()
                 .all()
             )
+            source_ids = set(incoming_ids) | unresolved_ids
+            if not source_ids:
+                return
             resources = db.exec(
                 select(Resource)
-                .where(col(Resource.id).in_(set(source_ids) | set(written_ids)))
+                .where(col(Resource.id).in_(source_ids))
                 .order_by(
                     Resource.account_id,
                     Resource.aws_region,
                     Resource.resource_type,
                     Resource.resource_id,
                 )
+                # See `_apply`: this is intentionally FOR NO KEY UPDATE.
                 .with_for_update(key_share=True)
             ).all()
             jobs = []
@@ -492,9 +503,9 @@ class ResourceWriter:
         }
         return values
 
-    def _replace_relations(self, db: Session, jobs: list[RelationJob]) -> None:
+    def _replace_relations(self, db: Session, jobs: list[RelationJob]) -> set[int]:
         if not jobs:
-            return
+            return set()
         db.exec(
             delete(ResourceRelation).where(
                 col(ResourceRelation.from_resource_id).in_([job.row_id for job in jobs])
@@ -533,6 +544,7 @@ class ResourceWriter:
                     col(Resource.account_id) == account,
                     col(Resource.aws_region) == region,
                     col(Resource.resource_type) == rtype,
+                    col(Resource.status) != "deleted",
                     reference_matches,
                 )
             ).all()
@@ -545,11 +557,52 @@ class ResourceWriter:
                     targets[(account, region, rtype, field, value)] = matches[0]
 
         canonical: dict[int, list[dict[str, Any]]] = {}
+        unresolved: set[int] = set()
         for job in jobs:
             kept: list[dict[str, Any]] = []
-            seen: dict[tuple[Any, ...], dict[str, Any]] = {}
-            # Config edges win, even if an older stored array put a derived edge first.
-            for rel in sorted(job.relationships, key=is_derived):
+            config_targets: set[tuple[Any, ...]] = set()
+            config_seen: set[tuple[tuple[Any, ...], str]] = set()
+            config_by_target: dict[tuple[Any, ...], dict[str, Any]] = {}
+            derived_targets: set[tuple[Any, ...]] = set()
+
+            # Config edges are authoritative and keep distinct relation names. A derived edge
+            # is added only when no Config edge points at the same target.
+            for rel in job.relationships:
+                if is_derived(rel):
+                    continue
+                target = _relation_target(job.account_id, job.region, rel)
+                if target is None:
+                    kept.append(dict(rel))
+                    continue
+                account, _, target_type, field, value = target
+                target_id = targets.get(
+                    (
+                        account,
+                        self._target_region(target_type, job.region),
+                        target_type,
+                        field,
+                        value,
+                    )
+                )
+                identity = (
+                    ("target", target_id)
+                    if target_id is not None
+                    else ("reference", target_type, field, value)
+                )
+                name = rel.get("relationshipName", "")
+                if (identity, name) in config_seen:
+                    continue
+                config_seen.add((identity, name))
+                config_targets.add(identity)
+                copy = dict(rel)
+                config_by_target.setdefault(identity, copy)
+                kept.append(copy)
+                if target_id is None:
+                    unresolved.add(job.row_id)
+
+            for rel in job.relationships:
+                if not is_derived(rel):
+                    continue
                 target = _relation_target(job.account_id, job.region, rel)
                 if target is None:
                     continue
@@ -568,14 +621,20 @@ class ResourceWriter:
                     if target_id is not None
                     else ("reference", target_type, field, value)
                 )
-                existing = seen.get(identity)
-                if existing is not None:
-                    if not existing.get("relationshipName") and rel.get("relationshipName"):
-                        existing["relationshipName"] = rel["relationshipName"]
+                config_edge = config_by_target.get(identity)
+                if (
+                    config_edge is not None
+                    and not config_edge.get("relationshipName")
+                    and rel.get("relationshipName")
+                ):
+                    config_edge["relationshipName"] = rel["relationshipName"]
+                if identity in config_targets or identity in derived_targets:
                     continue
+                derived_targets.add(identity)
                 copy = dict(rel)
-                seen[identity] = copy
                 kept.append(copy)
+                if target_id is None:
+                    unresolved.add(job.row_id)
             canonical[job.row_id] = kept
             db.exec(
                 update(Resource)
@@ -590,7 +649,8 @@ class ResourceWriter:
         for job in jobs:
             for rel in canonical[job.row_id]:
                 target = _relation_target(job.account_id, job.region, rel)
-                assert target is not None
+                if target is None:
+                    continue
                 account, _, target_type, field, value = target
                 region = self._target_region(target_type, job.region)
                 target_id = targets.get((account, region, target_type, field, value))
@@ -605,6 +665,7 @@ class ResourceWriter:
                 }
         if rows:
             db.exec(pg_insert(ResourceRelation).values(list(rows.values())))
+        return unresolved
 
     def _target_region(self, target_type: str, source_region: str) -> str:
         if target_type in self.registry and self.registry.get(target_type).global_:
@@ -672,7 +733,12 @@ class ResourceWriter:
                         unseen,
                         col(Resource.observed_at) < cutoff,
                     )
-                    .order_by(col(Resource.id))
+                    .order_by(
+                        Resource.account_id,
+                        Resource.aws_region,
+                        Resource.resource_type,
+                        Resource.resource_id,
+                    )
                     .with_for_update()
                 ).all()
             )

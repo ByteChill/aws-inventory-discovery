@@ -257,6 +257,11 @@
           "key": "pk"
         },
         {
+          "name": "to_resource_field",
+          "type": "text",
+          "key": "pk"
+        },
+        {
           "name": "relation_name",
           "type": "text",
           "key": "pk"

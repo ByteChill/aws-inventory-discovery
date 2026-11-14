@@ -70,23 +70,37 @@ def derive_relationships(
     return derived
 
 
-def target_key(relationship: dict[str, Any]) -> tuple[str, str, str]:
-    return (
-        relationship["resourceType"],
-        relationship.get("toField", RESOURCE_ID),
-        relationship["resourceId"],
-    )
+def target_key(relationship: dict[str, Any]) -> tuple[str, str, str] | None:
+    """The reference identity, or None for a Config entry the relation table cannot use."""
+    resource_type = relationship.get("resourceType")
+    value = relationship.get("resourceId")
+    field = relationship.get("toField", RESOURCE_ID)
+    if (
+        not isinstance(resource_type, str)
+        or not resource_type
+        or not isinstance(value, str)
+        or not value
+        or field not in (RESOURCE_ID, "arn")
+    ):
+        return None
+    return (resource_type, field, value)
 
 
 def merge_relationships(
     config_relationships: Iterable[dict[str, Any]],
     derived_relationships: Iterable[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Config edges first; a derived edge to the same target is not added twice."""
+    """Config edges first; a derived edge to the same reference is not added twice."""
     merged = [dict(relationship) for relationship in config_relationships]
-    seen = {target_key(item): item for item in merged}
+    seen: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for item in merged:
+        key = target_key(item)
+        if key is not None:
+            seen.setdefault(key, item)
     for relationship in derived_relationships:
         key = target_key(relationship)
+        if key is None:
+            continue
         existing = seen.get(key)
         if existing is not None:
             if not existing.get("relationshipName") and relationship.get("relationshipName"):

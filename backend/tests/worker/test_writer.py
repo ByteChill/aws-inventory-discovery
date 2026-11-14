@@ -27,7 +27,9 @@ from app.models.resource import Resource
 from app.models.scan import ScanRequest, ScanShard
 from app.types.mapping import ConfigTag, to_config_item
 from app.types.registry import TypeRegistry
+from app.worker import leases, queue, requests
 from app.worker.discovery import Discovery, Observation
+from app.worker.errors import TaskLost
 from app.worker.writer import RelationJob, ResourceWriter
 from tests.conftest import AwsEnv
 
@@ -418,11 +420,12 @@ def test_concurrent_source_and_target_writes_resolve_after_both_commit(
     thread_state = local()
     replace_relations = writer._replace_relations
 
-    def overlap(db: Session, jobs: list[RelationJob]) -> None:
-        replace_relations(db, jobs)
+    def overlap(db: Session, jobs: list[RelationJob]) -> set[int]:
+        unresolved = replace_relations(db, jobs)
         if not getattr(thread_state, "waited", False):
             thread_state.waited = True
             rendezvous.wait()
+        return unresolved
 
     monkeypatch.setattr(writer, "_replace_relations", overlap)
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -534,6 +537,206 @@ def test_a_cloud_control_write_keeps_config_relationships_and_recomputes_derived
 
     (subnet,) = rows(session, "AWS::EC2::Subnet").values()
     assert subnet.relationships == before
+
+
+def test_config_relationships_without_target_keys_are_kept_but_not_indexed(
+    writer: ResourceWriter, disc: Discovery, session: Session
+) -> None:
+    sweep = disc.sweep_config(["AWS::EC2::VPC", "AWS::EC2::Subnet"])
+    (subnet_obs,) = sweep.by_type["AWS::EC2::Subnet"]
+    vpc_edge = next(
+        relationship
+        for relationship in subnet_obs.relationships or []
+        if relationship["resourceType"] == "AWS::EC2::VPC"
+    )
+    missing_id = {key: value for key, value in vpc_edge.items() if key != "resourceId"}
+    missing_type = {key: value for key, value in vpc_edge.items() if key != "resourceType"}
+    relationships = [vpc_edge, missing_id, missing_type]
+
+    writer.write(
+        [
+            *sweep.by_type["AWS::EC2::VPC"],
+            replace(subnet_obs, relationships=relationships),
+        ]
+    )
+
+    (subnet,) = rows(session, "AWS::EC2::Subnet").values()
+    assert missing_id in subnet.relationships
+    assert missing_type in subnet.relationships
+    assert (
+        next(
+            relationship
+            for relationship in subnet.relationships
+            if relationship.get("resourceId") == vpc_edge["resourceId"]
+            and relationship.get("resourceType") == "AWS::EC2::VPC"
+        )["relationshipName"]
+        == "VPC"
+    )
+    indexed = session.exec(
+        select(ResourceRelation).where(ResourceRelation.from_resource_id == subnet.id)
+    ).all()
+    assert all(relation.to_resource_key for relation in indexed)
+    assert len(indexed) == 1
+
+
+def test_a_missing_arn_does_not_erase_a_stored_arn_or_unresolve_incoming_edges(
+    writer: ResourceWriter, disc: Discovery, session: Session
+) -> None:
+    sweep = disc.sweep_config(["AWS::Lambda::Function", "AWS::SecretsManager::Secret"])
+    (function_obs,) = sweep.by_type[LAMBDA]
+    (secret_obs,) = sweep.by_type["AWS::SecretsManager::Secret"]
+    writer.write([function_obs, replace(secret_obs, relationships=[])])
+    (function,) = rows(session, LAMBDA).values()
+    (secret,) = rows(session, "AWS::SecretsManager::Secret").values()
+    arn = function.arn
+    relation_query = select(ResourceRelation).where(ResourceRelation.from_resource_id == secret.id)
+    assert session.exec(relation_query).one().to_resource_id == function.id
+
+    counts = writer.write(
+        [
+            replace(
+                function_obs,
+                item=function_obs.item.model_copy(update={"arn": None}),
+                observed_at=function_obs.observed_at + minutes(1),
+            )
+        ]
+    )
+
+    assert counts.unchanged == 1
+    session.expire_all()
+    assert session.get_one(Resource, function.id).arn == arn
+    assert session.exec(relation_query).one().to_resource_id == function.id
+
+    retagged = function_obs.item.model_copy(
+        update={
+            "arn": None,
+            "tags": [ConfigTag(key="Owner", value="TeamB")],
+        }
+    )
+    counts = writer.write(
+        [
+            replace(
+                function_obs,
+                item=retagged,
+                observed_at=function_obs.observed_at + minutes(2),
+            )
+        ]
+    )
+
+    assert counts.updated == 1
+    session.expire_all()
+    assert session.get_one(Resource, function.id).arn == arn
+    assert session.exec(relation_query).one().to_resource_id == function.id
+
+
+def test_distinct_config_names_to_the_same_target_are_preserved(
+    writer: ResourceWriter, disc: Discovery, session: Session
+) -> None:
+    sweep = disc.sweep_config(["AWS::EC2::VPC", "AWS::EC2::Subnet"])
+    (subnet_obs,) = sweep.by_type["AWS::EC2::Subnet"]
+    (vpc_obs,) = sweep.by_type["AWS::EC2::VPC"]
+    vpc_edge = next(
+        relationship
+        for relationship in subnet_obs.relationships or []
+        if relationship["resourceType"] == "AWS::EC2::VPC"
+    )
+    relationships = [
+        {**vpc_edge, "relationshipName": "PrimaryVpc"},
+        {**vpc_edge, "relationshipName": "SecondaryVpc"},
+    ]
+    writer.write([vpc_obs, replace(subnet_obs, relationships=relationships)])
+
+    (subnet,) = rows(session, "AWS::EC2::Subnet").values()
+    assert {relationship["relationshipName"] for relationship in subnet.relationships} == {
+        "PrimaryVpc",
+        "SecondaryVpc",
+    }
+    relations = session.exec(
+        select(ResourceRelation).where(
+            ResourceRelation.from_resource_id == subnet.id,
+            ResourceRelation.to_resource_type == "AWS::EC2::VPC",
+        )
+    ).all()
+    assert {relation.relation_name for relation in relations} == {"PrimaryVpc", "SecondaryVpc"}
+
+
+def test_a_deleted_target_does_not_resolve_a_relationship(
+    writer: ResourceWriter, disc: Discovery, session: Session
+) -> None:
+    sweep = disc.sweep_config(["AWS::Lambda::Function", "AWS::SecretsManager::Secret"])
+    (function_obs,) = sweep.by_type[LAMBDA]
+    (secret_obs,) = sweep.by_type["AWS::SecretsManager::Secret"]
+    writer.write([function_obs])
+    (function,) = rows(session, LAMBDA).values()
+    function.status = "deleted"
+    session.add(function)
+    session.commit()
+
+    writer.write([replace(secret_obs, relationships=[])])
+
+    (secret,) = rows(session, "AWS::SecretsManager::Secret").values()
+    relation = session.exec(
+        select(ResourceRelation).where(ResourceRelation.from_resource_id == secret.id)
+    ).one()
+    assert relation.to_resource_id is None
+
+
+def test_post_commit_reconciliation_rechecks_the_task_claim(
+    writer: ResourceWriter,
+    disc: Discovery,
+    session: Session,
+    account_id: str,
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = requests.create_sweep_request(
+        session, [], trigger="api", priority=0, scope={"all": False}
+    )
+    assert request.id is not None
+    (task,) = requests.add_tasks(
+        session,
+        request.id,
+        [requests.NewTask("shard", account_id, REGION, "AWS::EC2::Subnet", source="config")],
+    )
+    request.status, request.started_at, request.finished_at = "queued", None, None
+    session.add(request)
+    session.commit()
+    claimed = queue.claim_task(session, "worker-old", per_account_concurrency=1000)
+    assert claimed is not None and claimed.id == task.id and claimed.claim_token
+    assert (
+        leases.try_acquire(
+            session,
+            claimed,
+            leases.Scope(account_id, REGION, "AWS::EC2::Subnet"),
+        )
+        is leases.LeaseState.ACQUIRED
+    )
+
+    resolve = writer._resolve_dangling_relations
+
+    def lose_claim(*args: Any, **kwargs: Any) -> None:
+        with engine.begin() as connection:
+            connection.execute(
+                text("UPDATE t_inv_aws_scan_task SET claim_token = 'replacement' WHERE id = :id"),
+                {"id": claimed.id},
+            )
+            connection.execute(
+                text(
+                    "UPDATE t_inv_aws_scan_shard SET lease_token = 'replacement'"
+                    " WHERE account_id = :account AND region = :region"
+                    " AND resource_type = 'AWS::EC2::Subnet'"
+                ),
+                {"account": account_id, "region": REGION},
+            )
+        resolve(*args, **kwargs)
+
+    monkeypatch.setattr(writer, "_resolve_dangling_relations", lose_claim)
+    with pytest.raises(TaskLost):
+        writer.write(
+            disc.sweep_config(["AWS::EC2::Subnet"]).by_type["AWS::EC2::Subnet"], task=claimed
+        )
+
+    assert rows(session, "AWS::EC2::Subnet")
 
 
 # --- deletion (R5, R6) ------------------------------------------------------------------------

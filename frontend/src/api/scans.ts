@@ -119,13 +119,44 @@ export function useTaskLogs(id: number) {
   })
 }
 
-export function useAbnormalScopes() {
+export function useAbnormalScopes(page: number, pageSize: number) {
   return useQuery({
-    queryKey: ["scan-scopes"],
-    queryFn: async () =>
-      (await listScanScopes({ query: { pageSize: 200 }, throwOnError: true }))
-        .data,
+    queryKey: ["scan-scopes", "list", page, pageSize],
+    queryFn: async ({ signal }) =>
+      (
+        await listScanScopes({
+          query: { guardState: "abnormal", page, pageSize },
+          signal,
+          throwOnError: true,
+        })
+      ).data,
+    placeholderData: keepPreviousData,
     refetchInterval: 15_000,
+  })
+}
+
+/** A direct link must work regardless of which list page the reader visited. */
+export function useAbnormalScope(scanShardId: number) {
+  return useQuery({
+    queryKey: ["scan-scopes", "detail", scanShardId],
+    queryFn: async ({ signal }) => {
+      if (!Number.isSafeInteger(scanShardId) || scanShardId <= 0) return null
+      for (let page = 1; ; page++) {
+        const data = (
+          await listScanScopes({
+            query: { guardState: "abnormal", page, pageSize: 200 },
+            signal,
+            throwOnError: true,
+          })
+        ).data
+        const scope = data.items.find((s) => s.scanShardId === scanShardId)
+        if (scope) return scope
+        if (page * data.pageSize >= data.total) return null
+      }
+    },
+    // Poll only while it is not found: a found scope's fields barely change, and
+    // polling one on a later page would re-read every page in front of it.
+    refetchInterval: (query) => (query.state.data === null ? 15_000 : false),
   })
 }
 

@@ -14,7 +14,7 @@ import {
   useResourceTypes,
 } from "@/api/hooks"
 import {
-  useAbnormalScopes,
+  useAbnormalScope,
   useConfirmChange,
   useScopeCandidates,
 } from "@/api/scans"
@@ -42,12 +42,10 @@ function ScopePage() {
   const { t } = useI18n()
   const { scanShardId } = Route.useParams()
   const id = Number(scanShardId)
-  const scopes = useAbnormalScopes()
-  const scope = Number.isInteger(id)
-    ? scopes.data?.items.find((s) => s.scanShardId === id)
-    : undefined
+  const scopes = useAbnormalScope(id)
+  const scope = scopes.data
 
-  if (scopes.data && !scope)
+  if (scopes.isSuccess && scope === null)
     return (
       <Page>
         <PageHeader title={t("scanScope.title")} />

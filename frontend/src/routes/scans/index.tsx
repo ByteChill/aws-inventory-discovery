@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
-import { ChevronRight } from "lucide-react"
-import { useMemo, useState } from "react"
+import { ChevronLeft, ChevronRight } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
 import { useResourceTypes } from "@/api/hooks"
 import {
   useAbnormalScopes,
@@ -262,7 +262,13 @@ function Scans() {
 
 function AnomalyBlock() {
   const { t, locale } = useI18n()
-  const query = useAbnormalScopes()
+  const [page, setPage] = useState(1)
+  const pageSize = 50
+  const query = useAbnormalScopes(page, pageSize)
+  const pages = Math.max(1, Math.ceil((query.data?.total ?? 0) / pageSize))
+  useEffect(() => {
+    if (query.data && page > pages) setPage(pages)
+  }, [query.data, page, pages])
   const types = useResourceTypes()
   const accounts = useAllAccounts(true)
   const labels = useMemo(
@@ -389,6 +395,27 @@ function AnomalyBlock() {
             })}
           </tbody>
         </table>
+      </div>
+      <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
+        {query.data && <span>{t("table.page", { page, pages })}</span>}
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label={t("table.prev")}
+          disabled={page <= 1 || query.isFetching}
+          onClick={() => setPage((current) => current - 1)}
+        >
+          <ChevronLeft />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label={t("table.next")}
+          disabled={!query.data || page >= pages || query.isFetching}
+          onClick={() => setPage((current) => current + 1)}
+        >
+          <ChevronRight />
+        </Button>
       </div>
     </Section>
   )

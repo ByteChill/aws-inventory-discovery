@@ -26,6 +26,8 @@ API = "/api/v1/reports"
 LIVE = ("active", "missing")
 IMAGE = "AWS::EC2::Image"
 INSTANCE = "AWS::EC2::Instance"
+SERVICE = "AWS::ECS::Service"
+TASK_DEFINITION = "AWS::ECS::TaskDefinition"
 SELF_AMI = "ami-1234567890EXAMPLE"  # the instance fixture's imageId and an AMI fixture
 INSTANCE_ID = "i-1234567890abcdef0"
 FINDINGS_FIXTURE = (
@@ -590,6 +592,87 @@ def test_related_common_fields_and_an_unresolved_relation_is_an_empty_array(
     page = results(client, empty["id"])
     assert ids(page)
     assert all(item["values"]["image.creationDate"] == [] for item in page["items"])
+
+
+def test_a_relation_field_can_cross_an_array_on_the_target(
+    client: TestClient, seeded: Seeded
+) -> None:
+    task_definitions = {
+        row["id"]: row for row in seeded.resources if row["resource_type"] == TASK_DEFINITION
+    }
+    # What each service's task definition would show as the related image column.
+    by_service: dict[int, set[str]] = {}
+    for relation in seeded.relations:
+        if relation["to_resource_type"] != TASK_DEFINITION or relation["to_resource_id"] is None:
+            continue
+        target = task_definitions[relation["to_resource_id"]]
+        by_service.setdefault(relation["from_resource_id"], set()).update(images(target))
+    matching = {
+        service_id
+        for service_id, uris in by_service.items()
+        if any("public.ecr.aws" in uri for uri in uris)
+    }
+    assert matching
+
+    palette = {
+        field["key"]: field for field in client.get(f"{API}/fields?subjectType={SERVICE}").json()
+    }
+    assert palette["taskdefinition.image"]["group"] == "relation"
+    assert palette["taskdefinition.image"]["type"] == "text"
+    assert palette["taskdefinition.image"]["array"] is True
+
+    body = create(
+        client,
+        report(
+            unique("service-image"),
+            condition("taskdefinition.image", "contains", "public.ecr.aws"),
+            subject_type=SERVICE,
+            columns=["taskdefinition.image"],
+        ),
+    )
+    page = results(client, body["id"])
+    assert ids(page) == matching
+    for item in page["items"]:
+        assert set(item["values"]["taskdefinition.image"]) == by_service[item["id"]]
+
+    # The same field in a condition means "any element of any related resource matches".
+    none = create(
+        client,
+        report(
+            unique("service-image-none"),
+            condition("taskdefinition.image", "contains", "no-such-registry.invalid"),
+            subject_type=SERVICE,
+        ),
+    )
+    assert ids(results(client, none["id"])) == set()
+
+    # A negative operator negates inside one target: no element equals that exact URI.
+    wordpress = "public.ecr.aws/docker/library/wordpress:latest"
+    negative = create(
+        client,
+        report(
+            unique("service-image-not"),
+            condition("taskdefinition.image", "neq", wordpress),
+            subject_type=SERVICE,
+        ),
+    )
+    assert ids(results(client, negative["id"])) == {
+        service_id for service_id, uris in by_service.items() if wordpress not in uris
+    }
+
+    # A crossing relation column is an array: it cannot be sorted.
+    invalid = client.get(f"{API}/{body['id']}/results?sort=taskdefinition.image")
+    assert invalid.status_code == 400
+    assert invalid.json()["code"] == "invalid_sort"
+
+    # Export joins the array with ";" and carries every matching service.
+    exported = client.get(f"{API}/{body['id']}/export?format=csv")
+    assert exported.status_code == 200
+    header, *rows = exported.text.removeprefix("﻿").splitlines()
+    assert "镜像" in header
+    assert {frozenset(row.strip('"').split(";")) for row in rows} == {
+        frozenset(by_service[service_id]) for service_id in matching
+    }
 
 
 def test_scope_narrows_the_result(client: TestClient, seeded: Seeded) -> None:

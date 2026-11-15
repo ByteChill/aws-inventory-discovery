@@ -118,7 +118,7 @@ CREATE TABLE t_inv_aws_finding_summary (
 
 **findings 字段**：没有汇总行时值为 NULL，因此 `findingsHighCount eq 0` 只匹配真正检查过且没有高危发现的资源，未检查的资源不会出现。级别由 findings 服务 ③ 判定，报表不按分数重新分级。
 
-**关联字段**：前缀是 `derivedRelationships` 里的关系名（小写），后面可以跟目标类型的通用字段、类型专属列、`reportFields` 和 findings 字段（例如 EC2 的 `image.creationDate`、`image.deprecationTime`、`image.findingsHighCount`）。语义是「存在一条关联边，且目标资源满足条件」，只走**一跳**，不穿过数组。作为显示列时，值是所有关联目标上该字段的**去重数组**（一个目标就是单元素，没有目标时为空），因此不能排序。
+**关联字段**：前缀是 `derivedRelationships` 里的关系名（小写），后面可以跟目标类型的通用字段、类型专属列、`reportFields` 和 findings 字段（例如 EC2 的 `image.creationDate`、`image.deprecationTime`、`image.findingsHighCount`，ECS 服务的 `taskdefinition.image`）。语义是「存在一条关联边，且目标资源满足条件」；关联本身只走**一跳**，不再从目标资源继续走关联，但目标字段可以穿过数组（`reportFields` 的 `[]`）。穿过数组时，正向操作符（`contains` / `eq` / `in` / `startsWith`）表示关联目标的数组里**任一**元素满足，`neq` / `notIn` / `notExists` 先在一个目标内部取反（该目标**没有任何**元素满足），再要求存在这样一条关联。作为显示列时，值是所有关联目标上该字段的**去重数组**（穿过数组时把所有元素摊平；一个目标就是单元素，没有目标时为空），因此不能排序。
 
 ## 4. 求值
 

@@ -4,7 +4,7 @@
 
 完成一项任务后更新这里；里程碑的范围有变化时，先更新 [DESIGN.md](DESIGN.md) 并让人确认。
 
-最后更新：2026-11-15
+最后更新：2026-11-16
 
 ## 总览
 
@@ -19,8 +19,9 @@
 | M6 Dashboard | 完成 |
 | M7 部署 | 完成（待平台创建资源后实际验证） |
 | M8 上线确认 | 未开始 |
+| M9 报表（v2） | 进行中（功能完成，等待合并前的独立评审） |
 
-**MVP1 完成，已合并到 main**：两批共 15 个资源类型、完整的扫描和写入流程、API、dashboard、本地环境和部署文件。后端 370 个测试通过（`cd backend && uv run pytest`，需要 `podman compose up -d postgres redis`），Playwright 端到端测试 13 个（12 个通过，1 个按设计跳过）（`cd frontend && npm run e2e`，需要本地栈），CI 工作流（`.github/workflows/ci.yml`）已在 GitHub 上通过。剩下的是真实环境的确认（见 M1、M8）。
+**MVP1 完成，已合并到 main**：两批共 15 个资源类型、完整的扫描和写入流程、API、dashboard、本地环境和部署文件。后端 370 个测试通过（`cd backend && uv run pytest`，需要 `podman compose up -d postgres redis`），Playwright 端到端测试 14 个（13 个通过，1 个按设计跳过）（`cd frontend && npm run e2e`，需要本地栈），CI 工作流（`.github/workflows/ci.yml`）已在 GitHub 上通过。剩下的是真实环境的确认（见 M1、M8）。
 
 设计阶段已完成：[DESIGN.md](DESIGN.md)、[DECISIONS.md](DECISIONS.md)、[specs/](specs/)。实现中发现的偏差已经同步到这些文档（DECISIONS D-21 起）。
 
@@ -49,7 +50,7 @@
 - [x] `podman compose up` 后可以完成一轮完整扫描：2026-11-09 在 compose 的 api / worker 容器上实测，`POST /scans {all: true}` 90 秒完成（20 个账号、740 个任务全部成功、入库 1,082 个资源）；在 fake-aws 里删掉一个 SQS 队列后按需扫描，资源先变为「可能已删除」再确认为「已删除」；`doctor` 16/16 通过，worker `healthcheck` 通过。端到端测试也覆盖了同样的流程。已知限制：moto 里共享 AMI 跨账号不可见，任务日志本地查不到
 
 ## M3 worker 核心
-- [x] 7 张表的 SQLModel 模型和 Alembic 迁移（放在 `DATABASE_SCHEMA`）：0001 初始表，0002 围栏令牌和运行中任务的索引，0003 `candidate_count`，0004 按账号查排队任务的索引，0005 范围的 `id` 和 `candidate_ids`
+- [x] 9 张表的 SQLModel 模型和 Alembic 迁移（放在 `DATABASE_SCHEMA`）：0001 初始表（含关系表），0002 围栏令牌和运行中任务的索引，0003 `candidate_count`，0004 按账号查排队任务的索引，0005 范围的 `id` 和 `candidate_ids`，0006 报表，0007 findings 汇总
 - [x] 任务队列：领取、心跳、完成、重新排队、取消，见 [specs/scanner.md](specs/scanner.md)（含围栏令牌、共用任务的取消语义）
 - [x] 范围租约、合并、跳过刚扫过的范围（R1–R3）
 - [x] `ResourceWriter`：加锁 → 叠加 → 脱敏 → 内容哈希 → 有条件写入（R4）→ 关系表
@@ -117,3 +118,27 @@
 - [ ] 用一个真实账号抓取每个类型的数据，修正样本和映射（现在的样本都来自 AWS 官方文档）
 - [ ] 平台按部署清单创建资源，`doctor` 检查通过
 - [ ] 必填标签列表（如果使用「缺少某个标签」的快捷筛选）
+
+## M9 报表（v2）
+- [x] 定义格式和校验（`app/reports/definition.py`）：主体类型 + `all` / `any` / `not` 条件树、每个字段类型允许的操作符、值类型和长度限制、嵌套深度和条件数上限、列必须存在；不认识的 `definitionVersion` 拒绝（[specs/reports.md](specs/reports.md) 第 3 节）
+- [x] 类型配置新增 `reportFields`，路径可以用 `[]` 穿过数组（穿过数组必须是 `text`，语义是「任一元素满足」）；ECS 任务定义声明容器镜像（[specs/resource-types.md](specs/resource-types.md) 1.2.1）
+- [x] 求值（`app/query/reports.py`）：条件树编译成 SQL（`jsonb_path_exists` / `jsonb_path_query_array`），NULL 安全（每个叶子「不匹配 = false」，`not` 包含空值）；标签和关系计数字段；条件树没提到 `status` 时默认只看 `active` / `missing`；范围 `s` 和资源列表一致；排序和分页
+- [x] 表 `t_inv_aws_report` 和迁移 0006；名称唯一；定义的 `subjectType` 和单独的列同步写入
+- [x] API（`/reports`）：列表、新建、详情、修改、删除、`overview`（计数缓存 60 秒）、`fields`、`results`、`export`（CSV / JSON Lines）；错误码 `report_not_found`、`report_name_taken`
+- [x] Dashboard：侧栏第三个功能区「报表」；列表页显示当前匹配数（打开页面时重新计算）；详情页复用资源表格（身份列 + 报表的列，可排序、导出、编辑、删除）；条件编辑器（分组、NOT、按字段类型给出操作符，标签单独给键）；中英文
+- [x] 测试：定义校验；API 的 CRUD、重名、校验错误、AND / OR / NOT（含空值）、标签、关系计数、默认状态、范围、分页和排序错误、概览、Redis 缓存、导出、存着的定义失效；迁移
+- [x] 独立只读评审（Codex，2026-11-15）并修复发现的问题：编辑时丢失 NOT、跳转时丢失范围、SQL 的 NOT / NULL 语义、默认列重复、值没有上限、NaN 和非文本的标签值、切换操作符后值的形状、布尔初值、定义失效的报表无法删除
+- [x] 时间相对条件：`olderThanDays`（整数天）、`beforeNow`、`afterNow`，所以规则不用写死日期，可以表达「创建超过 29 天」「已经过了弃用时间」
+- [x] findings 汇总：表 `t_inv_aws_finding_summary`（按资源身份存 critical / high / medium / low 计数和最高分，迁移 0007）；没有行表示还没检查过，不等于「没有问题」；AMI 类型声明 `findings: true`
+- [x] findings 服务 ③ 客户端（`app/aws/findings.py`，地址 `FINDINGS_SERVICE_URL`）：worker 扫 AMI 时按镜像 ID 读取并写入汇总表，失败只记日志、不影响扫描
+- [x] 报表字段：AMI 增加 `deprecationTime`；有 findings 的类型增加 4 个级别计数和最高分；主体类型的 `derivedRelationships` 可以在条件里用一跳关联字段（如 EC2 的 `image.creationDate`、`image.findingsHighCount`），编译成关联表上的 `EXISTS`；关联字段也可以作为显示列，值是关联目标上该字段的去重数组
+- [x] 报表 UI：条件字段按通用 / 类型 / 关联分组，关联字段带说明；显示列可选关联字段；超长资源名在结果表里截断，不再压到账号列
+- [x] 侧栏：Inventory 改为和扫描、报表并列的一级入口，带图标和总数，常驻展开；概览不再是单独一行
+- [x] 参考报表已在本地演示：AMI「过期或有高危发现」（10 条）、运行中的 EC2「使用了过期或有高危发现的 AMI」（7 条）；moto 不能设置 AMI 创建时间和弃用时间，本地只能演示 findings 分支，时间分支由后端测试覆盖
+- [x] 报表的 Playwright 端到端测试（`frontend/e2e/reports.spec.ts`）：从侧栏进入、按账号新建条件、结果表和计数、CSV 导出、改名后回到列表、删除
+- [ ] 用户确认后合并到 main
+
+### 性能优化（等报表和清单规模上来再做，不影响正确性）
+- [ ] 概览计数：`/reports/overview` 现在对每个启用报表各跑一条 `count(*)`，按报表 ID、范围和定义摘要缓存 60 秒。触发条件：启用报表到几十条，或单条计数明显变慢。候选做法：合成一条查询减少往返、列表懒加载（打开详情时再算）、后台预计算并延长缓存；结果仍然不落表（D-07）。
+- [ ] `configuration` 查询：类型字段和 `reportFields` 编译成 `jsonb_path_exists` / `jsonb_path_query_array`，目前靠主体类型、状态和范围的索引收窄，逐行对 JSONB 求值；「所有资源」报表、超大类型和跨数组字段成本最高。触发条件：`EXPLAIN (ANALYZE)` 显示大类型报表的时间主要花在顺序扫描和 JSONPath 求值。候选做法：按真实高频字段建表达式索引、把热点字段提升为列、对超大类型建部分索引；通用 JSONB GIN 索引会增加每次扫描写入的维护成本，先不建。
+

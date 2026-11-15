@@ -6,7 +6,7 @@ the standard boto3 endpoint variables and its own settings.
 | Piece | Serves |
 |---|---|
 | moto (`motoserver/moto`, port 5000, host 5001) | EC2 (`DescribeRegions`, `DescribeImages`), STS, CloudWatch Logs |
-| `fake_aws` (port 4567) | Cloud Control, AWS Config, account registry (1), credential service (2), `/_admin` |
+| `fake_aws` (port 4567) | Cloud Control, AWS Config, account registry (1), credential service (2), findings service (3), `/_admin` |
 | `seed.py` | Builds the demo dataset from `backend/tests/fixtures/aws/` and loads it into both |
 
 moto's server mode has no HTTP endpoint to preset `SelectResourceConfig` results, so AWS Config is
@@ -52,6 +52,9 @@ Tests: `uv run pytest -q` (moto and fake run in-process).
   (format assumed, defined once in `fake_aws/store.py`).
 * `GET /credentials?account_id=`: `{AccessKeyId, SecretAccessKey, SessionToken, Expiration}` from
   moto STS `AssumeRole` on `arn:aws:iam::<account>:role/ADFS-readonly`.
+* `GET /ami/{imageId}/findings`: `{counts: {critical, high, medium, low}, maxScore}`, the assumed
+  findings service ③ format (D-37); an image with no stored findings answers all zeros and
+  `maxScore: null`.
 
 ## Admin API (`/_admin`)
 
@@ -62,6 +65,8 @@ Tests: `uv run pytest -q` (moto and fake run in-process).
 * `DELETE /_admin/resources?account_id&region&type_name&identifier=&config_resource_id=&config_status=`:
   removes the Cloud Control resource and marks the Config item `ResourceDeleted` (default),
   `ResourceDeletedNotRecorded`, or drops it (`remove`).
+* `PUT /_admin/findings`: body `{imageId, counts: {critical, high, medium, low}, maxScore}`; sets
+  (or replaces) one image's findings summary.
 * `POST /_admin/errors`: `{error: AccessDenied|Throttling|ResourceNotFound, account_id?, region?,
   type_name?, operation?, count?}`; `DELETE /_admin/errors` clears. Unset fields match anything.
   Operations: `ListResources`, `GetResource`, `SelectResourceConfig`, `BatchGetResourceConfig`,

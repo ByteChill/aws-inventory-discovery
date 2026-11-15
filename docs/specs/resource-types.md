@@ -33,6 +33,8 @@
 | `derivedRelationships` | `[{ "name": string, "toType": string, "toField"?: "resourceId" \| "arn", "fromPath": Config 路径 }]` | 否 | 显式声明从 `configuration` 派生到另一个资源类型的关系，见 2.4 |
 | `volatile` | Config 路径[] | 否 | 会自己变化的字段：存储，但不参与内容哈希 |
 | `columns` | 见 1.2 | 否 | 资源列表上的类型专属列，`key` 不能重复 |
+| `reportFields` | 见 1.2 | 否 | 报表可以匹配、但资源列表的列表达不了的字段（可以穿过数组），`key` 不能重复，也不能和 `columns` 重名 |
+| `findings` | bool | 否，默认 `false` | 这个类型的资源会去 findings 服务 ③ 读取当前汇总（只有 AMI 打开，见 [reports.md](reports.md) 第 2 节、D-37） |
 
 路径写法：用点号分隔，数组用 `[]`，例如 `vpcConfig.subnetIds[]`。Config 路径都相对于 `configuration`。
 
@@ -52,6 +54,14 @@
 | `sortable` / `filterable` | bool | 默认 `true` |
 
 通用列（名称、类型、账号、区域、EIM、BA、环境、更新时间、首次发现时间、状态）由后端固定提供，不写在类型配置里。
+
+### 1.2.1 报表字段
+
+`reportFields`（[reports.md](reports.md) 3.3）给自定义报表提供字段，字段和列一样有 `key`、`label`、`type`、`path`，区别是 **`path` 可以用 `[]` 穿过数组**，例如 ECS 任务定义的 `ContainerDefinitions[].Image`。穿过数组的字段必须是 `type: "text"`，报表条件的语义是「数组里**任一**元素满足」；不穿过数组时用法和列相同，所以同一个字段一般只写在 `columns`（列表要显示）或 `reportFields`（只有报表需要，或要穿过数组）中的一处。报表的字段清单是通用列、标签、关系计数、`columns`、`reportFields`、findings 字段和关联字段的并集，同名时以通用列优先，其次是 `columns`。
+
+`findings: true` 的类型还会多出 `findingsCriticalCount`、`findingsHighCount`、`findingsMediumCount`、`findingsLowCount`、`findingsMaxScore` 五个 `number` 字段（当前汇总，没有行时为空）。类型配置声明的每个 `derivedRelationships` 还会给报表提供 `<关系名>.<字段>` 形式的一跳关联字段，目标字段同样来自通用列、`columns`、`reportFields` 和 findings；关联字段既能用于条件，也能作为显示列（列值是关联目标上该字段的去重数组，[reports.md](reports.md) 3.3）。
+
+报表定义不能使用类型的 `redact` 隐藏的字段：脱敏在写入前完成，报表看到的已经是脱敏后的 `configuration`。
 
 ### 1.3 示例
 

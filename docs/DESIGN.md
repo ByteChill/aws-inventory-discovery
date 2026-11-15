@@ -1,6 +1,6 @@
 # AWS 资产发现：设计文档
 
-最后更新：2026-11-09
+最后更新：2026-11-15
 
 ## 1. 目标与范围
 
@@ -14,8 +14,14 @@
 - Dashboard：概览、资源列表、资源详情、账号、扫描
 - 对外 API：查询、筛选、导出（CSV / JSON Lines）、发起扫描
 
+**v2 包含：报表**（规格见 [specs/reports.md](specs/reports.md)，决定见 D-36、D-37）
+- 报表（原「巡检」）：管理员用条件树定义规则（主体类型 + all / any / not + 字段比较，含标签、关系计数、相对时间和一跳关联字段），打开页面时按当前清单重新计算，列出满足规则的资源；只能看，不保存结果
+- findings 汇总：worker 扫描 AMI 时向内部 findings 服务 ③ 读取每个镜像的当前风险级别计数和最高分，保存成当前汇总；报表可以用这些字段，也可以经过一跳关联在 EC2 报表里使用（D-37）
+- 报表的列表、详情、编辑器，以及结果导出（CSV / JSON Lines）和字段清单接口
+- 不涉及扫描：报表不改变扫描流程，不写资源表，也不调用目标账号的 AWS API
+
 **v1 推迟**（见第 14 节）
-- 巡检规则、推送通知、外部告警
+- 推送通知、外部告警
 - 应用内登录，访问由网络层控制
 - 费用数据和运行时指标
 
@@ -36,6 +42,7 @@
 | AWS Config | 每个账号都已开启，按账号调用，**没有组织级聚合器** |
 | 账号清单服务 ① | 返回 `account_id、account_name、account_type（dev/preprod/prod）、eim_id（8 位字符串）、eim_app、ba_id（如 BA2011234）`。EIM 是一个应用的资源集合：EIM ID、BA ID、应用名各自唯一、一一对应；每个账号只属于一个 EIM，一个 EIM 通常有 dev、preprod、prod 各一个账号。**接口格式暂按假设实现，上线前确认** |
 | 凭证服务 ② | 返回目标账号 ADFS-readonly 角色的临时凭证，**自带缓存**。**接口格式暂按 STS 格式假设，上线前确认** |
+| findings 服务 ③ | 按镜像 ID 返回 critical / high / medium / low 计数和最高风险分，供报表使用。**接口格式暂按假设实现**（`GET {FINDINGS_SERVICE_URL}/ami/{imageId}/findings`），上线前确认；worker 在扫描 AMI 时**尽力**读取，失败不影响扫描（D-37） |
 
 ## 3. 架构
 
@@ -50,6 +57,7 @@ flowchart LR
   W[aws-inventory-discovery-worker<br/>ECS · 扫描 + 定时调度] --> PG
   W --> REG[① 账号清单服务]
   W --> CRED[② 凭证服务]
+  W --> FIND[③ findings 服务<br/>AMI 扫描时读取]
   W --> EP[VPC endpoints<br/>本地 + 经 peering 的远端区域]
   EP --> T[1000+ 目标账号<br/>Config / Cloud Control]
 ```
@@ -159,7 +167,7 @@ api 和 worker 只通过数据库协作：api 写扫描请求和任务，worker 
 
 ## 6. 数据库
 
-所有表都放在 `DATABASE_SCHEMA` 指定的 schema 里（已为本服务分配的独立 schema），连接时设置 `search_path`；Alembic 的版本表也放在这个 schema。共 7 张表。下面的 DDL 是迁移 0001–0003 之后的结果（0001 初始表；0002 加围栏令牌和运行中任务的索引；0003 加 `candidate_count`）；三列 trigram 索引需要 `pg_trgm` 扩展，迁移里用 `CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA public`（共享集群上通常已经装好）。
+所有表都放在 `DATABASE_SCHEMA` 指定的 schema 里（已为本服务分配的独立 schema），连接时设置 `search_path`；Alembic 的版本表也放在这个 schema。共 9 张表。下面的 DDL 是迁移 0001–0007 之后的结果（0001 初始表，含关系表；0002 加围栏令牌和运行中任务的索引；0003 加 `candidate_count`；0004 加排队账号的索引；0005 加 `scan_shard_id` 和 `candidate_ids`；0006 加报表表；0007 加 findings 汇总表）；三列 trigram 索引需要 `pg_trgm` 扩展，迁移里用 `CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA public`（共享集群上通常已经装好）。
 
 ```sql
 -- 账号快照：每轮全量扫描开始时，从账号清单服务 ① 更新
@@ -307,12 +315,43 @@ CREATE TABLE t_inv_aws_scan_shard (
   candidate_ids         jsonb,            -- 这些资源的 [{resourceId, arn}]；范围恢复 normal 时清空
   PRIMARY KEY (account_id, region, resource_type)
 );
+
+-- 报表：管理员保存的规则，按当前清单求值，不保存结果（D-36）
+CREATE TABLE t_inv_aws_report (
+  id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name                text        NOT NULL,
+  description         text,
+  subject_type        text,                 -- 资源类型；为空表示所有类型
+  definition_version  smallint    NOT NULL DEFAULT 1,
+  definition          jsonb       NOT NULL, -- {subjectType, where, columns, definitionVersion}
+  enabled             boolean     NOT NULL DEFAULT true,
+  created_by          text,
+  updated_by          text,
+  created_at          timestamptz NOT NULL,
+  updated_at          timestamptz NOT NULL
+);
+-- 唯一索引：name；索引：enabled
+
+-- findings 当前汇总：每个资源一行，没有行 = 还没检查过（D-07、D-37）
+CREATE TABLE t_inv_aws_finding_summary (
+  account_id      char(12)    NOT NULL,
+  aws_region      text        NOT NULL,
+  resource_type   text        NOT NULL,
+  resource_id     text        NOT NULL,
+  critical_count  integer     NOT NULL DEFAULT 0,
+  high_count      integer     NOT NULL DEFAULT 0,
+  medium_count    integer     NOT NULL DEFAULT 0,
+  low_count       integer     NOT NULL DEFAULT 0,
+  max_score       double precision,
+  checked_at      timestamptz NOT NULL,
+  PRIMARY KEY (account_id, aws_region, resource_type, resource_id)
+);
 ```
 
 **清理**（worker 每天凌晨执行一次）
 - 任务明细保留 14 天，扫描请求保留 90 天
-- 已删除的资源保留 30 天
-- 从清单移除超过 30 天的账号，连同它的资源一起清理
+- 已删除的资源保留 30 天；随之删除它的 findings 汇总
+- 从清单移除超过 30 天的账号，连同它的资源和 findings 汇总一起清理
 
 ## 7. 并发与一致性
 
@@ -451,6 +490,15 @@ T2  定时扫描写入 q1、q2，observed_at = T0
 | GET | `/scan-scopes?guardState=abnormal` | 数据异常的扫描范围，返回 `scanShardId` |
 | GET | `/scan-scopes/{id}/candidates` | 待核对范围的候选资源，分页；来自触发保护时保存的候选 ID |
 | POST | `/scan-scopes/confirm-change` | 确认是真实变化：`{accountId, awsRegion, resourceType, guardDetectedAt}`（带上核对时看到的检测时间）；范围不存在返回 `scope_not_found`，当前不是 `abnormal` 返回 `scope_not_abnormal`，检测时间已变化返回 `409 scope_changed` |
+| GET | `/reports?enabled=` | 报表列表（含停用的），按名称排序 |
+| POST | `/reports` | 新建报表：`{name, description?, subjectType?, where, columns?, enabled?}`；定义在保存时校验，名称重复返回 `409 report_name_taken` |
+| GET | `/reports/overview?s=` | 每个启用报表的当前匹配数；定义失效的报表单独标记，不影响其他报表 |
+| GET | `/reports/fields?subjectType=` | 编辑器可用的字段：通用列、标签、关系计数、类型专属列和报表字段，与后端校验一致 |
+| GET | `/reports/{id}` | 报表详情（含定义）；存着的定义已不能求值时返回 `validation_error` |
+| PUT | `/reports/{id}` | 覆盖报表 |
+| DELETE | `/reports/{id}` | 删除报表 |
+| GET | `/reports/{id}/results?page=&pageSize=&sort=&s=` | 按当前清单求值，返回分页结果；每行是资源加上本报表各列的值 |
+| GET | `/reports/{id}/export?format=csv\|jsonl&lang=&sort=&s=` | 流式导出结果；CSV 表头的语言由 `lang` 指定 |
 | GET | `/health` | 健康检查：数据库、Redis（数据库不可用时 503，Redis 不可用时仍是 200） |
 
 ### 8.4 单个资源刷新的返回
@@ -479,12 +527,12 @@ T2  定时扫描写入 q1、q2，observed_at = T0
 |---|---|---|
 | 应用负责人、开发 | 查自己应用（EIM）的资源，看资源详情，刷新 | 搜索、资源列表、资源详情 |
 | 日常云运维 | 跨账号按类型和类型专属列筛选，查没打标签的资源，导出 | 资源列表 |
-| 管理者 | 看资源总量和分布 | 概览 |
+| 管理者 | 看资源总量和分布；定义报表并查看匹配的资源 | 概览、报表 |
 | 系统管理员 | 看扫描状态和账号权限，发起扫描，处理异常 | 扫描、账号 |
 
 ### 9.3 页面
 
-导航：左侧栏是 Inventory 服务树（Overall，以及计算、Serverless、网络、消息、安全分组下的服务）和扫描管理；左上角切换资源范围（全部应用和账号、单个应用、单个账号）。不自己做登录，当前设计阶段用假身份展示，正式接入时由网关传入，只用于显示；管理页由网络层控制访问，每个操作都记录触发方。
+导航：左侧栏是三个功能区的链接：Inventory 服务树（Overall，以及计算、Serverless、网络、消息、安全分组下的服务）、扫描、报表；左上角切换资源范围（全部应用和账号、单个应用、单个账号），报表的结果跟随这个范围。不自己做登录，当前设计阶段用假身份展示，正式接入时由网关传入，只用于显示；管理页由网络层控制访问，每个操作都记录触发方。
 
 | 页面 | 内容 |
 |---|---|
@@ -495,6 +543,7 @@ T2  定时扫描写入 q1、q2，observed_at = T0
 | **账号** | 列表：名称、ID、环境、EIM、BA、资源数、权限状态、上次扫描时间，可以按状态筛选。详情：权限状态（直接写原因，比如「没有读取权限」）、区域（已扫描 / 已开启但未扫描）、「区域 × 类型」的状态格子、「扫描」按钮；从清单移除的账号显示「12 天后清理」 |
 | **扫描**（管理） | 上半部分是当前状态：全量扫描进度和预计完成时间（比计划慢时提示「比计划慢了」，接口不返回计划完成时间，所以不写时长）、任务积压、最近 24 小时按原因汇总的失败（每个原因配一句白话说明和处理建议，点击跳到最近一次扫描的任务列表，因为没有全局的任务列表接口）、可能已删除的资源（「再检查一次」）、数据异常的范围（「核对资源」「重新扫描」）。下半部分是扫描记录：每次扫描的结果，比如「新增 12，更新 340，可能已删除 3，已删除 2，失败 5」，结果数字只作统计，失败可以跳到任务列表，另提供「查看当前范围资源」；扫描详情里可以「重试失败的任务」「取消」，任务详情里直接显示日志。「扫描」按钮打开表单：选账号（可以按名称、ID、EIM、BA 搜索，或选全部）、区域、类型，提交前写清范围；超过 50 个账号时在按钮旁直接提示 |
 | **待核对的范围** | 从扫描页的异常范围进入：账号、区域、类型、检测时间、本次未发现的数量和当前总数；候选资源的名称、ID、ARN、本次未发现和保留的清单状态；明确「未发现不等于已删除」；「暂不确认」返回，「确认是真实变化」二次确认后重新扫描这个范围 |
+| **报表** | 列表：名称、说明或主体类型、当前匹配数（跟随全局范围，打开页面时重新计算，可能缓存 60 秒）、最近修改时间，停用的报表和失效的规则分别标记；「新建报表」打开编辑器。详情：结果表复用资源列表的表格（分页、排序、行状态标记，名称链接到资源详情），身份列总是显示，其余是本报表选择的列；可以导出、编辑、删除。编辑器：名称、说明、主体类型、条件树（all / any 分组、NOT、按字段类型给出操作符，标签条件单独给键）、显示列、启用；切换主体类型会重置条件。定义失效的报表仍可删除 |
 
 ### 9.4 用词
 
@@ -503,6 +552,7 @@ T2  定时扫描写入 q1、q2，observed_at = T0
 | 实时更新单个资源 | 刷新 |
 | 对账号或范围重新采集 | 扫描 |
 | 下载数据 | 导出 |
+| 保存的条件规则 | 报表 |
 | `account_type` | 环境：开发 / 预发布 / 生产 |
 | `missing` | 可能已删除 |
 | `access_denied` / `credential_error` | 没有读取权限 / 无法获取凭证 |
@@ -518,7 +568,7 @@ EIM、BA、ARN 以及 AWS 的类型名、字段名保持原样，不翻译。
 - 每页最多四种字号，满足无障碍对比度要求。
 - 等宽字体只用于 ID、ARN、代码和数值；不用斜体；按钮和标签不用全大写。
 - 页面扁平：不叠加阴影，不用发光和毛玻璃，阴影只给真正浮在页面上的对话框，不在卡片里套卡片；嵌套的圆角保持同心。
-- 只有不可撤销的操作才二次确认（v1 只有「确认是真实变化」一处）；不用大面积的红色。
+- 只有不可撤销的操作才二次确认（「确认是真实变化」和删除报表两处）；不用大面积的红色。
 - 界面已经说清楚的，不再加说明文字。
 - 在 1440 和 1920 宽的桌面显示器上逐一检查；另检查 1024 和 390 宽，确认侧栏收起、表格横向滚动和对话框不溢出。
 
@@ -586,7 +636,7 @@ aws-inventory-discovery/
 │       ├── routes/                 # TanStack Router 文件路由
 │       └── locales/                # zh-CN、en
 ├── devtools/
-│   ├── fake_aws/                   # 模拟 Cloud Control、AWS Config、账号清单服务 ①、凭证服务 ②
+│   ├── fake_aws/                   # 模拟 Cloud Control、AWS Config、账号清单服务 ①、凭证服务 ②、findings 服务 ③
 │   └── seed.py                     # 本地演示数据
 ├── deploy/
 │   ├── ecs/                        # 任务定义示例：api.json、worker.json、migrate.json
@@ -613,7 +663,7 @@ aws-inventory-discovery/
 | postgres、redis | 官方镜像 |
 | postgres、redis | 官方镜像，宿主机端口 55432、56379 |
 | moto | `motoserver/moto`：EC2（`DescribeRegions`、`DescribeImages`）、STS、CloudWatch Logs。宿主机端口 **5001**（macOS 的 AirPlay 占着 5000）；`MOTO_EC2_LOAD_DEFAULT_AMIS=false`，否则 moto 会在每个账号、每个区域列出约 1000 个内置的公开 AMI（它不理会 `ExecutableUsers=self`） |
-| fake-aws | `devtools/fake_aws`（端口 4567）：Cloud Control `ListResources` / `GetResource`、**AWS Config**（`SelectResourceConfig`、记录器状态、`BatchGetResourceConfig`）、账号清单服务 ①、凭证服务 ②（调用 moto 的 STS `AssumeRole`，让 moto 能区分多个账号），以及管理接口 `/_admin`。Config 由它提供，是因为 moto 的服务器模式没有 HTTP 接口可以预设 `SelectResourceConfig` 的结果（见 D-21） |
+| fake-aws | `devtools/fake_aws`（端口 4567）：Cloud Control `ListResources` / `GetResource`、**AWS Config**（`SelectResourceConfig`、记录器状态、`BatchGetResourceConfig`）、账号清单服务 ①、凭证服务 ②（调用 moto 的 STS `AssumeRole`，让 moto 能区分多个账号）、findings 服务 ③（`GET /ami/{imageId}/findings`），以及管理接口 `/_admin`。Config 由它提供，是因为 moto 的服务器模式没有 HTTP 接口可以预设 `SelectResourceConfig` 的结果（见 D-21） |
 | migrate | 一次性：`alembic upgrade head`，api、worker 等它成功再启动 |
 | api、worker | 本项目镜像，api 在 8000 端口；worker 的健康检查改用 `python -m app.cli healthcheck` |
 | seed | 一次性：`podman compose run --rm seed` |
@@ -739,7 +789,7 @@ aws-inventory-discovery/
 
 | 功能 | v1 期间的替代做法 |
 |---|---|
-| 巡检页 | 用资源列表的类型专属列筛选和标签筛选 |
+| 报表的推送通知、结果留档 | 打开报表页面看当前匹配，需要留档时导出 |
 | 资源类型管理页 | 在扫描页的失败汇总里按类型查看 |
 | worker 在线状态表、依赖服务和 endpoint 的健康检查 | 部署时用 `doctor` 命令检查连通性；worker 是否在线看任务的心跳；容器自己的健康检查看心跳文件 |
 | 页面上暂停 / 恢复定时扫描 | 用 `SWEEP_ENABLED` 环境变量 |
@@ -752,6 +802,7 @@ aws-inventory-discovery/
 ## 15. 上线前要确认的事
 1. **账号清单服务 ① 的真实接口格式**：地址、鉴权方式、是否分页、字段名。
 2. **凭证服务 ② 的真实接口格式**：怎么传账号、返回的字段、过期时间的格式、鉴权方式、调用频率限制。
-3. **样本数据和真实数据的差异**：用一个真实账号抓取每个类型的 Config 和 Cloud Control 数据，修正样本和映射。
-4. **平台创建的资源**：ECS 服务、ElastiCache 缓存、endpoint、9 个私有托管区、IAM 角色、密钥、日志组，按 `deploy/CHECKLIST.md` 逐项核对，再用 `doctor` 命令检查连通性。
-5. **必填标签列表**（如果要用「缺少某个标签」的快捷筛选）。
+3. **findings 服务 ③ 的真实接口格式**：地址、鉴权方式、怎么传镜像 ID、返回的字段、四个级别的口径和最高分的含义、调用频率限制。
+4. **样本数据和真实数据的差异**：用一个真实账号抓取每个类型的 Config 和 Cloud Control 数据，修正样本和映射。
+5. **平台创建的资源**：ECS 服务、ElastiCache 缓存、endpoint、9 个私有托管区、IAM 角色、密钥、日志组，按 `deploy/CHECKLIST.md` 逐项核对，再用 `doctor` 命令检查连通性。
+6. **必填标签列表**（如果要用「缺少某个标签」的快捷筛选）。

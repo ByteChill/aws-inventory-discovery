@@ -11,7 +11,7 @@ import copy
 import hashlib
 import json
 import logging
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from itertools import batched
@@ -912,6 +912,42 @@ class ResourceWriter:
                 scopes=[Scope(account_id, region, resource_type)],
             )
         return outcome
+
+    def reconcile_task_deletions(
+        self, task: ScanTask, *, checkpoint: Callable[[], None] | None = None
+    ) -> None:
+        """Replay committed deletions when a confirmation task resumes after losing its claim.
+
+        Deleted rows retain last_task_id in the deletion transaction. Replaying their
+        relationships is idempotent and leaves resource observations and task counts intact.
+        """
+        scope = Scope.of(task)
+        after_resource_id: str | None = None
+        while True:
+            if checkpoint is not None:
+                checkpoint()
+            with Session(self.engine) as db, db.begin():
+                lock_worker_claim(db, task, [scope])
+                query = select(Resource.id, Resource.resource_id).where(
+                    Resource.account_id == scope.account_id,
+                    Resource.aws_region == scope.region,
+                    Resource.resource_type == scope.resource_type,
+                    Resource.status == "deleted",
+                    Resource.last_task_id == task.id,
+                )
+                if after_resource_id is not None:
+                    query = query.where(Resource.resource_id > after_resource_id)
+                rows = db.exec(query.order_by(Resource.resource_id).limit(BATCH_SIZE)).all()
+            if not rows:
+                return
+            row_ids = []
+            for row_id, _ in rows:
+                assert row_id is not None
+                row_ids.append(row_id)
+            self._resolve_dangling_relations(row_ids, task=task, scopes=[scope])
+            if len(rows) < BATCH_SIZE:
+                return
+            after_resource_id = rows[-1][1]
 
     def record_check_failed(
         self,

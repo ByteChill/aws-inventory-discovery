@@ -64,7 +64,7 @@
 - [x] 关系表增强（2026-11-15）：类型配置可以显式声明 `derivedRelationships`，支持 `[]` 数组路径和按 `resourceId`/ARN 解析目标；Writer 每次写入按当前 `configuration` 重算派生关系（Config 关系优先、同一实际目标去重、字段消失时删除旧边）；登记 ECS Service → TaskDefinition / Cluster / Target Group、EC2 Instance → Subnet / Image / VPC、Subnet / SecurityGroup / Target Group → VPC、Target Group → Load Balancer、Lambda → Subnet / SecurityGroup、Secret → Rotation Lambda
 - [x] 关系边界复核（2026-11-15）：迟到解析改为写入提交后先锁来源资源，再更新关系，复查 claim token；覆盖双方并发写入、ARN 后补、同范围歧义、跨账号/区域隔离、数组移除和旧观测重放。未上线，不保留兼容迁移或回填命令；目标字段直接进入初始 schema。后端 386 项、devtools 10 项及 Ruff / ty 通过；本地重建数据库和扫描后，60 个 ECS Service、60 个 Lambda、120 个 Target Group 均有关系。
 - [x] 关系增强本地验收（2026-11-15）：前端 TypeScript / Biome / build 通过，Playwright 12 项通过、1 项按设计跳过；更新镜像后重扫 880 个任务全部成功，未产生资源新增、变更或删除；资源 JSON 与关系表数量一致，已解析目标无重复边。
-- [x] 关系增强迟到评审修复（2026-11-15）：评审复现了 active/missing 混合范围与关系重查的死锁、OR 入边查询的全表扫描、初次已解析出边在目标 ARN 并发变更后的错误关联，以及 ARN 歧义通过候选目标改 ARN 或删除后未恢复的问题。已统一锁定删除步骤会更新的全部行，拆分入边索引查询，提交后重查本批全部来源，删除确认后按目标重查；并发回归测试通过。20 万资源、10 万关系的 1/100/500 个目标查询计划均使用索引；完整后端 395 项、Writer 38 项、devtools 10 项、Ruff / ty、前端 lint / build 通过，Playwright 12 项通过、1 项按设计跳过；最终镜像完整扫描 883 个任务成功。
+- [x] 关系增强迟到评审修复（2026-11-15）：评审复现了 active/missing 混合范围与关系重查的死锁、OR 入边查询的全表扫描、初次已解析出边在目标 ARN 并发变更后的错误关联，以及 ARN 歧义通过候选目标改 ARN 或删除后未恢复的问题。已统一锁定删除步骤会更新的全部行，拆分入边索引查询，提交后重查本批全部来源，删除确认后按目标重查；删除提交后丢失 claim 时，重新领取的确认任务按 `last_task_id` 分批补做关系重查。并发回归测试通过。20 万资源、10 万关系的 1/100/500 个目标查询计划均使用索引；完整后端 397 项、Writer 38 项、devtools 10 项、Ruff / ty、前端 lint / build 通过，Playwright 12 项通过、1 项按设计跳过；最终镜像完整扫描 883 个任务成功。
 
 ## M4 数据源
 - [x] 凭证提供器（`RefreshableCredentials` + 凭证服务 ②）

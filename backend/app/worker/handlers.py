@@ -515,6 +515,7 @@ class Scanner:
         if state is not leases.LeaseState.ACQUIRED:
             return None
         scope = leases.Scope.of(task)
+        self.writer.reconcile_task_deletions(task, checkpoint=lambda: ctx.checkpoint(task))
         spec = self.registry.get(task.resource_type)
         aws = self._aws(task)
         disc = self._discovery(aws, task, task.region)

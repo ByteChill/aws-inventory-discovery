@@ -26,6 +26,7 @@ from sqlmodel import Session, col, select
 from app.aws import cloudcontrol_source, config_source
 from app.core.config import Settings
 from app.models import Account, Resource, ScanRequest, ScanTask
+from app.models.resource import ResourceRelation
 from app.models.scan import utcnow
 from app.types.registry import TypeRegistry
 from app.types.spec import CloudControlSource, Sources
@@ -578,6 +579,119 @@ def test_a_reclaimed_confirm_missing_cannot_count_a_failed_check(
     assert (row.status, row.missing_checks) == ("missing", 0)
     assert fresh.id == task.id
     assert session.get_one(ScanTask, task.id).stats is None
+
+
+@pytest.mark.parametrize("ambiguous", [False, True])
+def test_reclaimed_confirmation_repairs_relationships_after_committed_deletion(
+    aws: AwsEnv,
+    engine: Engine,
+    session: Session,
+    scanner: Scanner,
+    worker: Worker,
+    account_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+    ambiguous: bool,
+) -> None:
+    function_type = "AWS::Lambda::Function"
+    secret_type = "AWS::SecretsManager::Secret"
+    sweep = Discovery(aws.session(account_id), account_id, REGION, REGISTRY).sweep_config(
+        [function_type, secret_type]
+    )
+    (function_obs,) = sweep.by_type[function_type]
+    (secret_obs,) = sweep.by_type[secret_type]
+    written_at = utcnow() - timedelta(days=2)
+    scanner.writer.write(
+        [
+            replace(function_obs, observed_at=written_at),
+            replace(secret_obs, relationships=[], observed_at=written_at),
+        ]
+    )
+    seen_ids = []
+    surviving_id = None
+    if ambiguous:
+        duplicate = replace(
+            function_obs,
+            item=function_obs.item.model_copy(
+                update={"resource_id": function_obs.item.resource_id + "-duplicate"}
+            ),
+            observed_at=written_at,
+        )
+        scanner.writer.write([duplicate])
+        seen_ids.append(duplicate.item.resource_id)
+        surviving_id = session.exec(
+            select(Resource.id).where(
+                Resource.resource_type == function_type,
+                Resource.resource_id == duplicate.item.resource_id,
+            )
+        ).one()
+    secret = session.exec(select(Resource).where(Resource.resource_type == secret_type)).one()
+    secret_id = secret.id
+    source_state = (secret.observed_at, secret.last_changed_at, secret.content_hash)
+
+    def edge_target() -> int | None:
+        session.expire_all()
+        return session.exec(
+            select(ResourceRelation.to_resource_id).where(
+                ResourceRelation.from_resource_id == secret_id
+            )
+        ).one()
+
+    before_target = edge_target()
+    assert (before_target is None) == ambiguous
+    scanner.writer.finish_scope(
+        account_id=account_id,
+        region=REGION,
+        resource_type=function_type,
+        seen_ids=seen_ids,
+        observed_at=utcnow() - timedelta(days=1),
+        complete=True,
+    )
+    aws.admin(
+        "DELETE",
+        "/resources",
+        params={
+            "account_id": account_id,
+            "region": REGION,
+            "type_name": function_type,
+            "identifier": function_obs.item.resource_id,
+        },
+    )
+    task = claimed_task(session, account_id, "confirm_missing", function_type, "cloudcontrol")
+    resolve = scanner.writer._resolve_dangling_relations
+    fresh, error = pause_handler_across_reclaim(
+        engine,
+        scanner,
+        session,
+        task,
+        scanner.confirm_missing,
+        monkeypatch,
+        "_resolve_dangling_relations",
+    )
+    assert isinstance(error, TaskLost)
+    deleted = session.exec(
+        select(Resource).where(
+            Resource.resource_type == function_type,
+            Resource.resource_id == function_obs.item.resource_id,
+        )
+    ).one()
+    assert deleted.status == "deleted"
+    assert deleted.last_task_id == task.id
+    assert edge_target() == before_target
+    assert state(session, fresh).stats == {"deleted": 1}
+    monkeypatch.setattr(scanner.writer, "_resolve_dangling_relations", resolve)
+
+    def unexpected_read(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("reconciliation retry must not fetch the deleted target from AWS")
+
+    monkeypatch.setattr(Discovery, "fetch", unexpected_read)
+    worker._execute(fresh)
+
+    assert state(session, fresh).status == "succeeded"
+    assert edge_target() == surviving_id
+    stats = state(session, fresh).stats or {}
+    assert (stats["deleted"], stats["checked"]) == (1, 0)
+    session.refresh(secret)
+    assert (secret.observed_at, secret.last_changed_at, secret.content_hash) == source_state
 
 
 def test_config_confirm_missing_uses_the_item_capture_time_as_its_observation(

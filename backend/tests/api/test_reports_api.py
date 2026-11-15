@@ -608,9 +608,7 @@ def test_a_relation_field_can_cross_an_array_on_the_target(
         target = task_definitions[relation["to_resource_id"]]
         by_service.setdefault(relation["from_resource_id"], set()).update(images(target))
     matching = {
-        service_id
-        for service_id, uris in by_service.items()
-        if any("mysql" in uri for uri in uris)
+        service_id for service_id, uris in by_service.items() if any("mysql" in uri for uri in uris)
     }
     assert matching
 

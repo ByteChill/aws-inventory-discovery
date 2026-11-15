@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 from app.api.deps import CacheDep, LogsClientDep, RegistryDep, SessionDep
-from app.api.support import check_resource_type, ensure_accounts, refresh_accounts
+from app.api.support import check_resource_type
 from app.core.config import get_settings
 from app.core.db import get_engine
 from app.core.errors import ApiError
@@ -81,18 +81,10 @@ def create_scan(
     settings = get_settings()
     for type_name in spec.resource_types:
         check_resource_type(registry, type_name)
-    if spec.all_accounts:
-        refresh_accounts(session, settings)
     try:
-        try:
-            created = requests.create_scan(
-                session, spec, settings, caller_id=x_caller_id, idempotency_key=idempotency_key
-            )
-        except requests.UnknownAccounts as exc:
-            ensure_accounts(session, settings, exc.account_ids)
-            created = requests.create_scan(
-                session, spec, settings, caller_id=x_caller_id, idempotency_key=idempotency_key
-            )
+        created = requests.create_scan(
+            session, spec, settings, caller_id=x_caller_id, idempotency_key=idempotency_key
+        )
     except requests.ScopeTooLarge as exc:
         raise ApiError(
             422,
@@ -107,6 +99,13 @@ def create_scan(
     except requests.UnknownAccounts as exc:
         raise ApiError(
             404, "account_not_found", "账号不存在", {"accountIds": exc.account_ids}
+        ) from exc
+    except requests.ScanDisabled as exc:
+        raise ApiError(
+            409,
+            "account_scan_disabled",
+            "这些账号没有纳入扫描；需要时显式使用 overrideScanPolicy",
+            {"accountIds": exc.account_ids},
         ) from exc
     if not created.created:
         response.status_code = 200

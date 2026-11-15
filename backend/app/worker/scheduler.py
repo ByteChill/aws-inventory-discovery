@@ -10,10 +10,8 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 
 from sqlalchemy import Connection, Engine, func, text
-from sqlalchemy.dialects.postgresql import insert
 from sqlmodel import Session, col, select
 
-from app.aws.account_registry import AccountRegistryClient, RegistryAccount, RegistryError
 from app.core.config import Settings
 from app.models import Account, ScanRequest
 from app.models.scan import utcnow
@@ -75,69 +73,15 @@ class AdvisoryLock:
                 logger.debug("closing a dead lock connection failed", exc_info=True)
 
 
-def sync_accounts(session: Session, accounts: list[RegistryAccount], now: datetime) -> None:
-    """Make `t_inv_aws_account` match the registry (scanner.md §5.1 step 1): insert new
-    accounts, refresh known ones (re-activating the returning), mark the absent inactive.
-
-    Take the per-account purge lock before touching the snapshot, in key order. A cleanup
-    that is already deleting an account therefore finishes first (and the insert below brings
-    the account back if the registry still lists it); if the account is already active again,
-    cleanup rechecks under the same lock and leaves its resources alone.
-    """
-    if not accounts:
-        raise ValueError("refusing to sync an empty account list")
-    schema = cleanup.schema_of(session)
-    keys = sorted({cleanup.account_sync_key(schema, a.account_id) for a in accounts})
-    # One round trip; the subquery keeps the ascending order the lock protocol relies on.
-    session.connection().execute(
-        text(
-            "SELECT pg_advisory_xact_lock(k) FROM"
-            " (SELECT unnest(CAST(:keys AS bigint[])) AS k ORDER BY 1) AS ordered"
-        ),
-        {"keys": keys},
-    )
-    fields = [
-        {
-            "account_id": a.account_id,
-            "account_name": a.account_name,
-            "account_type": a.account_type,
-            "eim_id": a.eim_id,
-            "eim_app": a.eim_app,
-            "ba_id": a.ba_id,
-            "active": True,
-            "inactive_since": None,
-            "registry_fetched_at": now,
-        }
-        for a in accounts
-    ]
-    statement = insert(Account.__table__).values(fields)  # ty: ignore[unresolved-attribute]
-    session.connection().execute(
-        statement.on_conflict_do_update(
-            index_elements=["account_id"],
-            set_={name: statement.excluded[name] for name in fields[0] if name != "account_id"},
-        )
-    )
-    session.connection().execute(
-        text("""
-        UPDATE t_inv_aws_account SET active = false, inactive_since = :now
-         WHERE active AND NOT (account_id = ANY(:ids))
-        """),
-        {"now": now, "ids": [a.account_id for a in accounts]},
-    )
-    session.commit()
-
-
 class Scheduler:
     def __init__(
         self,
         engine: Engine,
         settings: Settings,
-        registry: AccountRegistryClient | None,
         lock: AdvisoryLock | None = None,
     ) -> None:
         self.engine = engine
         self.settings = settings
-        self.registry = registry
         self.lock = lock or AdvisoryLock(
             engine, advisory_lock_key(SCHEDULER_LOCK_NAME, settings.DATABASE_SCHEMA)
         )
@@ -145,10 +89,7 @@ class Scheduler:
 
     @classmethod
     def from_settings(cls, engine: Engine, settings: Settings) -> Scheduler:
-        registry = (
-            AccountRegistryClient.from_settings(settings) if settings.ACCOUNT_REGISTRY_URL else None
-        )
-        return cls(engine, settings, registry)
+        return cls(engine, settings)
 
     def tick(self, now: datetime | None = None) -> bool:
         """One scheduler pass. Returns False when another instance is the leader."""
@@ -188,11 +129,7 @@ class Scheduler:
         return self._start_sweep(session, now, only_if_due=True)
 
     def start_sweep(self, session: Session, now: datetime) -> ScanRequest:
-        """Refresh the account snapshot from the registry and create one sweep (§5.1).
-
-        When the registry can't be read, the sweep runs on the existing snapshot, nobody is
-        marked inactive, and the failure is recorded in the request's counts.
-        """
+        """Create one sweep from the local account master data (§5.1)."""
         request = self._start_sweep(session, now, only_if_due=False)
         assert request is not None
         return request
@@ -200,26 +137,17 @@ class Scheduler:
     def _start_sweep(
         self, session: Session, now: datetime, *, only_if_due: bool
     ) -> ScanRequest | None:
-        counts: dict[str, str] = {}
-        try:
-            if self.registry is None:
-                raise RegistryError("ACCOUNT_REGISTRY_URL is not set")
-            fetched = self.registry.fetch_accounts()
-            if not fetched:
-                # An empty list would mark every account inactive; treat it as a failure.
-                raise RegistryError("registry returned no accounts")
-        except RegistryError as exc:
-            logger.error("account registry unavailable, using the existing snapshot: %s", exc)
-            counts["registryError"] = str(exc)
-        else:
-            sync_accounts(session, fetched, now)
         # Full sweeps are created one at a time (shared with POST /scans all=true); look again
-        # inside the lock, since another instance may have started one while we fetched.
+        # inside the lock, since another instance may have started one meanwhile.
         lock_full_sweeps(session, self.settings.DATABASE_SCHEMA)
         if only_if_due and not self._sweep_due(session, now):
             session.rollback()
             return None
-        account_ids = list(session.exec(select(Account.account_id).where(col(Account.active))))
+        account_ids = list(
+            session.exec(
+                select(Account.account_id).where(col(Account.active), col(Account.scan_enabled))
+            )
+        )
         request = requests.create_sweep_request(
             session,
             account_ids,
@@ -228,7 +156,6 @@ class Scheduler:
             scope={"all": True},
             stagger_window=requests.stagger_window_seconds(self.settings),
             skip_in_flight=True,
-            counts=counts,
             now=now,
         )
         session.commit()

@@ -28,6 +28,7 @@ from sqlalchemy import Engine
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlmodel import Session, col, select
 
+from app.accounts import load_scan_policy
 from app.aws import config_source
 from app.aws.config_source import RecorderState
 from app.aws.credentials import CredentialError, CredentialService
@@ -276,12 +277,23 @@ class Scanner:
     # -- sweep_account (§6.1) ----------------------------------------------------------------
 
     def sweep_account(self, task: ScanTask, ctx: TaskContext) -> dict[str, Any] | None:
-        aws = self._aws(task)
         request = self._scope_of(task)
         scope = request.scope or {}
         on_demand = leases.is_on_demand(task)
         wanted_regions = set(scope.get("awsRegions") or [])
         wanted_types = set(scope.get("resourceTypes") or []) or None
+        with Session(self.writer.engine) as session:
+            policy = load_scan_policy(session, task.account_id)
+        override = bool(scope.get("overrideScanPolicy"))
+        if not policy.active:
+            # Deleted after this task was queued. A deleted account is never scanned, even
+            # with overrideScanPolicy: that flag only overrides the scan policy, not deletion.
+            return {"regions": 0, "tasks": 0, "skipped": 0}
+        if not policy.scan_enabled and not override:
+            # The account was stopped after this task was queued. It is not a successful
+            # listing, so it must not drive missing/deleted results.
+            return {"regions": 0, "tasks": 0, "skipped": 0}
+        aws = self._aws(task)
         try:
             described = describe_regions(aws, self.settings.REACHABLE_REGIONS)
         except AWS_ERRORS as exc:
@@ -290,11 +302,13 @@ class Scanner:
             raise TaskError("internal", str(exc), retryable=False) from exc
         now = utcnow()
         self._save_regions(task, described, now)
+        selected = policy.selected if policy.mode == "selected" and not override else set()
         scannable = sorted(
             region
             for region, opt_in in described.items()
             if region in self.settings.REACHABLE_REGIONS
             and opt_in in ENABLED
+            and (override or policy.mode == "all" or region in selected)
             and (not wanted_regions or region in wanted_regions)
         )
 

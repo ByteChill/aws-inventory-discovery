@@ -2,11 +2,12 @@
 
 发现组织内 1000 多个 AWS 账号的资源，获取它们**当前的真实状态**，在 dashboard 上查询，并通过 API 提供给其他服务。
 
-> **当前状态**：MVP 已实现：两批共 15 个资源类型（含全局类型 Route 53 Hosted Zone）、扫描和写入、API、dashboard、本地环境、部署文件，后端测试和前端 Playwright 测试通过，CI 已在 GitHub 上通过。v2 的自定义报表已实现，在 `feat/custom-reports` 分支上等待评审和合并。账号清单服务 ①、凭证服务 ②、findings 服务 ③ 的真实接口格式和真实账号数据的核对要等上线前确认。进度见 [docs/PROGRESS.md](docs/PROGRESS.md)。
+> **当前状态**：MVP 已实现：两批共 15 个资源类型（含全局类型 Route 53 Hosted Zone）、扫描和写入、API、dashboard、账号主数据和扫描范围管理、本地环境、部署文件，后端测试和前端 Playwright 测试通过，CI 已在 GitHub 上通过。v2 的自定义报表已实现，在 `feat/custom-reports` 分支上等待评审和合并。账号清单服务 ①、凭证服务 ②、findings 服务 ③ 的真实接口格式和真实账号数据的核对要等上线前确认；① 现在只用于可选导入。进度见 [docs/PROGRESS.md](docs/PROGRESS.md)。
 
 ## 它做什么
 
 - 每 6 小时扫描一遍所有账号、所有可达区域的资源；也可以按账号、区域、类型随时扫描，或者实时刷新单个资源。
+- 账号由本服务维护：可以新增、修改、软删除/恢复，并按账号、EIM、应用、环境批量控制是否纳入扫描和扫描区域；停止扫描保留数据，删除账号才进入 30 天清理窗口。
 - 资源数据统一使用 AWS Config 的格式，可以按账号、EIM、BA、环境、区域、类型、标签以及各类型的专属字段筛选，并导出为 CSV 或 JSON Lines。
 - 定时扫描和按需扫描同时进行时，数据不会出错；没删除的资源绝不会被标为删除。
 - 报表：用条件树（类型、字段、标签、关系计数、相对时间、一跳关联字段，支持 all / any / not）保存规则，打开页面时按当前清单列出满足规则的资源，可以导出。AMI 的风险级别来自 findings 服务 ③，扫描时保存成当前汇总，EC2 报表可以通过 `image.*` 关联条件使用。
@@ -23,7 +24,8 @@ flowchart LR
   API --> PG[(Aurora PostgreSQL)]
   API --> R[(ElastiCache for Valkey 缓存)]
   W[aws-inventory-discovery-worker<br/>扫描 + 定时调度] --> PG
-  W --> SVC[账号清单服务 ① / 凭证服务 ② / findings 服务 ③]
+  API --> SVC[账号清单服务 ①<br/>可选一次性导入]
+  W --> CRED[凭证服务 ② / findings 服务 ③]
   W --> EP[VPC endpoints] --> T[目标账号<br/>AWS Config / Cloud Control]
 ```
 
@@ -31,7 +33,7 @@ flowchart LR
 |---|---|
 | `aws-inventory-discovery-worker` | 唯一调用目标账号 AWS API 的服务：扫描、写入、确认删除、定时调度、清理 |
 | `aws-inventory-discovery-api` | REST API 和 dashboard；只读数据库、创建扫描请求，不调用目标账号 |
-| Aurora PostgreSQL | 资产数据、账号、扫描任务（任务队列也在这里） |
+| Aurora PostgreSQL | 资产数据、账号主数据和扫描策略、扫描任务（任务队列也在这里） |
 | Redis | 专用 ElastiCache for Valkey，只做缓存 |
 | 数据来源 | 定时扫描用 AWS Config，Config 覆盖不到的用 Cloud Control；按需扫描和单资源刷新用 Cloud Control；两者都不支持的类型（AMI）用服务自己的 API |
 
@@ -81,6 +83,8 @@ podman compose up -d
 ```bash
 podman compose run --rm seed
 ```
+
+账号主数据由本服务维护。空库可以用账号页的「从 ① 导入」或 `POST /api/v1/accounts/import` 一次性导入本地不存在的账号；导入不会覆盖本地修改。也可以在账号页手动新增。停止扫描和删除账号是两个动作：前者保留数据，后者进入 30 天清理窗口。
 
 然后打开 http://localhost:8000/aws-inventory/ ，在「扫描」页选择全部账号，点「扫描」开始一轮扫描（本地关闭了定时扫描：`SWEEP_ENABLED=false`，因为定时扫描把账号错开在约 5.5 小时里；按需扫描立即执行）。
 
@@ -156,7 +160,7 @@ cd frontend && npm run generate-client
 
 ### 浏览器端到端测试
 
-Playwright 测试在 `frontend/e2e/`，针对一套正在运行的环境（FastAPI 在 `http://localhost:8000/aws-inventory/` 托管构建好的 dashboard 和 API），用中文界面走主要流程：概览、资源筛选和导出链接、资源详情和刷新、发起扫描、账号覆盖表、语言和主题切换。测试前的全局准备会通过 API 发起一次全部账号的扫描并等它成功，所以页面上的数据都是环境自己产生的。
+Playwright 测试在 `frontend/e2e/`，针对一套正在运行的环境（FastAPI 在 `http://localhost:8000/aws-inventory/` 托管构建好的 dashboard 和 API），用中文界面走主要流程：概览、资源筛选和导出链接、资源详情和刷新、发起扫描、账号覆盖表、账号新增/扫描策略/批量停止/删除/恢复、语言和主题切换。测试前的全局准备会在账号表为空时从 ① 导入一次，然后通过 API 发起一次全部账号的扫描并等它成功，所以页面上的数据都是环境自己产生的。
 
 ```bash
 podman compose up -d --build

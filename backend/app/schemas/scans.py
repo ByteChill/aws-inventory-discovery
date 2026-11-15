@@ -24,6 +24,7 @@ class ScanScope(ApiModel):
     aws_regions: list[str] | None = None
     resource_types: list[str] | None = None
     all: bool | None = None
+    override_scan_policy: bool | None = None
 
 
 class ScanRequestOut(ApiModel):

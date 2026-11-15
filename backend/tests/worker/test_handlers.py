@@ -24,10 +24,19 @@ import seed  # ty: ignore[import-not-found]
 from sqlalchemy import Engine, text
 from sqlmodel import Session, col, select
 
+from app.accounts import soft_delete_account
 from app.aws import cloudcontrol_source, config_source
 from app.aws.findings import FindingsService
 from app.core.config import Settings
-from app.models import Account, FindingSummary, Resource, ScanRequest, ScanTask
+from app.core.regions import GLOBAL_HOME, GLOBAL_REGION
+from app.models import (
+    Account,
+    AccountScanRegion,
+    FindingSummary,
+    Resource,
+    ScanRequest,
+    ScanTask,
+)
 from app.models.resource import ResourceRelation
 from app.models.scan import utcnow
 from app.types.registry import TypeRegistry
@@ -907,6 +916,152 @@ def test_a_second_scheduled_sweep_does_not_duplicate_children_still_queued_but_o
     assert (fresh.stats or {})["tasks"] > 0
     assert len(queued_children(session, 0)) == (fresh.stats or {})["tasks"]
     assert len(queued_children(session, 1)) == len(backlog)  # the scheduled ones are untouched
+
+
+def test_sweep_account_obeys_the_selected_region_policy_and_an_explicit_override(
+    engine: Engine, session: Session, scanner: Scanner, account_id: str
+) -> None:
+    other_region = AWS_REGIONS[1]
+    account = session.get_one(Account, account_id)
+    account.scan_region_mode = "selected"
+    session.add(account)
+    session.add(AccountScanRegion(account_id=account_id, region=REGION))
+    session.commit()
+
+    now = utcnow()
+    request = requests.create_sweep_request(
+        session,
+        [account_id],
+        trigger="api",
+        priority=0,
+        scope={"all": False, "awsRegions": [other_region]},
+        now=now,
+    )
+    session.commit()
+    task = run_sweep_account(engine, session, scanner, now)
+    assert task.scan_request_id == request.id
+    assert (task.stats or {})["regions"] == 0
+    assert [
+        child for child in queued_children(session, 0) if child.scan_request_id == request.id
+    ] == []
+
+    overridden = requests.create_sweep_request(
+        session,
+        [account_id],
+        trigger="api",
+        priority=0,
+        scope={
+            "all": False,
+            "awsRegions": [other_region],
+            "overrideScanPolicy": True,
+        },
+        now=now + timedelta(minutes=1),
+    )
+    session.commit()
+    task = run_sweep_account(engine, session, scanner, now + timedelta(minutes=1))
+    assert task.scan_request_id == overridden.id
+    assert (task.stats or {})["regions"] == 1
+    assert {
+        child.region
+        for child in queued_children(session, 0)
+        if child.scan_request_id == overridden.id
+    } == {other_region}
+
+
+def test_selected_policy_scans_global_types_only_when_the_home_region_is_selected(
+    engine: Engine, session: Session, scanner: Scanner, account_id: str
+) -> None:
+    other_region = next(region for region in AWS_REGIONS if region != GLOBAL_HOME)
+    account = session.get_one(Account, account_id)
+    account.scan_region_mode = "selected"
+    session.add(account)
+    session.add(AccountScanRegion(account_id=account_id, region=other_region))
+    now = utcnow()
+    request = requests.create_sweep_request(
+        session,
+        [account_id],
+        trigger="api",
+        priority=1,
+        scope={"all": False},
+        now=now,
+    )
+    session.commit()
+
+    task = run_sweep_account(engine, session, scanner, now)
+
+    assert task.scan_request_id == request.id
+    assert (task.stats or {})["regions"] == 1
+    children = [
+        child for child in queued_children(session, 1) if child.scan_request_id == request.id
+    ]
+    assert children
+    assert GLOBAL_REGION not in {child.region for child in children}
+
+
+def test_a_stopped_account_queued_before_the_change_creates_no_region_tasks(
+    engine: Engine,
+    session: Session,
+    scanner: Scanner,
+    account_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unexpected_credentials(_task: ScanTask) -> None:
+        pytest.fail("a stopped account must not ask the credential service")
+
+    monkeypatch.setattr(scanner, "_aws", unexpected_credentials)
+    account = session.get_one(Account, account_id)
+    account.scan_enabled = False
+    session.add(account)
+    now = utcnow()
+    request = requests.create_sweep_request(
+        session,
+        [account_id],
+        trigger="api",
+        priority=0,
+        scope={"all": False},
+        now=now,
+    )
+    session.commit()
+
+    task = run_sweep_account(engine, session, scanner, now)
+
+    assert task.scan_request_id == request.id
+    assert (task.stats or {})["regions"] == 0
+    assert [
+        child for child in queued_children(session, 0) if child.scan_request_id == request.id
+    ] == []
+
+
+def test_a_deleted_account_is_not_scanned_even_when_the_task_overrides_policy(
+    engine: Engine,
+    session: Session,
+    scanner: Scanner,
+    account_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unexpected_credentials(_task: ScanTask) -> None:
+        pytest.fail("a deleted account must not ask the credential service")
+
+    monkeypatch.setattr(scanner, "_aws", unexpected_credentials)
+    soft_delete_account(session, account_id)
+    now = utcnow()
+    request = requests.create_sweep_request(
+        session,
+        [account_id],
+        trigger="api",
+        priority=0,
+        scope={"all": False, "overrideScanPolicy": True},
+        now=now,
+    )
+    session.commit()
+
+    task = run_sweep_account(engine, session, scanner, now)
+
+    assert task.scan_request_id == request.id
+    assert (task.stats or {})["regions"] == 0
+    assert [
+        child for child in queued_children(session, 0) if child.scan_request_id == request.id
+    ] == []
 
 
 def test_a_scan_stores_the_findings_summary_of_the_images_it_wrote(

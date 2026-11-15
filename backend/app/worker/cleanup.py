@@ -26,14 +26,14 @@ ACCOUNT_SYNC_LOCK_NAME = "aws-inventory-discovery:account-sync"
 
 
 def account_sync_key(schema: str, account_id: str) -> int:
-    """The advisory lock that serialises account snapshot updates with an account purge."""
+    """The advisory lock that serialises account edits/imports with an account purge."""
     return advisory_lock_key(f"{ACCOUNT_SYNC_LOCK_NAME}:{account_id}", schema)
 
 
 def schema_of(session: Session) -> str:
     """The schema tables resolve to (make_engine puts DATABASE_SCHEMA first in search_path).
 
-    Both cleanup and `sync_accounts` derive account lock keys from this, not from the raw
+    Both cleanup and account writes derive account lock keys from this, not from the raw
     setting, so an unquoted uppercase DATABASE_SCHEMA still gives them the same key.
     """
     return session.connection().execute(text("SELECT current_schema()")).scalar_one()
@@ -232,7 +232,7 @@ def _purge_inactive_accounts(session: Session, cutoff: datetime) -> int:
                     extra={"account_id": account_id},
                 )
                 continue
-            # `sync_accounts` takes the same lock before reactivating an account. Recheck under
+            # Account restore/import takes the same lock before writing. Recheck under
             # it (and under the account row lock) because the account may have returned between
             # the scan above and this point.
             eligible = (
@@ -261,6 +261,7 @@ def _purge_inactive_accounts(session: Session, cutoff: datetime) -> int:
             for table in (
                 "t_inv_aws_finding_summary",
                 "t_inv_aws_account_region",
+                "t_inv_aws_account_scan_region",
                 "t_inv_aws_scan_shard",
                 "t_inv_aws_account",
             ):

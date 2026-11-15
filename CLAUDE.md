@@ -6,7 +6,7 @@ Guidance for AI coding agents working in this repository. `AGENTS.md` is a symli
 
 aws-inventory-discovery discovers the **current real state** of AWS resources across 1,000+ accounts in one AWS Organization, stores it in Aurora PostgreSQL, and serves it through a FastAPI REST API and a React dashboard. Two ECS services share one image: `aws-inventory-discovery-worker` (the only component that calls target-account AWS APIs) and `aws-inventory-discovery-api` (API + dashboard; reads the DB, creates scan requests, never calls target accounts).
 
-Status: MVP implemented (15 resource types (12 first-batch plus Security Group, Target Group, Route 53 Hosted Zone), scan/write pipeline, API, dashboard, local environment, deploy files; backend tests pass; Playwright e2e in `frontend/e2e/`; CI in `.github/workflows/ci.yml`, passing on GitHub). v2 custom reports (the feature formerly called 巡检) are implemented on `feat/custom-reports` and await review and merge: a read-only rule layer over the current inventory. Not done: the real formats of services ① and ② and real-account fixture checks. Check `docs/PROGRESS.md` before starting work.
+Status: MVP implemented (15 resource types (12 first-batch plus Security Group, Target Group, Route 53 Hosted Zone), scan/write pipeline, local account master data + scan-policy management, API, dashboard, local environment, deploy files; backend tests pass; Playwright e2e in `frontend/e2e/`; CI in `.github/workflows/ci.yml`, passing on GitHub). v2 custom reports (the feature formerly called 巡检) are implemented on `feat/custom-reports` and await review and merge: a read-only rule layer over the current inventory. Not done: the real formats of services ① and ② and real-account fixture checks. Check `docs/PROGRESS.md` before starting work.
 
 ## Source of truth
 
@@ -26,6 +26,15 @@ Status: MVP implemented (15 resource types (12 first-batch plus Security Group, 
 6. **One running task per scope** via the lease in `t_inv_aws_scan_shard` (R1–R3). Every task claim carries a fencing token (`scan_task.claim_token`, mirrored in `scan_shard.lease_token`); heartbeat, lease operations, checkpoints and finishing require the current token, and a worker that lost it stops and writes nothing. Row locks are always taken in the order shard → task → request. Full-sweep creation is serialised by an advisory xact lock; advisory lock keys are derived from `<name>:<DATABASE_SCHEMA>`.
 7. The API process never calls target-account AWS APIs; its only AWS call is `logs:FilterLogEvents` on the hub account's worker log group.
 8. No change history. Store only current state (D-07).
+
+## Accounts and scan policy
+
+- **Account master data is local** (`t_inv_aws_account`). The registry (①) is an optional one-time import source (`POST /accounts/import`); it only inserts unknown accounts and never overwrites local fields, policies or `active` state. Registry unavailability must not affect startup, sweeps or `doctor`.
+- Accounts have `source` (`manual`/`imported`/`legacy`), `scan_enabled`, `scan_region_mode` (`all`/`selected`) and `updated_at`. Selected regions live in `t_inv_aws_account_scan_region`.
+- Stopping scans is `scan_enabled = false` and keeps all data. Deleting an account is soft delete (`active = false`, `inactive_since`) and enters the existing 30-day cleanup window; the two actions must not be mixed.
+- Full sweeps take only `active AND scan_enabled` accounts. Effective regions = region policy ∩ account-enabled (`opt-in-not-required`/`opted-in`) ∩ `REACHABLE_REGIONS`. A `selected` account with no regions has zero effective regions but remains enabled.
+- On-demand scans obey the policy by default; `overrideScanPolicy: true` is explicit and only overrides the scan policy, never soft deletion. A stopped/deleted account creates no region tasks, so it cannot produce missing/deleted results. Policy changes apply next sweep; running tasks are not interrupted.
+- Account writes (create/update/delete/restore/import) use the per-account advisory lock shared with cleanup and are cached-data invalidations. Account IDs are immutable.
 
 ## Code style
 
@@ -74,7 +83,7 @@ Tooling: Python 3.14, uv, Ruff, ty, SQLModel, Alembic, psycopg 3. Frontend: Reac
 
 ## Local environment
 
-- `podman compose up -d` starts postgres (host port 55432), redis (56379), moto (host port **5001**: macOS AirPlay holds 5000), fake-aws (4567), migrate, api (8000) and worker. `podman compose run --rm seed` loads demo data (20 accounts × 4 regions, copied from fixtures changing only account, region and IDs). Locally `SWEEP_ENABLED=false`: start scans on demand (dashboard "扫描" or `POST /api/v1/scans`), because scheduled sweeps stagger accounts over ~5.5 h.
+- `podman compose up -d` starts postgres (host port 55432), redis (56379), moto (host port **5001**: macOS AirPlay holds 5000), fake-aws (4567), migrate, api (8000) and worker. `podman compose run --rm seed` loads demo data (20 accounts × 4 regions, copied from fixtures changing only account, region and IDs). The account master data is local; on an empty stack use the account page's "从 ① 导入" or `POST /api/v1/accounts/import` to import unknown accounts once. Locally `SWEEP_ENABLED=false`: start scans on demand (dashboard "扫描" or `POST /api/v1/scans`), because scheduled sweeps stagger accounts over ~5.5 h.
 - AWS is simulated in two places: moto serves EC2 (`DescribeRegions`, `DescribeImages`), STS and CloudWatch Logs (run with `MOTO_EC2_LOAD_DEFAULT_AMIS=false`); `devtools/fake_aws` serves Cloud Control, **AWS Config** (moto's server mode has no HTTP endpoint to preset `SelectResourceConfig` results), the internal account registry (①), credential (②) and findings (③) services, and an `/_admin` API that `seed.py` uses. See `devtools/README.md`. The findings responses for tests come from `backend/tests/fixtures/findings/` (the assumed ③ format; replace with a real response before go-live).
 - Switch endpoints only with boto3's native variables: `AWS_ENDPOINT_URL` (moto), `AWS_ENDPOINT_URL_CLOUDCONTROL` and `AWS_ENDPOINT_URL_CONFIG_SERVICE` (fake-aws). Containers set `NO_PROXY` so container-to-container calls bypass the host proxy podman injects. **Never add local-only branches to app code.**
 - Known local limitations: moto keeps AMIs per account (shared AMIs are not visible across accounts); moto has no worker log group, so `GET /tasks/{id}/logs` returns 503 locally and the UI shows a calm "logs unavailable" line.

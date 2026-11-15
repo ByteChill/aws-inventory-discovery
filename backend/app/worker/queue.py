@@ -541,7 +541,7 @@ def roll_up_request(session: Session, scan_request_id: int, now: datetime | None
 
     `counts.tasks` (tasks by status) and `counts.resources` (new / updated / missing / deleted,
     summed from the tasks' `stats` when any task reports them) are written on every call; other
-    keys of `counts` (`registryError`, `accounts`, ...) are kept.
+    keys of `counts` (`accounts`, `skippedAccounts`, ...) are kept.
     """
     now = now or utcnow()
     current = (

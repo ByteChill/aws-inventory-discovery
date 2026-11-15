@@ -179,7 +179,15 @@ def account_rows(now: datetime) -> list[dict[str, Any]]:
         },
     }
     return [
-        {**account, "registry_fetched_at": now, **states[account["account_id"]]}
+        {
+            **account,
+            "registry_fetched_at": now,
+            "source": "legacy",
+            "scan_enabled": True,
+            "scan_region_mode": "all",
+            "updated_at": now,
+            **states[account["account_id"]],
+        }
         for account in load_json(ACCOUNTS_FILE)
     ]
 

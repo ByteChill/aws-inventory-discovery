@@ -38,11 +38,13 @@ export function useAccountColumns(): Column[] {
       col("eimId", "EIM", "text", { filterable: true }),
       col("baId", "BA", "text", { filterable: true }),
       col("resourceCount", t("accounts.column.resources"), "number"),
+      col("scanEnabled", t("accounts.column.scan"), "bool"),
       col("accessStatus", t("accounts.column.status"), "enum", {
         filterable: true,
       }),
       col("lastScanOkAt", t("accounts.column.lastScan"), "datetime"),
       col("coverage", "", "text", { sortable: false }),
+      col("actions", "", "text", { sortable: false }),
     ],
     [t],
   )

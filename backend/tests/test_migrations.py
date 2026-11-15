@@ -3,6 +3,7 @@ import psycopg
 TABLES = {
     "t_inv_aws_account",
     "t_inv_aws_account_region",
+    "t_inv_aws_account_scan_region",
     "t_inv_aws_resource",
     "t_inv_aws_resource_relation",
     "t_inv_aws_scan_request",
@@ -22,7 +23,7 @@ def index_definitions(db: psycopg.Connection, table: str) -> dict[str, str]:
     return dict(rows)
 
 
-def test_migration_creates_the_nine_tables_and_version_table(
+def test_migration_creates_the_ten_tables_and_version_table(
     db: psycopg.Connection,
 ) -> None:
     rows = db.execute(

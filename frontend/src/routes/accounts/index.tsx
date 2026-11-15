@@ -2,8 +2,13 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { Search } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 
+import {
+  useDeleteAccount,
+  useImportAccounts,
+  useRestoreAccount,
+} from "@/api/accounts"
 import { useAccounts, useFacets } from "@/api/hooks"
-import type { AccountSummary } from "@/client"
+import type { AccountSelector, AccountSummary } from "@/client"
 import { CopyButton } from "@/components/copy-button"
 import {
   type Column,
@@ -17,8 +22,12 @@ import { Breadcrumb } from "@/components/layout/crumbs"
 import { Page, PageHeader } from "@/components/layout/page"
 import { Time } from "@/components/time"
 import { Button } from "@/components/ui/button"
+import { Dialog } from "@/components/ui/dialog"
+import { AccountEditor } from "@/features/account-editor"
+import { BulkPolicyDialog } from "@/features/bulk-policy"
 import { useAccountColumns } from "@/features/columns"
 import { type MessageKey, useI18n } from "@/i18n"
+import { errorText } from "@/lib/errors"
 import { selectActive, selectClass } from "@/lib/filter-select"
 import { formatNumber } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -49,6 +58,8 @@ function accountParams(state: TableState) {
     if (values.length) params[key] = values
   }
   if (state.q) params.q = state.q
+  const scan = single(state.filters.scanEnabled)
+  if (scan) params.scanEnabled = scan === "true"
   if (list(state.filters.removed).length) params.active = false
   return params
 }
@@ -66,6 +77,35 @@ function Accounts() {
   // Application names for the EIM filter come from the resource facets.
   const eimFacets = useFacets(["eimId"], {})
   const total = query.data?.total ?? 0
+  const remove = useDeleteAccount()
+  const restore = useRestoreAccount()
+  const importAccounts = useImportAccounts()
+  const pageError = importAccounts.error ?? restore.error
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editing, setEditing] = useState<AccountSummary | undefined>()
+  const [deleting, setDeleting] = useState<AccountSummary | null>(null)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const showingRemoved = list(state.filters.removed).length > 0
+
+  const filterSelector = useMemo<AccountSelector>(() => {
+    const selector: AccountSelector = {}
+    const eimIds = list(state.filters.eimId)
+    const baIds = list(state.filters.baId)
+    const accountTypes = list(state.filters.accountType)
+    const accessStatuses = list(state.filters.accessStatus)
+    if (eimIds.length) selector.eimIds = eimIds
+    if (baIds.length) selector.baIds = baIds
+    if (accountTypes.length) {
+      selector.accountTypes = accountTypes as AccountSelector["accountTypes"]
+    }
+    if (accessStatuses.length) selector.accessStatuses = accessStatuses
+    if (state.q) selector.q = state.q
+    const scan = single(state.filters.scanEnabled)
+    if (scan) selector.scanEnabled = scan === "true"
+    return Object.keys(selector).length ? selector : { all: true }
+  }, [state.filters, state.q])
 
   const [draft, setDraft] = useState(state.q ?? "")
   const first = useRef(true)
@@ -152,6 +192,63 @@ function Accounts() {
             {formatNumber(row.resourceCount, locale)}
           </Link>
         )
+      case "scanEnabled":
+        return (
+          <span
+            className={
+              row.scanEnabled ? "text-primary" : "text-muted-foreground"
+            }
+          >
+            {t(
+              row.scanEnabled
+                ? "accounts.scanIncluded"
+                : "accounts.scanStopped",
+            )}
+          </span>
+        )
+      case "actions":
+        return (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="link"
+              size="sm"
+              className="px-0"
+              onClick={() => {
+                setEditing(row)
+                setEditorOpen(true)
+              }}
+            >
+              {t("accounts.edit")}
+            </Button>
+            {row.active ? (
+              <Button
+                variant="link"
+                size="sm"
+                className="px-0 text-danger"
+                onClick={() => setDeleting(row)}
+              >
+                {t("accounts.delete")}
+              </Button>
+            ) : (
+              <Button
+                variant="link"
+                size="sm"
+                className="px-0"
+                disabled={restore.isPending}
+                onClick={() =>
+                  restore.mutate(row.accountId, {
+                    onSuccess: () =>
+                      setNotice(
+                        t("accounts.restored", { name: row.accountName }),
+                      ),
+                  })
+                }
+              >
+                {t("accounts.restore")}
+              </Button>
+            )}
+          </div>
+        )
       case "accessStatus": {
         // Only abnormal states get text; a removed account says when it is cleaned up.
         const purgeAt = row.purgeAt
@@ -196,9 +293,14 @@ function Accounts() {
 
   const hasFilters =
     !!state.q ||
-    ["accountType", "eimId", "baId", "accessStatus", "removed"].some(
-      (key) => list(state.filters[key]).length > 0,
-    )
+    [
+      "accountType",
+      "eimId",
+      "baId",
+      "accessStatus",
+      "removed",
+      "scanEnabled",
+    ].some((key) => list(state.filters[key]).length > 0)
 
   return (
     <Page className="min-h-0 gap-4">
@@ -219,7 +321,44 @@ function Accounts() {
         <PageHeader
           title={t("accounts.title")}
           description={t("accounts.subtitle", { count: total })}
+          actions={
+            <>
+              <Button
+                variant="outline"
+                disabled={importAccounts.isPending}
+                onClick={() =>
+                  importAccounts.mutate(undefined, {
+                    onSuccess: (result) =>
+                      setNotice(
+                        t("accounts.imported", {
+                          imported: result.imported,
+                          skipped: result.skipped,
+                        }),
+                      ),
+                  })
+                }
+              >
+                {t("accounts.import")}
+              </Button>
+              <Button
+                onClick={() => {
+                  setEditing(undefined)
+                  setEditorOpen(true)
+                }}
+              >
+                {t("accounts.add")}
+              </Button>
+            </>
+          }
         />
+        {(notice || pageError) && (
+          <p
+            role="status"
+            className={pageError ? "text-danger" : "text-muted-foreground"}
+          >
+            {pageError ? errorText(t, pageError) : notice}
+          </p>
+        )}
       </div>
       <div className="min-h-0 flex-1">
         <DataTable<AccountSummary>
@@ -242,9 +381,11 @@ function Accounts() {
             eimId: 150,
             baId: 110,
             resourceCount: 78,
+            scanEnabled: 105,
             accessStatus: 100,
             lastScanOkAt: 120,
             coverage: 90,
+            actions: 140,
           }}
           columnMenu={false}
           filterPopovers={false}
@@ -256,6 +397,30 @@ function Accounts() {
           }
           rowLabel={(row) => t("accounts.openRow", { name: row.accountName })}
           renderCell={renderCell}
+          selection={
+            showingRemoved
+              ? undefined
+              : {
+                  selected,
+                  onChange: setSelected,
+                  label: (row) =>
+                    t("accounts.selectRow", { name: row.accountName }),
+                }
+          }
+          toolbarEnd={
+            showingRemoved ? undefined : (
+              <Button
+                variant="outline"
+                disabled={total === 0}
+                onClick={() => setBulkOpen(true)}
+              >
+                {t("accounts.bulkPolicy")}
+                {selected.size > 0
+                  ? ` (${formatNumber(selected.size, locale)})`
+                  : ""}
+              </Button>
+            )
+          }
           toolbar={
             <search
               className="flex flex-wrap items-center gap-2"
@@ -335,6 +500,21 @@ function Accounts() {
                   </option>
                 ))}
               </select>
+              <select
+                value={single(state.filters.scanEnabled) ?? ""}
+                onChange={(e) =>
+                  setFilter("scanEnabled", e.target.value || undefined)
+                }
+                aria-label={t("accounts.column.scan")}
+                className={cn(
+                  selectClass,
+                  single(state.filters.scanEnabled) && selectActive,
+                )}
+              >
+                <option value="">{t("accounts.column.scan")}</option>
+                <option value="true">{t("accounts.scanIncluded")}</option>
+                <option value="false">{t("accounts.scanStopped")}</option>
+              </select>
               <label className="flex items-center gap-2 whitespace-nowrap">
                 <input
                   type="checkbox"
@@ -360,6 +540,68 @@ function Accounts() {
             </search>
           }
         />
+        <AccountEditor
+          open={editorOpen}
+          account={editing}
+          onClose={() => setEditorOpen(false)}
+          onSaved={(saved) => {
+            setNotice(t("accounts.saved", { name: saved.accountName }))
+            if (!editing) {
+              navigate({
+                to: "/accounts/$accountId",
+                params: { accountId: saved.accountId },
+              })
+            }
+          }}
+        />
+        <BulkPolicyDialog
+          open={bulkOpen}
+          selectedIds={[...selected]}
+          filterSelector={filterSelector}
+          filterCount={total}
+          onClose={() => setBulkOpen(false)}
+          onUpdated={(updated) => {
+            setSelected(new Set())
+            setNotice(t("accounts.bulkUpdated", { count: updated }))
+          }}
+        />
+        <Dialog
+          open={deleting !== null}
+          onClose={() => setDeleting(null)}
+          title={t("accounts.confirmDeleteTitle")}
+        >
+          <p>
+            {t("accounts.confirmDeleteBody", {
+              name: deleting?.accountName ?? "",
+            })}
+          </p>
+          <p className="text-muted-foreground">{t("accounts.deleteNote")}</p>
+          {remove.error && (
+            <p className="text-danger">{errorText(t, remove.error)}</p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDeleting(null)}>
+              {t("action.cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={remove.isPending}
+              onClick={() => {
+                if (!deleting) return
+                remove.mutate(deleting.accountId, {
+                  onSuccess: () => {
+                    setNotice(
+                      t("accounts.deleted", { name: deleting.accountName }),
+                    )
+                    setDeleting(null)
+                  },
+                })
+              }}
+            >
+              {t("accounts.delete")}
+            </Button>
+          </div>
+        </Dialog>
       </div>
     </Page>
   )

@@ -14,7 +14,11 @@ type Resource = {
   accountId: string
   awsRegion: string
 }
-type Account = { accountId: string; accountName: string }
+type Account = {
+  accountId: string
+  accountName: string
+  resourceCount: number
+}
 type Column = { key: string; label: string; scope: string; type: string }
 type Facets = Record<string, { value: string; label: string; count: number }[]>
 type Scope = { scanShardId: number; candidateCount: number }
@@ -237,8 +241,9 @@ test("资源预览和详情：整行打开预览，详情回到原列表，刷�
 test("扫描：从表单发起单个账号的扫描，详情成功，当前范围资源和任务详情可打开", async ({
   page,
 }) => {
-  const account = (await api<Page_<Account>>(page, "/accounts?pageSize=1"))
-    .items[0]
+  const account = (
+    await api<Page_<Account>>(page, "/accounts?pageSize=10&scanEnabled=true")
+  ).items[0]
 
   // From a scoped resource list, scan management offers the way back to that scope.
   await page.goto(`./?s=acct:${account.accountId}`)
@@ -321,8 +326,12 @@ test("扫描：从表单发起单个账号的扫描，详情成功，当前范�
 test("账号：搜索后整行进入资源范围，覆盖表和账号范围的资源", async ({
   page,
 }) => {
-  const account = (await api<Page_<Account>>(page, "/accounts?pageSize=1"))
-    .items[0]
+  const accounts = await api<Page_<Account>>(
+    page,
+    "/accounts?pageSize=10&sort=-resourceCount",
+  )
+  const account = accounts.items.find((item) => item.resourceCount > 0)
+  if (!account) throw new Error("this stack has no scanned account")
   const owned = await api<Page_<Resource>>(
     page,
     `/resources?pageSize=1&accountId=${account.accountId}`,
@@ -369,6 +378,169 @@ test("账号：搜索后整行进入资源范围，覆盖表和账号范围的�
   await page.getByRole("link", { name: t("accounts.viewResources") }).click()
   await expect(page).toHaveURL(/s=acct/)
   await expect(page.getByText(totalText(owned.total))).toBeVisible()
+})
+
+test("账号管理：新增、扫描策略、批量停止、删除和恢复", async ({ page }) => {
+  const accountId = String(Date.now()).slice(-12)
+  const accountName = `e2e-scan-policy-${accountId}`
+  const renamed = `${accountName}-edited`
+
+  await page.goto("accounts")
+  await page.getByRole("button", { name: t("accounts.add") }).click()
+  const editor = page.getByRole("dialog", { name: t("accounts.createTitle") })
+  await editor.getByLabel(t("accounts.column.id")).fill(accountId)
+  await editor.getByLabel(t("accounts.column.name")).fill(accountName)
+  await editor.getByRole("button", { name: t("action.save") }).click()
+
+  await expect(
+    page.getByRole("heading", {
+      name: t("accounts.coverageTitle", { name: accountName }),
+      level: 1,
+    }),
+  ).toBeVisible()
+  let account = await api<{
+    accountId: string
+    accountName: string
+    scanEnabled: boolean
+    scanRegionMode: string
+    regions: { region: string; state: string; selected: boolean }[]
+  }>(page, `/accounts/${accountId}`)
+  expect(account.scanEnabled).toBe(true)
+  expect(account.scanRegionMode).toBe("all")
+
+  // Stop scanning is a policy change, not a deletion.
+  const policy = section(page, t("accounts.scanPolicy"))
+  await policy.getByLabel(t("accounts.scanEnabled")).uncheck()
+  await policy.getByRole("button", { name: t("action.save") }).click()
+  await expect(policy.getByText(t("accounts.savedForNextSweep"))).toBeVisible()
+  account = await api(page, `/accounts/${accountId}`)
+  expect(account.scanEnabled).toBe(false)
+
+  await policy.getByLabel(t("accounts.scanEnabled")).check()
+  await policy.getByLabel(t("accounts.regionMode.selected")).check()
+  await policy.getByRole("button", { name: t("accounts.clearRegions") }).click()
+  const selectedRegion = account.regions.find(
+    (r) => r.state === "selected" || r.state === "unknown",
+  )
+  if (!selectedRegion) throw new Error("this stack has no region data")
+  await policy.getByRole("checkbox", { name: selectedRegion.region }).check()
+  await policy.getByRole("button", { name: t("action.save") }).click()
+  await expect(policy.getByText(t("accounts.savedForNextSweep"))).toBeVisible()
+  account = await api(page, `/accounts/${accountId}`)
+  expect(account.scanRegionMode).toBe("selected")
+  expect(
+    account.regions.filter((r) => r.selected).map((r) => r.region),
+  ).toEqual([selectedRegion.region])
+
+  await page.getByRole("button", { name: t("accounts.edit") }).click()
+  const edit = page.getByRole("dialog", { name: t("accounts.editTitle") })
+  await edit.getByLabel(t("accounts.column.name")).fill(renamed)
+  await edit.getByRole("button", { name: t("action.save") }).click()
+  await expect(
+    page.getByRole("heading", {
+      name: t("accounts.coverageTitle", { name: renamed }),
+      level: 1,
+    }),
+  ).toBeVisible()
+
+  // A row selection changes the policy in one call, without visiting every account.
+  await page.goto("accounts")
+  await page
+    .getByRole("searchbox", { name: t("accounts.searchPlaceholder") })
+    .fill(renamed)
+  await page
+    .getByRole("checkbox", { name: t("accounts.selectRow", { name: renamed }) })
+    .check()
+  await page
+    .getByRole("button", { name: new RegExp(t("accounts.bulkPolicy")) })
+    .click()
+  const bulk = page.getByRole("dialog", { name: t("accounts.bulkPolicy") })
+  await bulk.getByLabel(t("accounts.policyAction.disable")).check()
+  await bulk.getByRole("button", { name: t("action.save") }).click()
+  await expect(
+    page.getByText(t("accounts.bulkUpdated", { count: 1 })),
+  ).toBeVisible()
+  account = await api(page, `/accounts/${accountId}`)
+  expect(account.scanEnabled).toBe(false)
+
+  // With no row selected, the same button acts on the current filter (1,000+ accounts
+  // must not require ticking every row).
+  await page
+    .getByRole("button", { name: new RegExp(t("accounts.bulkPolicy")) })
+    .click()
+  const filteredBulk = page.getByRole("dialog", {
+    name: t("accounts.bulkPolicy"),
+  })
+  await expect(
+    filteredBulk.getByRole("radio", {
+      name: t("accounts.scope.filter", { count: 1 }),
+      checked: true,
+    }),
+  ).toBeVisible()
+  await filteredBulk.getByLabel(t("accounts.policyAction.enable")).check()
+  await filteredBulk.getByRole("button", { name: t("action.save") }).click()
+  await expect(filteredBulk).toBeHidden()
+  await expect(
+    page.getByText(t("accounts.bulkUpdated", { count: 1 })),
+  ).toBeVisible()
+  account = await api(page, `/accounts/${accountId}`)
+  expect(account.scanEnabled).toBe(true)
+
+  // A stopped account cannot be picked in the scan form, where it would only get a 409.
+  await page
+    .getByRole("button", { name: new RegExp(t("accounts.bulkPolicy")) })
+    .click()
+  const stoppedBulk = page.getByRole("dialog", {
+    name: t("accounts.bulkPolicy"),
+  })
+  await stoppedBulk.getByLabel(t("accounts.policyAction.disable")).check()
+  await stoppedBulk.getByRole("button", { name: t("action.save") }).click()
+  await expect(stoppedBulk).toBeHidden()
+  await page.goto("scans")
+  await page.getByRole("button", { name: t("scans.new") }).click()
+  const scan = page.getByRole("dialog", { name: t("action.scan") })
+  await scan
+    .getByRole("searchbox", { name: t("scans.form.accountsSearch") })
+    .fill(renamed)
+  await expect(scan.getByText(renamed)).toHaveCount(0)
+  await expect(scan.getByText(t("scans.form.noAccounts"))).toBeVisible()
+  await scan.getByRole("button", { name: t("action.cancel") }).click()
+
+  await page.goto("accounts")
+  await page
+    .getByRole("searchbox", { name: t("accounts.searchPlaceholder") })
+    .fill(renamed)
+
+  // Delete asks once; stop scanning above must not have removed the account.
+  const row = page.getByRole("row", {
+    name: t("accounts.openRow", { name: renamed }),
+  })
+  await row.getByRole("button", { name: t("accounts.delete") }).click()
+  const confirm = page.getByRole("dialog", {
+    name: t("accounts.confirmDeleteTitle"),
+  })
+  await confirm.getByRole("button", { name: t("accounts.delete") }).click()
+  await expect(
+    page.getByText(t("accounts.deleted", { name: renamed })),
+  ).toBeVisible()
+  const removed = await api<{ active: boolean; scanEnabled: boolean }>(
+    page,
+    `/accounts/${accountId}`,
+  )
+  expect(removed.active).toBe(false)
+  expect(removed.scanEnabled).toBe(false) // deletion did not change the policy
+
+  await page.getByRole("checkbox", { name: t("accounts.removed") }).check()
+  await row.getByRole("button", { name: t("accounts.restore") }).click()
+  await expect(
+    page.getByText(t("accounts.restored", { name: renamed })),
+  ).toBeVisible()
+  expect(
+    (await api<{ active: boolean }>(page, `/accounts/${accountId}`)).active,
+  ).toBe(true)
+
+  const cleanup = await page.request.delete(`api/v1/accounts/${accountId}`)
+  expect(cleanup.ok()).toBeTruthy()
 })
 
 test("待核对的范围：从扫描管理进入，预览候选资源，暂不确认回到扫描管理", async ({

@@ -204,10 +204,10 @@ export function useMissingResources(enabled: boolean) {
   })
 }
 
-/** Every account, for the scan form's search; small enough to hold in memory. */
-export function useAllAccounts(enabled: boolean) {
+/** Every account, or only scan-enabled ones for the form; small enough to hold in memory. */
+export function useAllAccounts(enabled: boolean, scanEnabled?: boolean) {
   return useQuery({
-    queryKey: ["accounts-all"],
+    queryKey: ["accounts", "all", scanEnabled ?? null],
     enabled,
     staleTime: 60_000,
     queryFn: async () => {
@@ -215,7 +215,7 @@ export function useAllAccounts(enabled: boolean) {
       for (let page = 1; ; page++) {
         const data = (
           await listAccounts({
-            query: { page, pageSize: 200 },
+            query: { page, pageSize: 200, scanEnabled },
             throwOnError: true,
           })
         ).data

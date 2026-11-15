@@ -6,7 +6,7 @@
 
 | kind | 由谁创建 | 做什么 | 数据源 |
 |---|---|---|---|
-| `sweep_account` | 调度器（一轮全量扫描）、`POST /scans` | 刷新账号的区域和 Config 记录器状态，为每个区域拆出子任务 | EC2、Config |
+| `sweep_account` | 调度器（一轮全量扫描）、`POST /scans` | 检查账号扫描策略，刷新账号区域和 Config 记录器状态，为每个有效区域拆出子任务 | EC2、Config |
 | `config_group` | `sweep_account` | 一个账号区域的一次 Config 查询，覆盖这个区域所有由 Config 负责的类型 | Config |
 | `shard` | `sweep_account`、`POST /scans` | 一个范围（账号 + 区域 + 类型）的 Cloud Control 扫描 | Cloud Control |
 | `resource` | `POST /resources/refresh` | 刷新单个资源 | Cloud Control |
@@ -14,7 +14,7 @@
 
 **分层**（见 DESIGN.md 10.1）：任务处理函数（`worker/handlers.py` 的 `Scanner`，每种任务一个方法）取得租约 → `Discovery` 读取，产出 `Observation`，并标记读取是否完整 → `ResourceWriter` 写入和做删除判断。读取是**逐页**进行的：`Discovery` 返回的是一页一页的迭代器，处理函数在租约内消费它，每读到一页就写一页，页与页之间做检查点（第 3.3 节），期间心跳持续续约；只有读取完整（所有分页、上级资源、补充数据都成功）时才做删除判断。
 
-按需扫描（`POST /scans`）直接为每个账号创建 `sweep_account`，但标记为按需（`priority = 0`）：它拆出的子任务继承这个优先级，一律用 Cloud Control（AMI 用服务 API），不创建 `config_group`，也不读取 Config 记录器。
+按需扫描（`POST /scans`）直接为每个账号创建 `sweep_account`，但标记为按需（`priority = 0`）：它拆出的子任务继承这个优先级，一律用 Cloud Control（AMI 用服务 API），不创建 `config_group`，也不读取 Config 记录器。按需扫描默认遵守账号的 `scan_enabled` 和区域策略；只有请求显式带 `overrideScanPolicy: true` 时才绕过它们。
 
 `resource` 任务不取范围租约：R4 的 `observed_at` 条件保护它的写入，任务表上的部分唯一索引保证同一个资源同时只有一个刷新任务。
 
@@ -38,7 +38,7 @@ queued ──领取──> running ──成功──> succeeded
 
 - **退避时间**：`30 秒 × 2^(attempt-1)`，加 0–30 秒随机值。
 - **attempt** 在领取时加一；回收（心跳超时）不再额外加一，一次中断的运行就算用掉一次。
-- **扫描请求的状态**：子任务全部结束后汇总。`skipped` 和 `coalesced` 算成功（它们代表的数据由别的运行产生）。没有失败是 `succeeded`；有失败也有成功是 `partial`；全部失败是 `failed`；被取消的请求保持 `cancelled`。汇总时把任务数量按状态写入 `counts.tasks`，把任务 `stats` 里的 `new`、`updated`、`missing`、`deleted` 求和写入 `counts.resources`；没有任务上报这些数字时不写 `resources`。`counts` 里的其他键（`accounts`、`skippedAccounts`、`registryError`）保留。
+- **扫描请求的状态**：子任务全部结束后汇总。`skipped` 和 `coalesced` 算成功（它们代表的数据由别的运行产生）。没有失败是 `succeeded`；有失败也有成功是 `partial`；全部失败是 `failed`；被取消的请求保持 `cancelled`。汇总时把任务数量按状态写入 `counts.tasks`，把任务 `stats` 里的 `new`、`updated`、`missing`、`deleted` 求和写入 `counts.resources`；没有任务上报这些数字时不写 `resources`。`counts` 里的其他键（`accounts`、`skippedAccounts`）保留。
 - 没有任何任务的请求（比如所有账号都因上一轮未结束而跳过）创建时就是 `succeeded`。
 
 ## 3. 任务队列
@@ -116,33 +116,32 @@ RETURNING *;
 调度器每分钟运行一次。每个 worker 都运行调度器，但只有持有 advisory lock 的那一个真正执行：它在专用连接上用会话级的 `pg_try_advisory_lock` 选主，连接断了锁就释放，由别的 worker 在下一次检查时接手。锁的 key 由 `<名称>:<DATABASE_SCHEMA>` 取 SHA-256 的前 8 字节、按有符号 64 位整数计算（共用同一个数据库、schema 不同的部署或测试互不干扰）；名称是 `aws-inventory-discovery:scheduler`（选主）和 `aws-inventory-discovery:full-sweep`（见下）。选上之后每分钟依次做：开始一轮扫描（`SWEEP_ENABLED=true` 且距离上一轮的创建时间已满 `SWEEP_INTERVAL_HOURS`）、回收失联的任务（3.2，与 `SWEEP_ENABLED` 无关）、每天 03:00（UTC）的清理（第 12 节）。某一步失败只记日志，不影响其他步骤。
 
 开始一轮扫描：
-1. 调用账号清单服务 ①，更新 `t_inv_aws_account`：新账号插入，已有账号更新字段，清单里没有的设为 `active = false` 并记 `inactive_since`；重新出现的恢复 `active = true`。清单为空视为失败（否则会把所有账号标为不活跃）。
+1. 不调用账号清单服务 ①；账号主数据已经在本地。只取 `active AND scan_enabled` 的账号。
 2. **全量扫描的创建用 `pg_advisory_xact_lock`（`full-sweep`）串行化**，调度器和 `POST /scans {all: true}` 共用这把锁；在锁内再确认一次「这一轮是否已经到期」。
 3. 创建一条 `t_inv_aws_scan_request`（`trigger = schedule`，`priority = 1`，`scope = {all: true}`）。
-4. 为每个活跃账号创建 `sweep_account` 任务：`not_before = 本轮开始时间 + 错开偏移`。偏移是账号 ID 的 SHA-256 前 8 字节对错开窗口取模（Python 内置的 `hash()` 每个进程都不同，不能用）。错开窗口 = 扫描间隔 − 30 分钟（默认 5.5 小时），保证最后一个账号在下一轮开始前有时间完成。上一轮的 `sweep_account` 还没结束（`queued` / `running`）的账号，这一轮跳过，数量记在请求 `counts.skippedAccounts`；`counts.accounts` 是实际创建的数量。
+4. 为每个选中的账号创建 `sweep_account` 任务：`not_before = 本轮开始时间 + 错开偏移`。偏移是账号 ID 的 SHA-256 前 8 字节对错开窗口取模（Python 内置的 `hash()` 每个进程都不同，不能用）。错开窗口 = 扫描间隔 − 30 分钟（默认 5.5 小时），保证最后一个账号在下一轮开始前有时间完成。上一轮的 `sweep_account` 还没结束（`queued` / `running`）的账号，这一轮跳过，数量记在请求 `counts.skippedAccounts`；`counts.accounts` 是实际创建的数量。
 5. **子任务入队去重**：上一轮的 `sweep_account` 已经规划完、但它的子任务还在排队（积压）时，这一轮不再为同一个范围重复入队。定时扫描（`priority = 1`）规划子任务时，如果同一账号已经有排队中的、定时的同类子任务覆盖这个范围，就不创建：`config_group` 按账号 + 区域匹配（`config_group` 运行时才重新算出 Config 负责的类型，所以排队中的那个覆盖整个区域的类型集合）；`shard` 按账号 + 区域 + 类型 + 来源匹配。跳过的数量记在 `sweep_account` 的 `stats.skipped`。按需扫描（`priority = 0`）不去重，必须产生新数据（R2）。检查和插入在同一个事务里，用账号级的 advisory xact lock 串行化（`aws-inventory-discovery:enqueue:<账号>`，不在 shard → task → request 的行锁顺序之内），并用 `t_inv_aws_scan_task` 上按账号的排队中部分索引查找。
 
-账号清单服务调用失败：按退避重试（2、4、8 秒，共 3 次重试）；仍然失败就用库里现有的账号快照继续，**不把任何账号标为不活跃**，并在扫描请求的 `counts` 里记录 `registryError`。
-
 ### 5.2 `POST /scans` 的 `all = true`
-先由 API 调用一次账号清单服务 ① 刷新账号快照（最多重试 1 次；失败就用现有快照，清单为空也不处理）。然后在 `full-sweep` 锁内检查：如果已经有一轮 `scope.all = true`（定时的或按需的）的扫描处于 `queued` / `running`，直接返回那一条（HTTP 200）。否则按 5.1 创建，但 `priority = 0`，并且不做错开（`not_before = now()`），同样跳过上一轮 `sweep_account` 还没结束的账号。
+API 不调用 ①，也不再从 ① 刷新账号数据。在 `full-sweep` 锁内检查：如果已经有一轮 `scope.all = true`（定时的或按需的）的扫描处于 `queued` / `running`，直接返回那一条（HTTP 200）。否则按 5.1 创建，但 `priority = 0`，并且不做错开（`not_before = now()`）；账号范围只取 `active AND scan_enabled`，同样跳过上一轮 `sweep_account` 还没结束的账号。`all` 不接受 `overrideScanPolicy`，需要覆盖停用账号时按账号列表显式请求。
 
 ### 5.3 `POST /scans` 的账号列表
-超过 `MAX_SCAN_ACCOUNTS` 返回 422 `scope_too_large`。账号必须在快照里并且是活跃的；库里没有的账号，API 先调用一次账号清单服务 ① 确认：清单里有就把快照同步下来再创建，清单里也没有返回 404 `account_not_found`（`details.accountIds` 列出），账号清单服务不可用返回 503 `dependency_unavailable`。每个账号一个按需 `sweep_account`（`priority = 0`，不错开）；请求的 `scope` 保存规范化后的 `accountIds`、`awsRegions`、`resourceTypes`（排序、去重）。
+超过 `MAX_SCAN_ACCOUNTS` 返回 422 `scope_too_large`。账号必须存在于本地账号主数据并且是活跃的；未知或已删除账号返回 404 `account_not_found`（`details.accountIds` 列出），不再向 ① 查询。默认拒绝 `scan_enabled = false` 的账号，返回 409 `account_scan_disabled`；只有请求显式带 `overrideScanPolicy: true` 才创建。每个账号一个按需 `sweep_account`（`priority = 0`，不错开）；请求的 `scope` 保存规范化后的 `accountIds`、`awsRegions`、`resourceTypes`（排序、去重），显式覆盖时再保存 `overrideScanPolicy: true`。
 
 ## 6. 各任务的执行流程
 
 ### 6.1 `sweep_account`
-1. 向凭证服务 ② 取得凭证。失败：任务以 `credential_error` 失败（可重试），账号的 `access_status` 在任务结束后重新计算（第 10 节）。
-2. `ec2:DescribeRegions(AllRegions=True)`，更新 `t_inv_aws_account_region`（`opt_in_status`、`reachable`、`checked_at`），`reachable` 按 `REACHABLE_REGIONS` 计算。**调用的区域是 `REACHABLE_REGIONS` 里第一个默认开启（不是 opt-in）的区域**：opt-in 区域（如 ap-east-1）在目标账号里可能没开启，在那里调用会失败。`REACHABLE_REGIONS` 里没有默认开启的区域时，任务不可重试地失败（`internal`），错误信息写明原因，要求加一个（比如 us-east-1）。opt-in 区域的清单来自 AWS 官方文档，写在 `aws/regions.py`。
-3. 可扫描的区域 = 在 `REACHABLE_REGIONS` 里、`OptInStatus` 是 `opt-in-not-required` 或 `opted-in`、并且在请求的 `awsRegions` 里（请求没指定区域时不限）。**只有定时扫描**读取 Config 记录器：`config:DescribeConfigurationRecorders` 和 `DescribeConfigurationRecorderStatus`，写入 `config_recorder`（`recording`、`allSupported`、`includeGlobal`、`resourceTypes`、`excludedTypes`、`dailyTypes`；`dailyTypes = ["*"]` 表示默认按天记录）。读取失败时当作「Config 什么都不记录」，所有类型都规划 Cloud Control，让子任务自己报告真实的错误。
-4. 为每个可扫描的区域规划子任务（类型限定在请求的 `resourceTypes` 里，没指定则全部）：
+1. 加载账号的 `active`、`scan_enabled` 和区域策略。账号已被删除时直接结束（`regions = 0`，不创建子任务）；`scan_enabled = false` 且请求没有 `overrideScanPolicy` 时同样直接结束。这两种情况都没有成功 listing，不能产生 missing/deleted。
+2. 向凭证服务 ② 取得凭证。失败：任务以 `credential_error` 失败（可重试），账号的 `access_status` 在任务结束后重新计算（第 10 节）。
+3. `ec2:DescribeRegions(AllRegions=True)`，更新 `t_inv_aws_account_region`（`opt_in_status`、`reachable`、`checked_at`），`reachable` 按 `REACHABLE_REGIONS` 计算。**调用的区域是 `REACHABLE_REGIONS` 里第一个默认开启（不是 opt-in）的区域**：opt-in 区域（如 ap-east-1）在目标账号里可能没开启，在那里调用会失败。`REACHABLE_REGIONS` 里没有默认开启的区域时，任务不可重试地失败（`internal`），错误信息写明原因，要求加一个（比如 us-east-1）。opt-in 区域的清单来自 AWS 官方文档，写在 `aws/regions.py`。
+4. 可扫描的区域 = 区域策略（`all`，或 `selected` 且在该账号的 `t_inv_aws_account_scan_region` 里）∩ 在 `REACHABLE_REGIONS` 里 ∩ `OptInStatus` 是 `opt-in-not-required` 或 `opted-in` ∩ 请求的 `awsRegions`（请求没指定区域时不限）。`overrideScanPolicy` 时忽略区域策略和 `scan_enabled`，但仍然只扫描账号已开启且网络可达的区域。**只有定时扫描**读取 Config 记录器：`config:DescribeConfigurationRecorders` 和 `DescribeConfigurationRecorderStatus`，写入 `config_recorder`（`recording`、`allSupported`、`includeGlobal`、`resourceTypes`、`excludedTypes`、`dailyTypes`；`dailyTypes = ["*"]` 表示默认按天记录）。读取失败时当作「Config 什么都不记录」，所有类型都规划 Cloud Control，让子任务自己报告真实的错误。
+5. 为每个可扫描的区域规划子任务（类型限定在请求的 `resourceTypes` 里，没指定则全部）：
    - 用服务 API 读取的类型（AMI）：各一个 `shard`，定时和按需都一样。
    - 定时扫描：Config 支持这个类型、记录器正在记录它、并且是持续记录（不是按天）的，合成一个 `config_group`；其余能用 Cloud Control `ListResources` 的类型各一个 `shard`。
    - 按需扫描：每个类型各一个 `shard`，不使用 Config。
    - 重新运行同一个 `sweep_account`（重试）时，已经为这个请求和账号创建过的子任务不会重复创建。
-5. 全局类型（Route 53 Hosted Zone）只在 us-east-1 规划一次，区域记为 `global`：如果 us-east-1 的记录器包含全局资源（`includeGlobal`），由 us-east-1 的 `config_group` 读取；否则创建一个 `shard`，用 us-east-1 的客户端调用 Cloud Control。
-6. 任务的 `stats` 是 `{regions, tasks, skipped}`（区域数、新建的子任务数、因 5.1 第 5 条去重而跳过的子任务数）。
+6. 全局类型（Route 53 Hosted Zone）只在 us-east-1 规划一次，区域记为 `global`：如果 us-east-1 的记录器包含全局资源（`includeGlobal`），由 us-east-1 的 `config_group` 读取；否则创建一个 `shard`，用 us-east-1 的客户端调用 Cloud Control。全局类型也受区域策略约束：只有 us-east-1 是可扫描区域时才会规划，所以 `selected` 模式必须选中该区域才会扫描全局资源。
+7. 任务的 `stats` 是 `{regions, tasks, skipped}`（区域数、新建的子任务数、因 5.1 第 5 条去重而跳过的子任务数）。
 
 ### 6.2 `config_group`
 1. 先读一次记录器，重新算出这个区域由 Config 负责的类型（全局类型只在 us-east-1 读取）；没有就直接结束。
@@ -234,7 +233,6 @@ deleted ──再次被看到──> active
 | `endpoint_unreachable` | `EndpointConnectionError`、连接超时、读取超时 | 是 | 无法连接 AWS 服务 | 检查这个区域的 VPC endpoint、私有托管区和 peering 路由 |
 | `region_disabled` | `OptInRequired`、`AuthFailure`（区域未开启时的认证失败） | 否 | 区域未开启 | 无需处理 |
 | `unsupported` | Cloud Control `UnsupportedActionException`、`TypeNotFoundException` | 否 | 这个类型不支持读取 | 检查资源类型配置的数据来源设置 |
-| `registry_error` | 账号清单服务 ① 返回错误或超时 | 是 | 无法获取账号清单 | 检查账号清单服务；本轮使用现有的账号快照。注意：它不会成为任务的 `error_code`，只以 `registryError` 记在扫描请求的 `counts` 里 |
 | `worker_lost` | 心跳超时且重试用完（由回收设置） | —（回收放回队列，次数用完才标为失败） | 处理任务的程序中断了 | 查看任务日志 |
 | `internal` | 其他异常，包括映射失败、`REACHABLE_REGIONS` 里没有默认开启的区域 | 是（后者不可重试） | 内部错误 | 查看任务日志 |
 
@@ -251,7 +249,7 @@ botocore 的重试用 `adaptive` 模式，最多 10 次，连接超时 10 秒、
 | 部分任务是 `access_denied` | `partial` |
 | 其他 | `ok`，并更新 `last_scan_ok_at` |
 
-`access_error` 记录最近一个失败任务的错误说明，状态为 `ok` 时清空；`access_checked_at` 记录计算时间。账号不在快照里（比如已被清理）时只记一条警告。
+`access_error` 记录最近一个失败任务的错误说明，状态为 `ok` 时清空；`access_checked_at` 记录计算时间。账号不在主数据里（比如已被清理）时只记一条警告。
 
 ## 11. 优雅退出
 
@@ -268,6 +266,6 @@ ECS 停止任务时发送 SIGTERM，`stopTimeout` 为 120 秒：
 - 删除 `deleted_at` 早于 `DELETED_PURGE_DAYS` 天的资源。
 - 删除 `inactive_since` 早于 `INACTIVE_ACCOUNT_PURGE_DAYS` 天的账号，以及它的资源、区域和范围记录。
 
-任务、资源、账号三步的删除都在事务里锁定候选并复查资格：任务已经结束且早于保留期，资源仍是 `deleted` 且早于保留期，账号仍不活跃且 `inactive_since` 早于保留期。账号清理与 `sync_accounts` 共用按账号的 advisory lock，清理期间恢复活跃的账号不会被删，清理不会为等待这个锁而卡住；资源清理在 `DELETE` 外层重复状态和保留期条件，等锁之后重新判断。请求清理只删除已经没有任务的请求，由 `NOT EXISTS` 保证。
+任务、资源、账号三步的删除都在事务里锁定候选并复查资格：任务已经结束且早于保留期，资源仍是 `deleted` 且早于保留期，账号仍不活跃且 `inactive_since` 早于保留期。账号清理与账号新增、修改、恢复和导入共用按账号的 advisory lock，清理期间恢复或重新导入的账号不会被删，清理不会为等待这个锁而卡住；资源清理在 `DELETE` 外层重复状态和保留期条件，等锁之后重新判断。请求清理只删除已经没有任务的请求，由 `NOT EXISTS` 保证。
 
 每次最多删除 10,000 行，循环直到完成，避免长事务。

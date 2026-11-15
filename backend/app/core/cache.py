@@ -129,6 +129,21 @@ class Cache:
         if self._client is not None:
             self._client.close()
 
+    def delete_prefix(self, name: str) -> None:
+        """Drop every entry under one namespace (for example, after an account write).
+
+        The deployment uses a non-clustered cache (D-34); SCAN keeps this safe if that
+        changes, and a Redis failure remains a miss rather than an API error.
+        """
+        if self._client is None:
+            return
+        try:
+            keys = list(self._client.scan_iter(match=self.key(name, "*")))
+            if keys:
+                self._client.delete(*keys)
+        except (redis.RedisError, OSError) as exc:
+            logger.warning("cache invalidation failed: %s", exc)
+
 
 def validated[T](adapter: TypeAdapter[T], raw: Any) -> T | None:
     """A cached value read back as `T`, or None (a miss) if it no longer has that shape — the

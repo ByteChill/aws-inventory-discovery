@@ -68,6 +68,7 @@ class Store:
             self.recorders: dict[Scope, dict[str, Any]] = {}
             self.config_items: dict[Scope, dict[tuple[str, str], dict[str, Any]]] = {}
             self.resources: dict[Scope, dict[tuple[str, str], dict[str, Any]]] = {}
+            self.findings: dict[str, dict[str, Any]] = {}
             self.errors: list[ErrorRule] = []
 
     # --- dataset -------------------------------------------------------------------------
@@ -138,6 +139,23 @@ class Store:
                         item["configurationItemCaptureTime"] = now_iso()
         return result
 
+    # --- findings service (3) ------------------------------------------------------------
+
+    def put_findings(self, image_id: str, body: dict[str, Any]) -> None:
+        with self.lock:
+            self.findings[image_id] = copy.deepcopy(body)
+
+    def get_findings(self, image_id: str) -> dict[str, Any]:
+        """An unknown image has no findings: the service answers with zero counts."""
+        with self.lock:
+            body = self.findings.get(image_id)
+        if body is not None:
+            return copy.deepcopy(body)
+        return {
+            "counts": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+            "maxScore": None,
+        }
+
     def counts(self) -> dict[str, int]:
         with self.lock:
             return {
@@ -145,6 +163,7 @@ class Store:
                 "recorders": len(self.recorders),
                 "config_items": sum(len(v) for v in self.config_items.values()),
                 "resources": sum(len(v) for v in self.resources.values()),
+                "findings": len(self.findings),
                 "errors": len(self.errors),
                 "access_keys": len(self.key_to_account),
             }

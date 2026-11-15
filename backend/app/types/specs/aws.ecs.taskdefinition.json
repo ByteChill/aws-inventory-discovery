@@ -61,5 +61,16 @@
       "path": "ContainerDefinitions",
       "count": true
     }
+  ],
+  "reportFields": [
+    {
+      "key": "image",
+      "label": {
+        "zh-CN": "镜像",
+        "en": "Image"
+      },
+      "type": "text",
+      "path": "ContainerDefinitions[].Image"
+    }
   ]
 }

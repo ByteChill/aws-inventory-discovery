@@ -115,6 +115,13 @@ def create_app(moto_endpoint: str | None = None) -> FastAPI:
             }
         )
 
+    # --- findings service ③ ---------------------------------------------------------------
+
+    @app.get("/ami/{image_id}/findings")
+    def image_findings(image_id: str) -> dict[str, Any]:
+        """The assumed shape of the internal findings service (DESIGN section 15)."""
+        return store.get_findings(image_id)
+
     # --- admin ---------------------------------------------------------------------------
 
     @app.put("/_admin/dataset")
@@ -178,6 +185,12 @@ def create_app(moto_endpoint: str | None = None) -> FastAPI:
         return store.delete_resource(
             account_id, region, type_name, identifier, config_resource_id, config_status
         )
+
+    @app.put("/_admin/findings")
+    def admin_put_findings(body: dict[str, Any] = Body(...)) -> dict[str, int]:
+        """`{"imageId": ..., "counts": {critical, high, medium, low}, "maxScore": ...}`."""
+        store.put_findings(body["imageId"], body)
+        return store.counts()
 
     @app.post("/_admin/errors")
     def admin_add_error(req: ErrorRequest) -> dict[str, int]:

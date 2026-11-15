@@ -32,12 +32,14 @@ from app.aws import config_source
 from app.aws.config_source import RecorderState
 from app.aws.credentials import CredentialError, CredentialService
 from app.aws.errors import ScanError, classify
+from app.aws.findings import FindingsError, FindingsService, FindingsUnavailable
 from app.aws.regions import ENABLED, NoDescribeRegionsRegion, describe_regions
 from app.aws.session import make_client, make_session
 from app.core.config import Settings
 from app.core.regions import GLOBAL_HOME, GLOBAL_REGION
 from app.models import AccountRegion, Resource, ScanRequest, ScanTask
 from app.models.scan import utcnow
+from app.query.tables import FINDING
 from app.types.hooks import TYPE_HOOKS, Gone, Hooks
 from app.types.mapping import MappingError
 from app.types.registry import TypeRegistry, validate_hooks
@@ -100,12 +102,14 @@ class Scanner:
         writer: ResourceWriter,
         credentials: CredentialService,
         hooks: dict[str, Hooks] | None = None,
+        findings: FindingsService | None = None,
     ) -> None:
         self.settings = settings
         self.registry = registry
         self.writer = writer
         self.credentials = credentials
         self.hooks = TYPE_HOOKS if hooks is None else hooks
+        self.findings = findings
 
     @classmethod
     def from_settings(cls, engine: Engine, settings: Settings) -> Self:
@@ -116,6 +120,9 @@ class Scanner:
             registry,
             ResourceWriter(engine, registry, settings),
             CredentialService.from_settings(settings),
+            findings=(
+                FindingsService.from_settings(settings) if settings.FINDINGS_SERVICE_URL else None
+            ),
         )
 
     def handlers(self) -> dict[str, Handler]:
@@ -194,6 +201,69 @@ class Scanner:
                 success=error is None,
                 error_code=error.code if error else None,
             )
+
+    def _sync_findings(self, task: ScanTask, resource_ids: list[str]) -> None:
+        """Store the current findings summary of the resources just written.
+
+        Only for types that opt in with `findings: true`. Best effort: the findings service is
+        enrichment, so a failed read leaves the previous summary (or no row = "never checked")
+        and the scan goes on. The upsert is fenced by the task claim like any other write, and
+        its `checked_at` guard keeps a slow older read from replacing a newer summary. When the
+        service is unavailable (not just one image failing), the rest of the page is skipped.
+        """
+        assert task.region is not None and task.resource_type is not None
+        if self.findings is None or not resource_ids:
+            return
+        if not self.registry.get(task.resource_type).findings:
+            return
+        rows: list[dict[str, Any]] = []
+        failed = 0
+        for index, resource_id in enumerate(resource_ids):
+            try:
+                levels = self.findings.fetch(resource_id)
+            except FindingsUnavailable:
+                failed += len(resource_ids) - index
+                break
+            except FindingsError:
+                failed += 1
+                continue
+            rows.append(
+                {
+                    "account_id": task.account_id,
+                    "aws_region": task.region,
+                    "resource_type": task.resource_type,
+                    "resource_id": resource_id,
+                    "critical_count": levels.counts.critical,
+                    "high_count": levels.counts.high,
+                    "medium_count": levels.counts.medium,
+                    "low_count": levels.counts.low,
+                    "max_score": levels.max_score,
+                    "checked_at": datetime.now(UTC),
+                }
+            )
+        if failed:
+            logger.warning(
+                "findings unavailable for %d of %d resources",
+                failed,
+                len(resource_ids),
+                extra={"resourceType": task.resource_type, "region": task.region},
+            )
+        if not rows:
+            return
+        counts = ("critical_count", "high_count", "medium_count", "low_count")
+        statement = pg_insert(FINDING).values(rows)
+        statement = statement.on_conflict_do_update(
+            index_elements=["account_id", "aws_region", "resource_type", "resource_id"],
+            set_={
+                **{name: statement.excluded[name] for name in counts},
+                "max_score": statement.excluded["max_score"],
+                "checked_at": statement.excluded["checked_at"],
+            },
+            where=FINDING.c.checked_at < statement.excluded.checked_at,
+        )
+        with Session(self.writer.engine) as session, session.begin():
+            lock_worker_claim(session, task, [leases.Scope.of(task)])
+            session.connection().execute(statement)
 
     @staticmethod
     def _result(ctx: TaskContext, task: ScanTask, **extra: Any) -> dict[str, Any]:
@@ -439,6 +509,7 @@ class Scanner:
         seen: set[str] = set()
         for page in pages:  # read, write and check in page by page, inside the lease
             self.writer.write(page, task=task)
+            self._sync_findings(task, [obs.item.resource_id for obs in page])
             seen.update(obs.item.resource_id for obs in page)
             ctx.checkpoint(task)
         if pages.complete:
@@ -502,6 +573,7 @@ class Scanner:
             )
             return self._result(ctx, task, result=outcome)
         self.writer.write([found], task=task)
+        self._sync_findings(task, [found.item.resource_id])
         return self._result(ctx, task, result="found")
 
     def _live_source(self, resource_type: str) -> Source:

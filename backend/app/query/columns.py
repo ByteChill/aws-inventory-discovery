@@ -6,10 +6,21 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, Literal
 
-from sqlalchemy import Boolean, ColumnElement, Numeric, Text, case, cast, false, func, true
+from sqlalchemy import (
+    Boolean,
+    ColumnElement,
+    Numeric,
+    Table,
+    Text,
+    case,
+    cast,
+    false,
+    func,
+    true,
+)
 from sqlalchemy.dialects.postgresql import TIMESTAMP
 
-from app.query.tables import A, R
+from app.query.tables import RESOURCE, A, R
 from app.types.columns import ColumnPath
 from app.types.spec import Column
 
@@ -137,17 +148,20 @@ def value_label(group: str, value: str, language: Language) -> str:
 # --------------------------------------------------------------------------- type columns in SQL
 
 
-def _node(column: ColumnPath) -> Any:
-    return R.configuration[column.path]  # jsonb #> path
+def _node(column: ColumnPath, table: Table = RESOURCE) -> Any:
+    return table.c.configuration[column.path]  # jsonb #> path
 
 
-def attr_expr(column: ColumnPath, *, raw_datetime: bool = False) -> ColumnElement[Any]:
+def attr_expr(
+    column: ColumnPath, *, raw_datetime: bool = False, table: Table = RESOURCE
+) -> ColumnElement[Any]:
     """The SQL value of a type column; mirrors `app.types.columns.column_values`.
 
     `raw_datetime` keeps datetimes as the text stored in the configuration (for output);
-    otherwise they are parsed to timestamptz (for filtering and sorting).
+    otherwise they are parsed to timestamptz (for filtering and sorting). `table` is the
+    resource table or an alias of it, for comparing a related resource.
     """
-    node = _node(column)
+    node = _node(column, table)
     text = node.as_string()
     kind = func.jsonb_typeof(node)
     if column.exists:

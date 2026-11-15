@@ -25,6 +25,8 @@ class Settings(BaseSettings):
 
     ACCOUNT_REGISTRY_URL: str | None = None
     CREDENTIAL_SERVICE_URL: str | None = None
+    # The internal findings service (3). Unset: findings are not collected.
+    FINDINGS_SERVICE_URL: str | None = None
 
     REACHABLE_REGIONS: Annotated[list[str], NoDecode] = [
         "ap-east-1",

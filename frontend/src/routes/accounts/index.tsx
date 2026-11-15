@@ -80,6 +80,7 @@ function Accounts() {
   const remove = useDeleteAccount()
   const restore = useRestoreAccount()
   const importAccounts = useImportAccounts()
+  const pageError = importAccounts.error ?? restore.error
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<AccountSummary | undefined>()
@@ -350,14 +351,12 @@ function Accounts() {
             </>
           }
         />
-        {(notice || importAccounts.error) && (
+        {(notice || pageError) && (
           <p
             role="status"
-            className={
-              importAccounts.error ? "text-danger" : "text-muted-foreground"
-            }
+            className={pageError ? "text-danger" : "text-muted-foreground"}
           >
-            {importAccounts.error ? errorText(t, importAccounts.error) : notice}
+            {pageError ? errorText(t, pageError) : notice}
           </p>
         )}
       </div>
@@ -412,7 +411,7 @@ function Accounts() {
             showingRemoved ? undefined : (
               <Button
                 variant="outline"
-                disabled={selected.size === 0}
+                disabled={total === 0}
                 onClick={() => setBulkOpen(true)}
               >
                 {t("accounts.bulkPolicy")}

@@ -118,6 +118,9 @@ export function AccountScanPolicy({ account }: { account: AccountDetail }) {
             </label>
           ))}
         </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {t("accounts.globalRegionsHint")}
+        </p>
       </fieldset>
 
       <div className="flex flex-wrap items-center justify-between gap-2">

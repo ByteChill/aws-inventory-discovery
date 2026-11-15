@@ -277,7 +277,6 @@ class Scanner:
     # -- sweep_account (§6.1) ----------------------------------------------------------------
 
     def sweep_account(self, task: ScanTask, ctx: TaskContext) -> dict[str, Any] | None:
-        aws = self._aws(task)
         request = self._scope_of(task)
         scope = request.scope or {}
         on_demand = leases.is_on_demand(task)
@@ -294,6 +293,7 @@ class Scanner:
             # The account was stopped after this task was queued. It is not a successful
             # listing, so it must not drive missing/deleted results.
             return {"regions": 0, "tasks": 0, "skipped": 0}
+        aws = self._aws(task)
         try:
             described = describe_regions(aws, self.settings.REACHABLE_REGIONS)
         except AWS_ERRORS as exc:

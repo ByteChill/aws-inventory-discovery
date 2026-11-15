@@ -529,6 +529,13 @@ export function DataTable<Row extends object>({
                           onRowActivate
                             ? (e) => {
                                 if (e.key !== "Enter" && e.key !== " ") return
+                                const target = e.target as HTMLElement
+                                if (
+                                  target.closest(
+                                    "a,button,input,select,textarea,[role='menu']",
+                                  )
+                                )
+                                  return
                                 e.preventDefault()
                                 onRowActivate(row.original)
                               }

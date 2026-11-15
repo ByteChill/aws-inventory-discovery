@@ -83,7 +83,7 @@ export function ScanDialog({
 }) {
   const { t } = useI18n()
   const navigate = useNavigate()
-  const accounts = useAllAccounts(open)
+  const accounts = useAllAccounts(open, true)
   const facets = useFacets(["awsRegion"], {}, open)
   const types = useResourceTypes()
   const summary = useScanSummary(open)
@@ -123,6 +123,15 @@ export function ScanDialog({
     )
     setPresetApplied(true)
   }, [open, presetApplied, accounts.data, preset?.eimId])
+  // A preset can name an account that has since stopped scanning; it must not survive
+  // just because it is no longer in the enabled-account list.
+  useEffect(() => {
+    if (!open || !accounts.data) return
+    const available = new Set(accounts.data.map((account) => account.accountId))
+    setPicked(
+      (current) => new Set([...current].filter((id) => available.has(id))),
+    )
+  }, [open, accounts.data])
 
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase()

@@ -64,6 +64,15 @@ class ScanPolicy:
     selected: frozenset[str]
 
 
+INSERT_CHUNK_ROWS = 1000
+
+
+def _insert_rows(session: Session, table: Any, rows: Sequence[dict[str, Any]]) -> None:
+    """Insert in bounded chunks: one multi-row statement can exceed PostgreSQL's parameter limit."""
+    for start in range(0, len(rows), INSERT_CHUNK_ROWS):
+        session.connection().execute(insert(table).values(rows[start : start + INSERT_CHUNK_ROWS]))
+
+
 def _lock_accounts(session: Session, account_ids: Iterable[str]) -> None:
     """Serialise account writes with the cleanup purge using the existing per-account locks."""
     ids = sorted(set(account_ids))
@@ -95,8 +104,7 @@ def _replace_selected_regions(
         for account_id in account_ids
         for region in sorted(set(regions))
     ]
-    if rows:
-        session.connection().execute(insert(AccountScanRegion.__table__).values(rows))  # ty: ignore[unresolved-attribute]
+    _insert_rows(session, AccountScanRegion.__table__, rows)  # ty: ignore[unresolved-attribute]
     session.connection().execute(
         update(Account.__table__)  # ty: ignore[unresolved-attribute]
         .where(col(Account.account_id).in_(account_ids))
@@ -106,8 +114,7 @@ def _replace_selected_regions(
 
 def _add_selected_regions(session: Session, account_id: str, regions: Sequence[str]) -> None:
     rows = [{"account_id": account_id, "region": region} for region in sorted(set(regions))]
-    if rows:
-        session.connection().execute(insert(AccountScanRegion.__table__).values(rows))  # ty: ignore[unresolved-attribute]
+    _insert_rows(session, AccountScanRegion.__table__, rows)  # ty: ignore[unresolved-attribute]
 
 
 def create_account(session: Session, body: AccountCreate, now: datetime | None = None) -> None:
@@ -295,27 +302,27 @@ def import_accounts(
     )
     fresh = [account for account in accounts if account.account_id not in existing]
     if fresh:
-        session.connection().execute(
-            insert(Account.__table__).values(  # ty: ignore[unresolved-attribute]
-                [
-                    {
-                        "account_id": account.account_id,
-                        "account_name": account.account_name,
-                        "account_type": account.account_type,
-                        "eim_id": account.eim_id,
-                        "eim_app": account.eim_app,
-                        "ba_id": account.ba_id,
-                        "active": True,
-                        "inactive_since": None,
-                        "registry_fetched_at": now,
-                        "source": "imported",
-                        "scan_enabled": True,
-                        "scan_region_mode": "all",
-                        "updated_at": now,
-                    }
-                    for account in fresh
-                ]
-            )
+        _insert_rows(
+            session,
+            Account.__table__,  # ty: ignore[unresolved-attribute]
+            [
+                {
+                    "account_id": account.account_id,
+                    "account_name": account.account_name,
+                    "account_type": account.account_type,
+                    "eim_id": account.eim_id,
+                    "eim_app": account.eim_app,
+                    "ba_id": account.ba_id,
+                    "active": True,
+                    "inactive_since": None,
+                    "registry_fetched_at": now,
+                    "source": "imported",
+                    "scan_enabled": True,
+                    "scan_region_mode": "all",
+                    "updated_at": now,
+                }
+                for account in fresh
+            ],
         )
     session.commit()
     return ImportResult(

@@ -463,6 +463,54 @@ test("账号管理：新增、扫描策略、批量停止、删除和恢复", as
   account = await api(page, `/accounts/${accountId}`)
   expect(account.scanEnabled).toBe(false)
 
+  // With no row selected, the same button acts on the current filter (1,000+ accounts
+  // must not require ticking every row).
+  await page
+    .getByRole("button", { name: new RegExp(t("accounts.bulkPolicy")) })
+    .click()
+  const filteredBulk = page.getByRole("dialog", {
+    name: t("accounts.bulkPolicy"),
+  })
+  await expect(
+    filteredBulk.getByRole("radio", {
+      name: t("accounts.scope.filter", { count: 1 }),
+      checked: true,
+    }),
+  ).toBeVisible()
+  await filteredBulk.getByLabel(t("accounts.policyAction.enable")).check()
+  await filteredBulk.getByRole("button", { name: t("action.save") }).click()
+  await expect(filteredBulk).toBeHidden()
+  await expect(
+    page.getByText(t("accounts.bulkUpdated", { count: 1 })),
+  ).toBeVisible()
+  account = await api(page, `/accounts/${accountId}`)
+  expect(account.scanEnabled).toBe(true)
+
+  // A stopped account cannot be picked in the scan form, where it would only get a 409.
+  await page
+    .getByRole("button", { name: new RegExp(t("accounts.bulkPolicy")) })
+    .click()
+  const stoppedBulk = page.getByRole("dialog", {
+    name: t("accounts.bulkPolicy"),
+  })
+  await stoppedBulk.getByLabel(t("accounts.policyAction.disable")).check()
+  await stoppedBulk.getByRole("button", { name: t("action.save") }).click()
+  await expect(stoppedBulk).toBeHidden()
+  await page.goto("scans")
+  await page.getByRole("button", { name: t("scans.new") }).click()
+  const scan = page.getByRole("dialog", { name: t("action.scan") })
+  await scan
+    .getByRole("searchbox", { name: t("scans.form.accountsSearch") })
+    .fill(renamed)
+  await expect(scan.getByText(renamed)).toHaveCount(0)
+  await expect(scan.getByText(t("scans.form.noAccounts"))).toBeVisible()
+  await scan.getByRole("button", { name: t("action.cancel") }).click()
+
+  await page.goto("accounts")
+  await page
+    .getByRole("searchbox", { name: t("accounts.searchPlaceholder") })
+    .fill(renamed)
+
   // Delete asks once; stop scanning above must not have removed the account.
   const row = page.getByRole("row", {
     name: t("accounts.openRow", { name: renamed }),

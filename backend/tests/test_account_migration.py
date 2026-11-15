@@ -65,15 +65,25 @@ def test_existing_accounts_become_legacy_scan_enabled_all(
                 """,
                 (account["account_id"],),
             ).fetchone()
+            registry_nullable = connection.execute(
+                """
+                SELECT is_nullable
+                  FROM information_schema.columns
+                 WHERE table_schema = current_schema()
+                   AND table_name = 't_inv_aws_account'
+                   AND column_name = 'registry_fetched_at'
+                """
+            ).fetchone()
             selected_table = connection.execute(
                 "SELECT to_regclass('t_inv_aws_account_scan_region')"
             ).fetchone()
 
         assert row is not None
-        source, enabled, mode, updated_at, registry_is_nullable = row
+        source, enabled, mode, updated_at, registry_value_is_null = row
         assert (source, enabled, mode) == ("legacy", True, "all")
         assert updated_at.isoformat() == "2026-11-08T12:00:00+00:00"
-        assert registry_is_nullable is False
+        assert registry_value_is_null is False
+        assert registry_nullable == ("YES",)
         assert selected_table == ("t_inv_aws_account_scan_region",)
     finally:
         clear_caches()

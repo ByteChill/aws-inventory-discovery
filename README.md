@@ -84,9 +84,9 @@ podman compose up -d
 podman compose run --rm seed
 ```
 
-然后打开 http://localhost:8000/aws-inventory/ ，在「扫描」页选择全部账号，点「扫描」开始一轮扫描（本地关闭了定时扫描：`SWEEP_ENABLED=false`，因为定时扫描把账号错开在约 5.5 小时里；按需扫描立即执行）。
-
 账号主数据由本服务维护。空库可以用账号页的「从 ① 导入」或 `POST /api/v1/accounts/import` 一次性导入本地不存在的账号；导入不会覆盖本地修改。也可以在账号页手动新增。停止扫描和删除账号是两个动作：前者保留数据，后者进入 30 天清理窗口。
+
+然后打开 http://localhost:8000/aws-inventory/ ，在「扫描」页选择全部账号，点「扫描」开始一轮扫描（本地关闭了定时扫描：`SWEEP_ENABLED=false`，因为定时扫描把账号错开在约 5.5 小时里；按需扫描立即执行）。
 
 本地环境里：
 

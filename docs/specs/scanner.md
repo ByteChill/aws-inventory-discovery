@@ -140,7 +140,7 @@ API 不调用 ①，也不再从 ① 刷新账号数据。在 `full-sweep` 锁�
    - 定时扫描：Config 支持这个类型、记录器正在记录它、并且是持续记录（不是按天）的，合成一个 `config_group`；其余能用 Cloud Control `ListResources` 的类型各一个 `shard`。
    - 按需扫描：每个类型各一个 `shard`，不使用 Config。
    - 重新运行同一个 `sweep_account`（重试）时，已经为这个请求和账号创建过的子任务不会重复创建。
-6. 全局类型（Route 53 Hosted Zone）只在 us-east-1 规划一次，区域记为 `global`：如果 us-east-1 的记录器包含全局资源（`includeGlobal`），由 us-east-1 的 `config_group` 读取；否则创建一个 `shard`，用 us-east-1 的客户端调用 Cloud Control。
+6. 全局类型（Route 53 Hosted Zone）只在 us-east-1 规划一次，区域记为 `global`：如果 us-east-1 的记录器包含全局资源（`includeGlobal`），由 us-east-1 的 `config_group` 读取；否则创建一个 `shard`，用 us-east-1 的客户端调用 Cloud Control。全局类型也受区域策略约束：只有 us-east-1 是可扫描区域时才会规划，所以 `selected` 模式必须选中该区域才会扫描全局资源。
 7. 任务的 `stats` 是 `{regions, tasks, skipped}`（区域数、新建的子任务数、因 5.1 第 5 条去重而跳过的子任务数）。
 
 ### 6.2 `config_group`

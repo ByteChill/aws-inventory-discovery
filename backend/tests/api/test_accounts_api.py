@@ -8,12 +8,15 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, delete, insert, update
-from sqlmodel import col
+from sqlalchemy import Engine, delete, func, insert, update
+from sqlmodel import Session, col, select
 
-from app.models import AccountRegion, AccountScanRegion
+from app import accounts as account_service
+from app.aws.account_registry import RegistryAccount
+from app.models import Account, AccountRegion, AccountScanRegion
 from app.models.account import utcnow
 from app.query.tables import ACCOUNT
+from app.schemas.accounts import AccountBatchUpdate, AccountSelector
 from app.types.registry import TypeRegistry
 from tests.conftest import NOWHERE
 from tests.support.seed import IMAGES_ACCOUNT, MAIN_ACCOUNT, Seeded
@@ -355,3 +358,41 @@ def test_post_accounts_validation(client: TestClient) -> None:
         json={**NEW_ACCOUNT, "selectedRegions": ["not a region"]},
     )
     assert bad_region.status_code == 422
+
+
+def test_large_import_and_selected_region_writes_are_chunked(
+    db_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = RegistryAccount.model_validate(json.loads((FIXTURES / "accounts.json").read_text())[0])
+    bulk = [
+        base.model_copy(
+            update={
+                "account_id": f"{800000000000 + index:012d}",
+                "account_name": f"{base.account_name}-{index}",
+            }
+        )
+        for index in range(1001)
+    ]
+    monkeypatch.setattr(account_service, "INSERT_CHUNK_ROWS", 100)
+
+    with Session(db_engine) as session:
+        imported = account_service.import_accounts(session, bulk)
+        assert imported == account_service.ImportResult(fetched=1001, imported=1001, skipped=0)
+
+        account_ids = [account.account_id for account in bulk]
+        updated = account_service.batch_update(
+            session,
+            AccountBatchUpdate(
+                selector=AccountSelector(account_ids=account_ids),
+                scan_region_mode="selected",
+                selected_regions=["eu-west-1", "eu-west-2"],
+            ),
+        )
+        assert updated == len(account_ids)
+        rows = session.exec(
+            select(func.count())
+            .select_from(AccountScanRegion)
+            .where(col(AccountScanRegion.account_id).in_(account_ids))
+        ).one()
+        assert rows == len(account_ids) * 2
+        assert session.exec(select(func.count()).select_from(Account)).one() >= len(account_ids)

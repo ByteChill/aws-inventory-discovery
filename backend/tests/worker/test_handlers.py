@@ -28,6 +28,7 @@ from app.accounts import soft_delete_account
 from app.aws import cloudcontrol_source, config_source
 from app.aws.findings import FindingsService
 from app.core.config import Settings
+from app.core.regions import GLOBAL_HOME, GLOBAL_REGION
 from app.models import (
     Account,
     AccountScanRegion,
@@ -967,9 +968,47 @@ def test_sweep_account_obeys_the_selected_region_policy_and_an_explicit_override
     } == {other_region}
 
 
-def test_a_stopped_account_queued_before_the_change_creates_no_region_tasks(
+def test_selected_policy_scans_global_types_only_when_the_home_region_is_selected(
     engine: Engine, session: Session, scanner: Scanner, account_id: str
 ) -> None:
+    other_region = next(region for region in AWS_REGIONS if region != GLOBAL_HOME)
+    account = session.get_one(Account, account_id)
+    account.scan_region_mode = "selected"
+    session.add(account)
+    session.add(AccountScanRegion(account_id=account_id, region=other_region))
+    now = utcnow()
+    request = requests.create_sweep_request(
+        session,
+        [account_id],
+        trigger="api",
+        priority=1,
+        scope={"all": False},
+        now=now,
+    )
+    session.commit()
+
+    task = run_sweep_account(engine, session, scanner, now)
+
+    assert task.scan_request_id == request.id
+    assert (task.stats or {})["regions"] == 1
+    children = [
+        child for child in queued_children(session, 1) if child.scan_request_id == request.id
+    ]
+    assert children
+    assert GLOBAL_REGION not in {child.region for child in children}
+
+
+def test_a_stopped_account_queued_before_the_change_creates_no_region_tasks(
+    engine: Engine,
+    session: Session,
+    scanner: Scanner,
+    account_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unexpected_credentials(_task: ScanTask) -> None:
+        pytest.fail("a stopped account must not ask the credential service")
+
+    monkeypatch.setattr(scanner, "_aws", unexpected_credentials)
     account = session.get_one(Account, account_id)
     account.scan_enabled = False
     session.add(account)
@@ -994,8 +1033,16 @@ def test_a_stopped_account_queued_before_the_change_creates_no_region_tasks(
 
 
 def test_a_deleted_account_is_not_scanned_even_when_the_task_overrides_policy(
-    engine: Engine, session: Session, scanner: Scanner, account_id: str
+    engine: Engine,
+    session: Session,
+    scanner: Scanner,
+    account_id: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    def unexpected_credentials(_task: ScanTask) -> None:
+        pytest.fail("a deleted account must not ask the credential service")
+
+    monkeypatch.setattr(scanner, "_aws", unexpected_credentials)
     soft_delete_account(session, account_id)
     now = utcnow()
     request = requests.create_sweep_request(

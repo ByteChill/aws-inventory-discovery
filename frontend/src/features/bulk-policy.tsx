@@ -105,7 +105,10 @@ export function BulkPolicyDialog({
                   type="radio"
                   name="bulk-scope"
                   checked={scope === "selected"}
-                  onChange={() => setScope("selected")}
+                  onChange={() => {
+                    setScope("selected")
+                    preview.reset()
+                  }}
                   className="accent-[var(--accent)]"
                 />
                 {t("accounts.scope.selected", { count: selectedIds.length })}
@@ -116,7 +119,10 @@ export function BulkPolicyDialog({
                 type="radio"
                 name="bulk-scope"
                 checked={scope === "filter"}
-                onChange={() => setScope("filter")}
+                onChange={() => {
+                  setScope("filter")
+                  preview.reset()
+                }}
                 className="accent-[var(--accent)]"
               />
               {t("accounts.scope.filter", { count: filterCount })}
@@ -135,7 +141,10 @@ export function BulkPolicyDialog({
                   type="radio"
                   name="bulk-action"
                   checked={action === value}
-                  onChange={() => setAction(value)}
+                  onChange={() => {
+                    setAction(value)
+                    preview.reset()
+                  }}
                   className="accent-[var(--accent)]"
                 />
                 {t(`accounts.policyAction.${value}` as MessageKey)}
@@ -155,7 +164,10 @@ export function BulkPolicyDialog({
                   type="radio"
                   name="bulk-region-action"
                   checked={regionAction === value}
-                  onChange={() => setRegionAction(value)}
+                  onChange={() => {
+                    setRegionAction(value)
+                    preview.reset()
+                  }}
                   className="accent-[var(--accent)]"
                 />
                 {t(`accounts.regionAction.${value}` as MessageKey)}
@@ -180,6 +192,7 @@ export function BulkPolicyDialog({
                       if (e.target.checked) next.add(region)
                       else next.delete(region)
                       setSelectedRegions(next)
+                      preview.reset()
                     }}
                     aria-label={region}
                     className="accent-[var(--accent)]"

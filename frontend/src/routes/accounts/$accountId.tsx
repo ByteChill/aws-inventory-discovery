@@ -164,6 +164,11 @@ function Detail({ account: a }: { account: AccountDetail }) {
         onClose={() => setScanOpen(false)}
         preset={scanPreset}
       />
+      {restore.error && (
+        <p role="status" className="text-danger">
+          {errorText(t, restore.error)}
+        </p>
+      )}
       <AccountEditor
         open={editorOpen}
         account={a}

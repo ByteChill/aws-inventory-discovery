@@ -18,19 +18,21 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 import seed  # ty: ignore[import-not-found]
 from sqlalchemy import Engine, text
 from sqlmodel import Session, col, select
 
 from app.aws import cloudcontrol_source, config_source
+from app.aws.findings import FindingsService
 from app.core.config import Settings
-from app.models import Account, Resource, ScanRequest, ScanTask
+from app.models import Account, FindingSummary, Resource, ScanRequest, ScanTask
 from app.models.resource import ResourceRelation
 from app.models.scan import utcnow
 from app.types.registry import TypeRegistry
 from app.types.spec import CloudControlSource, Sources
-from app.worker import queue, requests
+from app.worker import leases, queue, requests
 from app.worker.discovery import Discovery, Observation
 from app.worker.errors import TaskLost
 from app.worker.handlers import Scanner, TaskContext
@@ -905,3 +907,88 @@ def test_a_second_scheduled_sweep_does_not_duplicate_children_still_queued_but_o
     assert (fresh.stats or {})["tasks"] > 0
     assert len(queued_children(session, 0)) == (fresh.stats or {})["tasks"]
     assert len(queued_children(session, 1)) == len(backlog)  # the scheduled ones are untouched
+
+
+def test_a_scan_stores_the_findings_summary_of_the_images_it_wrote(
+    aws: AwsEnv, engine: Engine, make_settings: Callable[..., Settings], account_id: str
+) -> None:
+    levels = json.loads((FIXTURES.parent / "findings" / "ami_findings.json").read_text())
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        image_id = request.url.path.split("/")[2]
+        if image_id == "ami-high":
+            return httpx.Response(200, json=levels)
+        return httpx.Response(
+            200,
+            json={"counts": {"critical": 0, "high": 0, "medium": 0, "low": 0}, "maxScore": None},
+        )
+
+    settings = make_settings(REACHABLE_REGIONS=AWS_REGIONS)
+    findings = FindingsService(
+        "http://findings",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        sleep=lambda _: None,
+    )
+    scanner = Scanner(
+        settings,
+        REGISTRY,
+        ResourceWriter(engine, REGISTRY, settings),
+        aws.credential_service(),
+        findings=findings,
+    )
+    with Session(engine, expire_on_commit=False) as session:
+        task = claimed_task(session, account_id, "shard", "AWS::EC2::Image", "cloudcontrol")
+        state = leases.try_acquire(session, task, leases.Scope.of(task))
+        assert state is leases.LeaseState.ACQUIRED
+
+    scanner._sync_findings(task, ["ami-high", "ami-clean"])
+
+    with Session(engine) as session:
+        rows = {
+            row.resource_id: (row.high_count, row.max_score, row.critical_count)
+            for row in session.exec(
+                select(FindingSummary).where(FindingSummary.account_id == account_id)
+            )
+        }
+    assert rows == {
+        "ami-high": (levels["counts"]["high"], levels["maxScore"], levels["counts"]["critical"]),
+        "ami-clean": (0, None, 0),
+    }
+
+
+def test_findings_written_by_a_worker_that_lost_its_claim_are_refused(
+    aws: AwsEnv, engine: Engine, make_settings: Callable[..., Settings], account_id: str
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"counts": {"critical": 0, "high": 1, "medium": 0, "low": 0}, "maxScore": 7.2}
+        )
+
+    settings = make_settings(REACHABLE_REGIONS=AWS_REGIONS)
+    findings = FindingsService(
+        "http://findings",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        sleep=lambda _: None,
+    )
+    scanner = Scanner(
+        settings,
+        REGISTRY,
+        ResourceWriter(engine, REGISTRY, settings),
+        aws.credential_service(),
+        findings=findings,
+    )
+    with Session(engine, expire_on_commit=False) as session:
+        task = claimed_task(session, account_id, "shard", "AWS::EC2::Image", "cloudcontrol")
+        state = leases.try_acquire(session, task, leases.Scope.of(task))
+        assert state is leases.LeaseState.ACQUIRED
+        fresh = reclaim_while_paused(session, task)
+        assert fresh.claim_token != task.claim_token
+
+    with pytest.raises(TaskLost):
+        scanner._sync_findings(task, ["ami-reclaimed"])
+
+    with Session(engine) as session:
+        assert (
+            session.get(FindingSummary, (account_id, REGION, "AWS::EC2::Image", "ami-reclaimed"))
+            is None
+        )

@@ -441,9 +441,10 @@ test("语言切换到 English、主题切换到暗色后页面仍可用", async 
   await page.getByRole("button", { name: en("theme.label") }).click()
   await page.getByRole("menuitemradio", { name: en("theme.dark") }).click()
   await expect(page.locator("html")).toHaveClass(/dark/)
+  // 清单 is the first-level entry to the overview; the page heading stays 概览.
   await page
     .getByRole("navigation", { name: en("nav.main") })
-    .getByRole("link", { name: new RegExp(`^${en("nav.overview")}`) })
+    .getByRole("link", { name: new RegExp(`^${en("nav.inventory")}`) })
     .click()
   await expect(
     page.getByRole("heading", { name: en("nav.overview"), level: 1 }),

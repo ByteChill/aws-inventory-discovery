@@ -275,6 +275,74 @@ export type Column = {
 };
 
 /**
+ * Condition
+ *
+ * One node of the condition tree. Exactly one form is set: `all`, `any`, `not`, or a
+ * field comparison.
+ */
+export type ConditionInput = {
+    /**
+     * All
+     */
+    all?: Array<ConditionInput> | null;
+    /**
+     * Any
+     */
+    any?: Array<ConditionInput> | null;
+    not?: ConditionInput | null;
+    /**
+     * Field
+     */
+    field?: string | null;
+    /**
+     * Op
+     */
+    op?: 'eq' | 'neq' | 'in' | 'notIn' | 'contains' | 'startsWith' | 'exists' | 'notExists' | 'gt' | 'gte' | 'lt' | 'lte' | 'olderThanDays' | 'beforeNow' | 'afterNow' | 'has' | 'hasValue' | 'missing' | null;
+    /**
+     * Value
+     */
+    value?: unknown;
+    /**
+     * Key
+     */
+    key?: string | null;
+};
+
+/**
+ * Condition
+ *
+ * One node of the condition tree. Exactly one form is set: `all`, `any`, `not`, or a
+ * field comparison.
+ */
+export type ConditionOutput = {
+    /**
+     * All
+     */
+    all?: Array<ConditionOutput> | null;
+    /**
+     * Any
+     */
+    any?: Array<ConditionOutput> | null;
+    not?: ConditionOutput | null;
+    /**
+     * Field
+     */
+    field?: string | null;
+    /**
+     * Op
+     */
+    op?: 'eq' | 'neq' | 'in' | 'notIn' | 'contains' | 'startsWith' | 'exists' | 'notExists' | 'gt' | 'gte' | 'lt' | 'lte' | 'olderThanDays' | 'beforeNow' | 'afterNow' | 'has' | 'hasValue' | 'missing' | null;
+    /**
+     * Value
+     */
+    value?: unknown;
+    /**
+     * Key
+     */
+    key?: string | null;
+};
+
+/**
  * ConfirmChangeBody
  */
 export type ConfirmChangeBody = {
@@ -786,6 +854,335 @@ export type RelationshipRef = {
      * Name
      */
     name: string;
+};
+
+/**
+ * ReportColumnInfo
+ */
+export type ReportColumnInfo = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Type
+     */
+    type: string;
+    /**
+     * Mono
+     */
+    mono?: boolean;
+    /**
+     * Array
+     */
+    array?: boolean;
+};
+
+/**
+ * ReportDetail
+ */
+export type ReportDetail = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description: string | null;
+    /**
+     * Subjecttype
+     */
+    subjectType: string | null;
+    /**
+     * Enabled
+     */
+    enabled: boolean;
+    /**
+     * Createdby
+     */
+    createdBy: string | null;
+    /**
+     * Updatedby
+     */
+    updatedBy: string | null;
+    /**
+     * Createdat
+     */
+    createdAt: string;
+    /**
+     * Updatedat
+     */
+    updatedAt: string;
+    /**
+     * Definitionversion
+     */
+    definitionVersion: number;
+    where: ConditionOutput;
+    /**
+     * Columns
+     */
+    columns: Array<string>;
+};
+
+/**
+ * ReportFieldInfo
+ *
+ * A field the report editor can offer: what a condition may match on.
+ */
+export type ReportFieldInfo = {
+    /**
+     * Key
+     */
+    key: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Type
+     */
+    type: string;
+    /**
+     * Array
+     */
+    array?: boolean;
+    /**
+     * Group
+     */
+    group: 'common' | 'type' | 'relation';
+};
+
+/**
+ * ReportInfo
+ */
+export type ReportInfo = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description: string | null;
+    /**
+     * Subjecttype
+     */
+    subjectType: string | null;
+    /**
+     * Enabled
+     */
+    enabled: boolean;
+    /**
+     * Createdby
+     */
+    createdBy: string | null;
+    /**
+     * Updatedby
+     */
+    updatedBy: string | null;
+    /**
+     * Createdat
+     */
+    createdAt: string;
+    /**
+     * Updatedat
+     */
+    updatedAt: string;
+};
+
+/**
+ * ReportInput
+ */
+export type ReportInput = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description?: string | null;
+    /**
+     * Subjecttype
+     */
+    subjectType?: string | null;
+    where: ConditionInput;
+    /**
+     * Columns
+     */
+    columns?: Array<string>;
+    /**
+     * Enabled
+     */
+    enabled?: boolean;
+};
+
+/**
+ * ReportOverview
+ */
+export type ReportOverview = {
+    /**
+     * Generatedat
+     */
+    generatedAt: string;
+    /**
+     * Items
+     */
+    items: Array<ReportOverviewItem>;
+};
+
+/**
+ * ReportOverviewItem
+ */
+export type ReportOverviewItem = {
+    /**
+     * Reportid
+     */
+    reportId: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Subjecttype
+     */
+    subjectType: string | null;
+    /**
+     * Count
+     */
+    count: number;
+    /**
+     * Error
+     */
+    error?: string | null;
+};
+
+/**
+ * ReportPage
+ */
+export type ReportPage = {
+    /**
+     * Items
+     */
+    items: Array<ReportRow>;
+    /**
+     * Page
+     */
+    page: number;
+    /**
+     * Pagesize
+     */
+    pageSize: number;
+    /**
+     * Total
+     */
+    total: number;
+    /**
+     * Columns
+     */
+    columns: Array<ReportColumnInfo>;
+    /**
+     * Generatedat
+     */
+    generatedAt: string;
+};
+
+/**
+ * ReportRow
+ *
+ * A matching resource plus the values of the report's own columns.
+ */
+export type ReportRow = {
+    /**
+     * Id
+     */
+    id: number;
+    /**
+     * Arn
+     */
+    arn: string;
+    /**
+     * Accountid
+     */
+    accountId: string;
+    /**
+     * Awsregion
+     */
+    awsRegion: string;
+    /**
+     * Resourcetype
+     */
+    resourceType: string;
+    /**
+     * Resourceid
+     */
+    resourceId: string;
+    /**
+     * Resourcename
+     */
+    resourceName: string | null;
+    /**
+     * Tags
+     */
+    tags: Array<Tag>;
+    account: AccountRef;
+    /**
+     * Attrs
+     */
+    attrs: {
+        [key: string]: unknown;
+    };
+    /**
+     * Relationshipcount
+     */
+    relationshipCount: number;
+    /**
+     * Status
+     */
+    status: 'active' | 'missing' | 'deleted';
+    /**
+     * Stale
+     */
+    stale: boolean;
+    /**
+     * Configurationitemcapturetime
+     */
+    configurationItemCaptureTime: string | null;
+    /**
+     * Firstseenat
+     */
+    firstSeenAt: string;
+    /**
+     * Lastchangedat
+     */
+    lastChangedAt: string;
+    /**
+     * Missingsince
+     */
+    missingSince: string | null;
+    /**
+     * Deletedat
+     */
+    deletedAt: string | null;
+    /**
+     * Values
+     */
+    values: {
+        [key: string]: unknown;
+    };
 };
 
 /**
@@ -2879,3 +3276,334 @@ export type ConfirmScopeChangeResponses = {
 };
 
 export type ConfirmScopeChangeResponse = ConfirmScopeChangeResponses[keyof ConfirmScopeChangeResponses];
+
+export type ListReportsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Enabled
+         */
+        enabled?: boolean | null;
+    };
+    url: '/api/v1/reports';
+};
+
+export type ListReportsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListReportsError = ListReportsErrors[keyof ListReportsErrors];
+
+export type ListReportsResponses = {
+    /**
+     * Response List Reports Api V1 Reports Get
+     *
+     * Successful Response
+     */
+    200: Array<ReportInfo>;
+};
+
+export type ListReportsResponse = ListReportsResponses[keyof ListReportsResponses];
+
+export type CreateReportData = {
+    body: ReportInput;
+    headers?: {
+        /**
+         * X-Caller-Id
+         */
+        'x-caller-id'?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/reports';
+};
+
+export type CreateReportErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateReportError = CreateReportErrors[keyof CreateReportErrors];
+
+export type CreateReportResponses = {
+    /**
+     * Successful Response
+     */
+    201: ReportDetail;
+};
+
+export type CreateReportResponse = CreateReportResponses[keyof CreateReportResponses];
+
+export type ReportsOverviewData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * S
+         */
+        s?: string | null;
+    };
+    url: '/api/v1/reports/overview';
+};
+
+export type ReportsOverviewErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ReportsOverviewError = ReportsOverviewErrors[keyof ReportsOverviewErrors];
+
+export type ReportsOverviewResponses = {
+    /**
+     * Successful Response
+     */
+    200: ReportOverview;
+};
+
+export type ReportsOverviewResponse = ReportsOverviewResponses[keyof ReportsOverviewResponses];
+
+export type ReportFieldsData = {
+    body?: never;
+    headers?: {
+        /**
+         * Accept-Language
+         */
+        'accept-language'?: string | null;
+    };
+    path?: never;
+    query?: {
+        /**
+         * Subjecttype
+         */
+        subjectType?: string | null;
+    };
+    url: '/api/v1/reports/fields';
+};
+
+export type ReportFieldsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ReportFieldsError = ReportFieldsErrors[keyof ReportFieldsErrors];
+
+export type ReportFieldsResponses = {
+    /**
+     * Response Report Fields Api V1 Reports Fields Get
+     *
+     * Successful Response
+     */
+    200: Array<ReportFieldInfo>;
+};
+
+export type ReportFieldsResponse = ReportFieldsResponses[keyof ReportFieldsResponses];
+
+export type DeleteReportData = {
+    body?: never;
+    path: {
+        /**
+         * Report Id
+         */
+        report_id: number;
+    };
+    query?: never;
+    url: '/api/v1/reports/{report_id}';
+};
+
+export type DeleteReportErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteReportError = DeleteReportErrors[keyof DeleteReportErrors];
+
+export type DeleteReportResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteReportResponse = DeleteReportResponses[keyof DeleteReportResponses];
+
+export type GetReportData = {
+    body?: never;
+    path: {
+        /**
+         * Report Id
+         */
+        report_id: number;
+    };
+    query?: never;
+    url: '/api/v1/reports/{report_id}';
+};
+
+export type GetReportErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetReportError = GetReportErrors[keyof GetReportErrors];
+
+export type GetReportResponses = {
+    /**
+     * Successful Response
+     */
+    200: ReportDetail;
+};
+
+export type GetReportResponse = GetReportResponses[keyof GetReportResponses];
+
+export type UpdateReportData = {
+    body: ReportInput;
+    headers?: {
+        /**
+         * X-Caller-Id
+         */
+        'x-caller-id'?: string | null;
+    };
+    path: {
+        /**
+         * Report Id
+         */
+        report_id: number;
+    };
+    query?: never;
+    url: '/api/v1/reports/{report_id}';
+};
+
+export type UpdateReportErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateReportError = UpdateReportErrors[keyof UpdateReportErrors];
+
+export type UpdateReportResponses = {
+    /**
+     * Successful Response
+     */
+    200: ReportDetail;
+};
+
+export type UpdateReportResponse = UpdateReportResponses[keyof UpdateReportResponses];
+
+export type ReportResultsData = {
+    body?: never;
+    headers?: {
+        /**
+         * Accept-Language
+         */
+        'accept-language'?: string | null;
+    };
+    path: {
+        /**
+         * Report Id
+         */
+        report_id: number;
+    };
+    query?: {
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Pagesize
+         */
+        pageSize?: number;
+        /**
+         * Sort
+         */
+        sort?: string | null;
+        /**
+         * S
+         */
+        s?: string | null;
+    };
+    url: '/api/v1/reports/{report_id}/results';
+};
+
+export type ReportResultsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ReportResultsError = ReportResultsErrors[keyof ReportResultsErrors];
+
+export type ReportResultsResponses = {
+    /**
+     * Successful Response
+     */
+    200: ReportPage;
+};
+
+export type ReportResultsResponse = ReportResultsResponses[keyof ReportResultsResponses];
+
+export type ExportReportData = {
+    body?: never;
+    headers?: {
+        /**
+         * Accept-Language
+         */
+        'accept-language'?: string | null;
+    };
+    path: {
+        /**
+         * Report Id
+         */
+        report_id: number;
+    };
+    query?: {
+        /**
+         * Format
+         */
+        format?: 'csv' | 'jsonl';
+        /**
+         * Lang
+         */
+        lang?: 'zh-CN' | 'en' | null;
+        /**
+         * Sort
+         */
+        sort?: string | null;
+        /**
+         * S
+         */
+        s?: string | null;
+    };
+    url: '/api/v1/reports/{report_id}/export';
+};
+
+export type ExportReportErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ExportReportError = ExportReportErrors[keyof ExportReportErrors];
+
+export type ExportReportResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};

@@ -141,9 +141,11 @@ def test_config_group_covers_every_config_type_unless_the_request_restricts_them
         if r["aws_region"] in ("us-east-1", "global") and r["status"] in LIVE
     ]
     by_config = {r["id"] for r in in_reach if registry.get(r["resource_type"]).sources.config}
-    # Config cannot serve the AMI in the same region: only its own shard would cover it.
-    ami = seeded.one(account_id=MAIN_ACCOUNT, resource_type="AWS::EC2::Image")
-    assert ami["aws_region"] == "us-east-1" and ami["id"] not in by_config
+    # Config cannot serve the AMIs in the same region: only their own shard would cover them.
+    amis = seeded.where(account_id=MAIN_ACCOUNT, resource_type="AWS::EC2::Image")
+    assert amis and all(
+        ami["aws_region"] == "us-east-1" and ami["id"] not in by_config for ami in amis
+    )
     assert ids(listing(get_json, everything)) == by_config
     only_vpc = listing(get_json, only_vpcs)
     assert ids(only_vpc) == expected(

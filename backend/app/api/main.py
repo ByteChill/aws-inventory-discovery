@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import accounts, applications, health, metadata, resources, scans
+from app.api.routes import accounts, applications, health, metadata, reports, resources, scans
 
 api_router = APIRouter()
 api_router.include_router(health.router)
@@ -13,3 +13,4 @@ api_router.include_router(applications.router)
 api_router.include_router(scans.router)
 api_router.include_router(scans.tasks_router)
 api_router.include_router(scans.scopes_router)
+api_router.include_router(reports.router)

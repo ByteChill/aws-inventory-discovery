@@ -72,6 +72,7 @@ def _hold_account_lock(session: Session, key: int) -> Generator[bool]:
 class CleanupResult:
     tasks: int
     requests: int
+    findings: int
     resources: int
     accounts: int
 
@@ -81,6 +82,10 @@ def run_cleanup(session: Session, settings: Settings, now: datetime | None = Non
     result = CleanupResult(
         tasks=_purge_tasks(session, now - timedelta(days=settings.TASK_RETENTION_DAYS)),
         requests=_purge_requests(session, now - timedelta(days=settings.REQUEST_RETENTION_DAYS)),
+        # Before the resource rows go: the findings of a purged deleted resource have no owner.
+        findings=_purge_deleted_findings(
+            session, now - timedelta(days=settings.DELETED_PURGE_DAYS)
+        ),
         resources=_purge_deleted_resources(
             session, now - timedelta(days=settings.DELETED_PURGE_DAYS)
         ),
@@ -176,6 +181,21 @@ def _purge_requests(session: Session, cutoff: datetime) -> int:
     )
 
 
+def _purge_deleted_findings(session: Session, cutoff: datetime) -> int:
+    """Findings of resources about to be purged; a deleted resource has no current state left."""
+    return _delete_in_batches(
+        session,
+        """
+        DELETE FROM t_inv_aws_finding_summary f
+         WHERE (f.account_id, f.aws_region, f.resource_type, f.resource_id) IN (
+             SELECT account_id, aws_region, resource_type, resource_id
+               FROM t_inv_aws_resource
+              WHERE status = 'deleted' AND deleted_at < :cutoff LIMIT :batch)
+        """,
+        {"cutoff": cutoff},
+    )
+
+
 def _purge_deleted_resources(session: Session, cutoff: datetime) -> int:
     return _delete_in_batches(
         session,
@@ -238,7 +258,12 @@ def _purge_inactive_accounts(session: Session, cutoff: datetime) -> int:
                 """,
                 {"account_id": account_id},
             )
-            for table in ("t_inv_aws_account_region", "t_inv_aws_scan_shard", "t_inv_aws_account"):
+            for table in (
+                "t_inv_aws_finding_summary",
+                "t_inv_aws_account_region",
+                "t_inv_aws_scan_shard",
+                "t_inv_aws_account",
+            ):
                 session.connection().execute(
                     text(f"DELETE FROM {table} WHERE account_id = :account_id"),  # noqa: S608
                     {"account_id": account_id},

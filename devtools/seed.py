@@ -272,34 +272,85 @@ def _register(ec2: Any, image: dict[str, Any]) -> str | None:
     return image_id
 
 
+def put_findings(
+    fake_url: str, image_id: str, counts: dict[str, int], max_score: float | None = None
+) -> None:
+    """Give an image a findings summary in the fake findings service (3)."""
+    httpx.put(
+        f"{fake_url}/_admin/findings",
+        json={
+            "imageId": image_id,
+            "counts": {"critical": 0, "high": 0, "medium": 0, "low": 0, **counts},
+            "maxScore": max_score,
+        },
+    ).raise_for_status()
+
+
+def _existing(ec2: Any, image: dict[str, Any]) -> str | None:
+    found = ec2.describe_images(
+        Owners=["self"], Filters=[{"Name": "name", "Values": [image["Name"]]}]
+    )["Images"]
+    return found[0]["ImageId"] if found else None
+
+
 def create_amis(
     fake_url: str,
     moto_url: str,
     ids: list[str],
     regions: tuple[str, ...] | list[str],
     fixtures: Path = FIXTURES,
-) -> None:
+) -> dict[tuple[str, str], str]:
     """Own AMI in every account/region; the first account shares one AMI per region with the next
-    five accounts via launch permissions; one account deregisters its AMI in eu-west-1."""
+    five accounts via launch permissions; one account deregisters its AMI in eu-west-1.
+    Some images get findings, so a report on "high findings" has something to match."""
     own = json.loads((fixtures / IMAGE_FIXTURE / "describe_images_self.json").read_text())[
         "Images"
     ][0]
     shared = json.loads((fixtures / IMAGE_FIXTURE / "describe_images_shared.json").read_text())[
         "Images"
     ][0]
+    own_images: dict[tuple[str, str], str] = {}
     for region in regions:
         for index, account_id in enumerate(ids):
             ec2 = ec2_client(fake_url, moto_url, account_id, region)
-            own_id = _register(ec2, own)
+            own_id = _register(ec2, own) or _existing(ec2, own)
+            if own_id is not None:
+                own_images[(account_id, region)] = own_id
+            if own_id and index % 5 == 0:
+                put_findings(
+                    fake_url,
+                    own_id,
+                    {"high": 2, "medium": 1} if index else {"critical": 1, "high": 2, "low": 2},
+                    9.1 if index == 0 else 8.2,
+                )
             if index == 0:
-                shared_id = _register(ec2, shared)
+                shared_id = _register(ec2, shared) or _existing(ec2, shared)
                 if shared_id:
                     ec2.modify_image_attribute(
                         ImageId=shared_id,
                         LaunchPermission={"Add": [{"UserId": other} for other in ids[1:6]]},
                     )
+                    put_findings(fake_url, shared_id, {"high": 1}, 7.4)
             if own_id and index == 4 and region == "eu-west-1":
                 ec2.deregister_image(ImageId=own_id)
+    return own_images
+
+
+def apply_own_ami(dataset: dict[str, Any], own_images: dict[tuple[str, str], str]) -> None:
+    """Point each instance fixture at the AMI actually registered in its account and region, so
+    the instance -> AMI relationship resolves (only an ID changes, as everywhere in the seed)."""
+    for resource in dataset["resources"]:
+        if resource["type_name"] != "AWS::EC2::Instance":
+            continue
+        image = own_images.get((resource["account_id"], resource["region"]))
+        if image is not None and "ImageId" in resource["properties"]:
+            resource["properties"]["ImageId"] = image
+    for item in dataset["config_items"]:
+        if item["resourceType"] != "AWS::EC2::Instance":
+            continue
+        image = own_images.get((item["accountId"], item["awsRegion"]))
+        if image is not None and "imageId" in item["configuration"]:
+            item["configuration"]["imageId"] = image
 
 
 # --- CLI ---------------------------------------------------------------------------------------
@@ -337,7 +388,9 @@ def main() -> None:
         httpx.post(f"{args.moto_url}/moto-api/reset").raise_for_status()
         httpx.post(f"{args.fake_url}/_admin/reset", params={"forget_credentials": True})
 
+    own_images = create_amis(args.fake_url, args.moto_url, ids, REGIONS)
     dataset = build_dataset(ids, REGIONS)
+    apply_own_ami(dataset, own_images)
     registry = dataset["registry"]
     for index, account_id in enumerate(ids):
         chunk = {
@@ -352,7 +405,6 @@ def main() -> None:
             },
         }
         httpx.put(f"{args.fake_url}/_admin/dataset", json=chunk, timeout=60).raise_for_status()
-    create_amis(args.fake_url, args.moto_url, ids, REGIONS)
     counts = httpx.get(f"{args.fake_url}/_admin/dataset").json()
     print(f"seeded fake-aws: {counts}; AMIs registered in moto", file=sys.stderr)
 

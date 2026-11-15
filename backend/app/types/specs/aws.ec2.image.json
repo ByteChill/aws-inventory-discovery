@@ -18,6 +18,7 @@
     },
     "native": true
   },
+  "findings": true,
   "mapping": {
     "properties": [
       "Architecture",
@@ -127,6 +128,17 @@
       },
       "type": "bool",
       "path": "public"
+    }
+  ],
+  "reportFields": [
+    {
+      "key": "deprecationTime",
+      "label": {
+        "zh-CN": "弃用时间",
+        "en": "Deprecation time"
+      },
+      "type": "datetime",
+      "path": "deprecationTime"
     }
   ]
 }

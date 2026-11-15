@@ -8,6 +8,8 @@ TABLES = {
     "t_inv_aws_scan_request",
     "t_inv_aws_scan_task",
     "t_inv_aws_scan_shard",
+    "t_inv_aws_report",
+    "t_inv_aws_finding_summary",
 }
 
 
@@ -20,7 +22,7 @@ def index_definitions(db: psycopg.Connection, table: str) -> dict[str, str]:
     return dict(rows)
 
 
-def test_migration_creates_the_seven_tables_and_version_table(
+def test_migration_creates_the_nine_tables_and_version_table(
     db: psycopg.Connection,
 ) -> None:
     rows = db.execute(
@@ -28,6 +30,38 @@ def test_migration_creates_the_seven_tables_and_version_table(
     ).fetchall()
 
     assert {name for (name,) in rows} == TABLES | {"alembic_version"}
+
+
+def test_migration_creates_the_report_table_with_a_unique_name(
+    db: psycopg.Connection,
+) -> None:
+    indexes = index_definitions(db, "t_inv_aws_report")
+
+    assert "UNIQUE" in indexes["uq_t_inv_aws_report_name"]
+    assert "(name)" in indexes["uq_t_inv_aws_report_name"]
+    assert indexes["ix_t_inv_aws_report_enabled"].endswith("(enabled)")
+
+
+def test_the_findings_summary_is_keyed_by_resource_identity(
+    db: psycopg.Connection,
+) -> None:
+    rows = db.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = current_schema() AND table_name = 't_inv_aws_finding_summary' "
+        "AND is_nullable = 'NO'"
+    ).fetchall()
+
+    assert {name for (name,) in rows} == {
+        "account_id",
+        "aws_region",
+        "resource_type",
+        "resource_id",
+        "critical_count",
+        "high_count",
+        "medium_count",
+        "low_count",
+        "checked_at",
+    }
 
 
 def test_resource_identity_is_unique_but_arn_is_not(db: psycopg.Connection) -> None:

@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CancelScanData, CancelScanErrors, CancelScanResponses, ConfirmScopeChangeData, ConfirmScopeChangeErrors, ConfirmScopeChangeResponses, CreateScanData, CreateScanErrors, CreateScanResponses, ExportResourcesData, ExportResourcesErrors, ExportResourcesResponses, GetAccountData, GetAccountErrors, GetAccountResponses, GetCoverageData, GetCoverageErrors, GetCoverageResponses, GetRelationshipsData, GetRelationshipsErrors, GetRelationshipsResponses, GetResourceData, GetResourceErrors, GetResourceResponses, GetScanData, GetScanErrors, GetScanResponses, GetScanScopeData, GetScanScopeErrors, GetScanScopeResponses, GetTaskData, GetTaskErrors, GetTaskLogsData, GetTaskLogsErrors, GetTaskLogsResponses, GetTaskResponses, HealthData, HealthResponses, ListAccountsData, ListAccountsErrors, ListAccountsResponses, ListApplicationsData, ListApplicationsErrors, ListApplicationsResponses, ListColumnsData, ListColumnsErrors, ListColumnsResponses, ListResourcesData, ListResourcesErrors, ListResourcesResponses, ListResourceTypesData, ListResourceTypesErrors, ListResourceTypesResponses, ListScanScopesData, ListScanScopesErrors, ListScanScopesResponses, ListScansData, ListScansErrors, ListScansResponses, ListScanTasksData, ListScanTasksErrors, ListScanTasksResponses, ListScopeCandidatesData, ListScopeCandidatesErrors, ListScopeCandidatesResponses, LookupResourceData, LookupResourceErrors, LookupResourceResponses, OverviewData, OverviewErrors, OverviewResponses, RefreshResourceData, RefreshResourceErrors, RefreshResourceResponses, ResourceFacetsData, ResourceFacetsErrors, ResourceFacetsResponses, ResourceSummaryData, ResourceSummaryErrors, ResourceSummaryResponses, RetryFailedData, RetryFailedErrors, RetryFailedResponses, ScanSummaryData, ScanSummaryResponses } from './types.gen';
+import type { CancelScanData, CancelScanErrors, CancelScanResponses, ConfirmScopeChangeData, ConfirmScopeChangeErrors, ConfirmScopeChangeResponses, CreateReportData, CreateReportErrors, CreateReportResponses, CreateScanData, CreateScanErrors, CreateScanResponses, DeleteReportData, DeleteReportErrors, DeleteReportResponses, ExportReportData, ExportReportErrors, ExportReportResponses, ExportResourcesData, ExportResourcesErrors, ExportResourcesResponses, GetAccountData, GetAccountErrors, GetAccountResponses, GetCoverageData, GetCoverageErrors, GetCoverageResponses, GetRelationshipsData, GetRelationshipsErrors, GetRelationshipsResponses, GetReportData, GetReportErrors, GetReportResponses, GetResourceData, GetResourceErrors, GetResourceResponses, GetScanData, GetScanErrors, GetScanResponses, GetScanScopeData, GetScanScopeErrors, GetScanScopeResponses, GetTaskData, GetTaskErrors, GetTaskLogsData, GetTaskLogsErrors, GetTaskLogsResponses, GetTaskResponses, HealthData, HealthResponses, ListAccountsData, ListAccountsErrors, ListAccountsResponses, ListApplicationsData, ListApplicationsErrors, ListApplicationsResponses, ListColumnsData, ListColumnsErrors, ListColumnsResponses, ListReportsData, ListReportsErrors, ListReportsResponses, ListResourcesData, ListResourcesErrors, ListResourcesResponses, ListResourceTypesData, ListResourceTypesErrors, ListResourceTypesResponses, ListScanScopesData, ListScanScopesErrors, ListScanScopesResponses, ListScansData, ListScansErrors, ListScansResponses, ListScanTasksData, ListScanTasksErrors, ListScanTasksResponses, ListScopeCandidatesData, ListScopeCandidatesErrors, ListScopeCandidatesResponses, LookupResourceData, LookupResourceErrors, LookupResourceResponses, OverviewData, OverviewErrors, OverviewResponses, RefreshResourceData, RefreshResourceErrors, RefreshResourceResponses, ReportFieldsData, ReportFieldsErrors, ReportFieldsResponses, ReportResultsData, ReportResultsErrors, ReportResultsResponses, ReportsOverviewData, ReportsOverviewErrors, ReportsOverviewResponses, ResourceFacetsData, ResourceFacetsErrors, ResourceFacetsResponses, ResourceSummaryData, ResourceSummaryErrors, ResourceSummaryResponses, RetryFailedData, RetryFailedErrors, RetryFailedResponses, ScanSummaryData, ScanSummaryResponses, UpdateReportData, UpdateReportErrors, UpdateReportResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -185,3 +185,62 @@ export const confirmScopeChange = <ThrowOnError extends boolean = false>(options
         ...options.headers
     }
 });
+
+/**
+ * List Reports
+ */
+export const listReports = <ThrowOnError extends boolean = false>(options?: Options<ListReportsData, ThrowOnError>): RequestResult<ListReportsResponses, ListReportsErrors, ThrowOnError> => (options?.client ?? client).get<ListReportsResponses, ListReportsErrors, ThrowOnError>({ url: '/api/v1/reports', ...options });
+
+/**
+ * Create Report
+ */
+export const createReport = <ThrowOnError extends boolean = false>(options: Options<CreateReportData, ThrowOnError>): RequestResult<CreateReportResponses, CreateReportErrors, ThrowOnError> => (options.client ?? client).post<CreateReportResponses, CreateReportErrors, ThrowOnError>({
+    url: '/api/v1/reports',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Reports Overview
+ */
+export const reportsOverview = <ThrowOnError extends boolean = false>(options?: Options<ReportsOverviewData, ThrowOnError>): RequestResult<ReportsOverviewResponses, ReportsOverviewErrors, ThrowOnError> => (options?.client ?? client).get<ReportsOverviewResponses, ReportsOverviewErrors, ThrowOnError>({ url: '/api/v1/reports/overview', ...options });
+
+/**
+ * Report Fields
+ */
+export const reportFields = <ThrowOnError extends boolean = false>(options?: Options<ReportFieldsData, ThrowOnError>): RequestResult<ReportFieldsResponses, ReportFieldsErrors, ThrowOnError> => (options?.client ?? client).get<ReportFieldsResponses, ReportFieldsErrors, ThrowOnError>({ url: '/api/v1/reports/fields', ...options });
+
+/**
+ * Delete Report
+ */
+export const deleteReport = <ThrowOnError extends boolean = false>(options: Options<DeleteReportData, ThrowOnError>): RequestResult<DeleteReportResponses, DeleteReportErrors, ThrowOnError> => (options.client ?? client).delete<DeleteReportResponses, DeleteReportErrors, ThrowOnError>({ url: '/api/v1/reports/{report_id}', ...options });
+
+/**
+ * Get Report
+ */
+export const getReport = <ThrowOnError extends boolean = false>(options: Options<GetReportData, ThrowOnError>): RequestResult<GetReportResponses, GetReportErrors, ThrowOnError> => (options.client ?? client).get<GetReportResponses, GetReportErrors, ThrowOnError>({ url: '/api/v1/reports/{report_id}', ...options });
+
+/**
+ * Update Report
+ */
+export const updateReport = <ThrowOnError extends boolean = false>(options: Options<UpdateReportData, ThrowOnError>): RequestResult<UpdateReportResponses, UpdateReportErrors, ThrowOnError> => (options.client ?? client).put<UpdateReportResponses, UpdateReportErrors, ThrowOnError>({
+    url: '/api/v1/reports/{report_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Report Results
+ */
+export const reportResults = <ThrowOnError extends boolean = false>(options: Options<ReportResultsData, ThrowOnError>): RequestResult<ReportResultsResponses, ReportResultsErrors, ThrowOnError> => (options.client ?? client).get<ReportResultsResponses, ReportResultsErrors, ThrowOnError>({ url: '/api/v1/reports/{report_id}/results', ...options });
+
+/**
+ * Export Report
+ */
+export const exportReport = <ThrowOnError extends boolean = false>(options: Options<ExportReportData, ThrowOnError>): RequestResult<ExportReportResponses, ExportReportErrors, ThrowOnError> => (options.client ?? client).get<ExportReportResponses, ExportReportErrors, ThrowOnError>({ url: '/api/v1/reports/{report_id}/export', ...options });

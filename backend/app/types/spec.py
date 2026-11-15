@@ -128,6 +128,35 @@ class Column(SpecModel):
         return self
 
 
+class ReportField(SpecModel):
+    """A field a report can match on. Unlike a column, its path may cross arrays (`[]`);
+    such a field has type `text` and matches when at least one element satisfies the condition
+    (docs/specs/reports.md)."""
+
+    key: str
+    label: Label
+    type: Literal["text", "enum", "number", "bool", "datetime"]
+    path: str
+
+    @model_validator(mode="after")
+    def _valid_path(self) -> Self:
+        if not self.path:
+            raise ValueError("report field path is required")
+        segments = self.path.split(".")
+        if any(not segment for segment in segments):
+            raise ValueError(f"invalid report field path {self.path!r}")
+        traverses_array = False
+        for segment in segments:
+            key = segment.removesuffix("[]")
+            if not key or "[" in key or "]" in key or key.endswith("[]"):
+                raise ValueError(f"invalid report field path {self.path!r}")
+            if segment.endswith("[]"):
+                traverses_array = True
+        if traverses_array and self.type != "text":
+            raise ValueError("a report field that crosses an array must have type text")
+        return self
+
+
 class DerivedRelationship(SpecModel):
     # The name shown next to the edge in the dashboard.
     name: str
@@ -162,12 +191,23 @@ class ResourceTypeSpec(SpecModel):
     derived_relationships: list[DerivedRelationship] = []
     volatile: list[str] = []
     columns: list[Column] = []
+    report_fields: list[ReportField] = []
+    # This type's resources are checked by the internal findings service; reports get the
+    # `findings*` fields for them (docs/specs/reports.md).
+    findings: bool = False
 
     @model_validator(mode="after")
     def _unique_columns(self) -> Self:
         keys = [column.key for column in self.columns]
         if len(keys) != len(set(keys)):
             raise ValueError("duplicate column keys")
+        return self
+
+    @model_validator(mode="after")
+    def _unique_report_fields(self) -> Self:
+        keys = [column.key for column in self.columns] + [field.key for field in self.report_fields]
+        if len(keys) != len(set(keys)):
+            raise ValueError("duplicate column or report field keys")
         return self
 
     @model_validator(mode="after")

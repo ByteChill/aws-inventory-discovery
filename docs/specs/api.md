@@ -8,7 +8,7 @@
 - 分页参数：`page`（从 1 开始，默认 1）、`pageSize`（默认 50，最大 200）。
 - 排序参数：`sort`，多个字段用逗号分隔，前面加 `-` 表示倒序。只允许对列定义里 `sortable = true` 的列排序：通用列写列的 `key`（如 `-lastChangedAt`），类型专属列写 `attr.<key>`（只在指定了单一 `resourceType` 时可用）；NULL 总是排在最后；最后再按资源 ID 排序，翻页稳定。
 - 请求头：`X-Caller-Id`（可选，记录到扫描请求的 `callerId`，也是确认异常范围时的 `guardConfirmedBy`，dashboard 传 `dashboard`）；`Idempotency-Key`（只用于 `POST /scans`）；`Accept-Language`（`zh*` 或 `en*`，决定列名、类型名、分类标签的语言，默认中文）。
-- 读写分离：查询类接口读 `DATABASE_READ_URL`（没设置就用 `DATABASE_URL`），创建扫描、刷新、确认异常范围写主库。
+- 读写分离：查询类接口读 `DATABASE_READ_URL`（没设置就用 `DATABASE_URL`），创建扫描、刷新、确认异常范围和报表的新建 / 修改 / 删除写主库。
 - 鉴权：不自己做登录，访问由网络层控制；当前设计阶段用假身份展示，正式接入时由网关传入，仅用于显示。
 
 ### 1.1 分页结构
@@ -31,6 +31,7 @@ type Error = { code: string; message: string; details?: Record<string, unknown> 
 | 404 | `account_not_found` | 账号不在账号快照里，查询账号清单服务后也没有，或已经不再活跃（扫描和刷新单个资源都按不存在处理）；`POST /scans` 里 `details.accountIds` 也列出已经不活跃的账号 |
 | 404 | `scan_not_found` / `task_not_found` | |
 | 404 | `scope_not_found` | 确认异常范围时，这个范围从没扫描过（`t_inv_aws_scan_shard` 里没有） |
+| 404 | `report_not_found` | 报表不存在（详情、结果、导出、修改、删除） |
 | 404 | `not_found` | 路径不存在 |
 | 405 | `method_not_allowed` | |
 | 409 | `idempotency_conflict` | 同一个 `Idempotency-Key` 对应了不同的请求内容 |
@@ -38,6 +39,7 @@ type Error = { code: string; message: string; details?: Record<string, unknown> 
 | 409 | `scan_not_cancellable` | 扫描已经结束 |
 | 409 | `scan_cancelled` | 对已取消的扫描重试失败的任务 |
 | 409 | `scope_not_abnormal` | 确认异常范围时，这个范围当前不是 `abnormal`（`details.guardState`） |
+| 409 | `report_name_taken` | 报表名称已存在（新建或修改时） |
 | 409 | `scope_changed` | 确认异常范围时，这个范围在上次读取之后又有新的检测（请求的 `guardDetectedAt` 已不是当前检测时间）；刷新候选后重新确认 |
 | 422 | `validation_error` | 请求体或参数校验失败（FastAPI 默认的校验错误，转为统一格式，`details.errors` 里带字段错误；也包括未知的 `resourceType`、不能换算成 Cloud Control Identifier 的 `resourceId`、未知的导出列，以及账号列表、扫描列表等接口收到不认识的参数） |
 | 422 | `scope_too_large` | 按需扫描超过 `MAX_SCAN_ACCOUNTS` 个账号（`details.limit`、`details.requested`） |
@@ -293,7 +295,81 @@ type Task = {
 ### `POST /scan-scopes/confirm-change`
 请求体：`{ "accountId", "awsRegion", "resourceType", "guardDetectedAt" }`（账号必须是 12 位数字，类型必须认识，否则 422 `validation_error`）。`guardDetectedAt` 是核对页看到的检测时间；范围在这之后又有新的检测时返回 409 `scope_changed`，不确认新的候选集。范围从没扫描过返回 404 `scope_not_found`；当前不是 `abnormal` 返回 409 `scope_not_abnormal`。否则把这个范围设为 `confirmed`，记录 `guardConfirmedBy`（`X-Caller-Id`，没有就记 `api`），并立即为它创建一个按需 `shard` 任务（请求的 `target` 是 `{accountId, awsRegion, resourceType}`）。返回：`{ scanRequestId: number }`。这个 `shard` 完成后，这个范围里没看到的资源逐个按 R5 第 4 步确认，不会直接删除。
 
-## 7. 健康检查
+## 7. 报表
+
+报表是保存下来的规则，在读取时按当前清单求值；不保存结果，不涉及扫描。定义格式和语义见 [reports.md](reports.md) 第 3–4 节，这里只列接口。
+
+```ts
+type Condition = {
+  all?: Condition[]; any?: Condition[]; not?: Condition;
+  field?: string; op?: string; value?: unknown; key?: string
+}
+
+type ReportInput = {
+  name: string;                       // 1–200 字，唯一
+  description: string | null;         // ≤ 2000 字
+  subjectType: string | null;         // 为空表示所有类型
+  where: Condition;
+  columns: string[];                  // 留空时用默认列
+  enabled: boolean
+}
+
+type ReportInfo = {
+  id: number; name: string; description: string | null; subjectType: string | null;
+  enabled: boolean; createdBy: string | null; updatedBy: string | null;
+  createdAt: string; updatedAt: string
+}
+
+type ReportDetail = ReportInfo & {
+  definitionVersion: number; where: Condition; columns: string[]
+}
+
+type ReportFieldInfo = {
+  key: string; label: string;
+  type: "text" | "enum" | "number" | "bool" | "datetime" | "tags";
+  array: boolean;                     // 字段是否跨数组（条件语义是「任一元素满足」）
+  group: "common" | "type"
+}
+
+type ReportRow = ResourceItem & { values: Record<string, unknown> }
+
+type ReportPage = {
+  items: ReportRow[]; page: number; pageSize: number; total: number;
+  columns: { key: string; label: string; type: string; mono: boolean; array: boolean }[];
+  generatedAt: string
+}
+```
+
+### `GET /reports`
+参数：`enabled`（可选）。返回：`ReportInfo[]`，含停用的报表，按名称排序。
+
+### `POST /reports`
+请求体：`ReportInput`。保存时按 `subjectType` 的字段清单校验条件树、操作符、值和列；不合法返回 422 `validation_error`（`details` 指出出错的条件或字段）。名称重复返回 409 `report_name_taken`。`createdBy` 记 `X-Caller-Id`。返回：`201 ReportDetail`。
+
+### `PUT /reports/{report_id}`
+请求体：`ReportInput`，整体覆盖；校验同 POST，`updatedBy` 记 `X-Caller-Id`。返回：`ReportDetail`；不存在返回 404 `report_not_found`。
+
+### `DELETE /reports/{report_id}`
+删除报表，返回 204；不存在返回 404 `report_not_found`。存着的定义已经不能求值时仍可直接删除。
+
+### `GET /reports/{report_id}`
+返回：`ReportDetail`。存着的定义在当前字段清单下已不能求值（例如类型配置删掉了某个字段）时返回 422 `validation_error`，不改写数据库。
+
+### `GET /reports/{report_id}/results`
+- 参数：`page`、`pageSize`、`sort`（默认 `-lastChangedAt`；可排序列是通用列、本报表的列和 `inboundRelationshipCount` / `outboundRelationshipCount`，数组字段不能排序，否则 400 `invalid_sort`）、`s`（范围，`app:<EIM>` 或 `acct:<账号>`，不合法返回 400 `invalid_filter`）。
+- 返回：`ReportPage`。`items` 每行是资源本身加上本报表各列的值（`values`；跨数组的字段保留为数组）。`columns` 是实际显示的列（身份列加报表的列），语言跟随 `Accept-Language`。`total` 是当前匹配总数；计数按范围、报表定义和当前数据缓存最多 60 秒（Redis），可能比实时结果慢一点，`generatedAt` 是本次请求的时间。报表不存在返回 404 `report_not_found`。
+
+### `GET /reports/{report_id}/export`
+- 参数：`format`（`csv` 默认 / `jsonl`）、`lang`（CSV 表头的语言，默认跟随 `Accept-Language`）、`sort`、`s`。
+- 返回：流式下载。CSV 带 UTF-8 BOM，列是对话框里显示的列，跨数组的值用 `; ` 连接；JSON Lines 每行是一个 `ReportRow`。文件名 `aws-inventory-report-<id>-<时间>.<扩展名>`。
+
+### `GET /reports/overview`
+参数：`s`（范围）。返回：`{ generatedAt, items: { reportId, name, subjectType, count, error }[] }`，只包含启用的报表，顺序同列表。`count` 是当前匹配数，按上面的缓存规则；存着的定义已经不能求值时 `count = 0`，`error` 给出原因，不影响其他报表。
+
+### `GET /reports/fields`
+编辑器可用的字段：通用列（不含标签）、标签、关系计数、该类型的专属列和 `reportFields`，顺序与后端校验一致。参数：`subjectType`（可选；不传时只有通用字段和标签）。返回：`ReportFieldInfo[]`；未知类型返回 422 `validation_error`。`label` 跟随 `Accept-Language`。
+
+## 8. 健康检查
 
 ### `GET /health`
 返回 `200 { "database": "ok", "redis": "ok" | "unavailable" }`。数据库不可用时返回 503，body 是 `{ "database": "unavailable", "redis": … }`；Redis 不可用（或没有配置 `REDIS_URL`）时仍返回 200（只影响速度）。

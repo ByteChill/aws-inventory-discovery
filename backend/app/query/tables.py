@@ -5,6 +5,8 @@ from sqlalchemy import Table
 from app.models import (
     Account,
     AccountRegion,
+    FindingSummary,
+    Report,
     Resource,
     ResourceRelation,
     ScanRequest,
@@ -23,6 +25,8 @@ RESOURCE = _table(Resource)
 ACCOUNT = _table(Account)
 ACCOUNT_REGION = _table(AccountRegion)
 RELATION = _table(ResourceRelation)
+FINDING = _table(FindingSummary)
+REPORT = _table(Report)
 SHARD = _table(ScanShard)
 SCAN_REQUEST = _table(ScanRequest)
 SCAN_TASK = _table(ScanTask)
@@ -30,3 +34,4 @@ SCAN_TASK = _table(ScanTask)
 R = RESOURCE.c
 A = ACCOUNT.c
 S = SHARD.c
+F = FINDING.c

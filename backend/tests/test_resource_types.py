@@ -165,6 +165,42 @@ def test_derived_relationship_to_an_unknown_type_fails_when_the_registry_loads(
         TypeRegistry.from_directory(tmp_path / "specs")
 
 
+@pytest.mark.parametrize("path", ["ContainerDefinitions[0].Image", ".Image", "Volumes[][]"])
+def test_report_field_path_rejects_invalid_array_syntax(tmp_path: Path, path: str) -> None:
+    specs_dir = Path(__file__).parents[1] / "app" / "types" / "specs"
+    shutil.copytree(specs_dir, tmp_path / "specs")
+    broken = tmp_path / "specs" / "aws.ecs.taskdefinition.json"
+    data = load(broken)
+    data["reportFields"][0]["path"] = path
+    broken.write_text(json.dumps(data))
+    with pytest.raises(RegistryError, match=r"(?s)aws\.ecs\.taskdefinition\.json.*path"):
+        TypeRegistry.from_directory(tmp_path / "specs")
+
+
+def test_a_report_field_that_crosses_an_array_is_text(tmp_path: Path) -> None:
+    specs_dir = Path(__file__).parents[1] / "app" / "types" / "specs"
+    shutil.copytree(specs_dir, tmp_path / "specs")
+    broken = tmp_path / "specs" / "aws.ecs.taskdefinition.json"
+    data = load(broken)
+    data["reportFields"][0]["type"] = "number"
+    broken.write_text(json.dumps(data))
+    with pytest.raises(
+        RegistryError, match=r"(?s)aws\.ecs\.taskdefinition\.json.*array must have type text"
+    ):
+        TypeRegistry.from_directory(tmp_path / "specs")
+
+
+def test_a_report_field_cannot_shadow_a_column(tmp_path: Path) -> None:
+    specs_dir = Path(__file__).parents[1] / "app" / "types" / "specs"
+    shutil.copytree(specs_dir, tmp_path / "specs")
+    broken = tmp_path / "specs" / "aws.ecs.taskdefinition.json"
+    data = load(broken)
+    data["reportFields"][0]["key"] = data["columns"][0]["key"]
+    broken.write_text(json.dumps(data))
+    with pytest.raises(RegistryError, match=r"(?s)aws\.ecs\.taskdefinition\.json.*duplicate"):
+        TypeRegistry.from_directory(tmp_path / "specs")
+
+
 def test_derived_relationship_path_rejects_invalid_array_syntax(tmp_path: Path) -> None:
     specs_dir = Path(__file__).parents[1] / "app" / "types" / "specs"
     shutil.copytree(specs_dir, tmp_path / "specs")

@@ -2,13 +2,14 @@
 
 发现组织内 1000 多个 AWS 账号的资源，获取它们**当前的真实状态**，在 dashboard 上查询，并通过 API 提供给其他服务。
 
-> **当前状态**：MVP 已实现：两批共 15 个资源类型（含全局类型 Route 53 Hosted Zone）、扫描和写入、API、dashboard、本地环境、部署文件，后端测试和前端 Playwright 测试通过，CI 已在 GitHub 上通过。账号清单服务 ①、凭证服务 ② 的真实接口格式和真实账号数据的核对要等上线前确认。进度见 [docs/PROGRESS.md](docs/PROGRESS.md)。
+> **当前状态**：MVP 已实现：两批共 15 个资源类型（含全局类型 Route 53 Hosted Zone）、扫描和写入、API、dashboard、本地环境、部署文件，后端测试和前端 Playwright 测试通过，CI 已在 GitHub 上通过。v2 的自定义报表已实现，在 `feat/custom-reports` 分支上等待评审和合并。账号清单服务 ①、凭证服务 ②、findings 服务 ③ 的真实接口格式和真实账号数据的核对要等上线前确认。进度见 [docs/PROGRESS.md](docs/PROGRESS.md)。
 
 ## 它做什么
 
 - 每 6 小时扫描一遍所有账号、所有可达区域的资源；也可以按账号、区域、类型随时扫描，或者实时刷新单个资源。
 - 资源数据统一使用 AWS Config 的格式，可以按账号、EIM、BA、环境、区域、类型、标签以及各类型的专属字段筛选，并导出为 CSV 或 JSON Lines。
 - 定时扫描和按需扫描同时进行时，数据不会出错；没删除的资源绝不会被标为删除。
+- 报表：用条件树（类型、字段、标签、关系计数、相对时间、一跳关联字段，支持 all / any / not）保存规则，打开页面时按当前清单列出满足规则的资源，可以导出。AMI 的风险级别来自 findings 服务 ③，扫描时保存成当前汇总，EC2 报表可以通过 `image.*` 关联条件使用。
 - 只读：不修改任何 AWS 资源，不读取 secret 的值。
 
 ## 技术架构
@@ -22,7 +23,7 @@ flowchart LR
   API --> PG[(Aurora PostgreSQL)]
   API --> R[(ElastiCache for Valkey 缓存)]
   W[aws-inventory-discovery-worker<br/>扫描 + 定时调度] --> PG
-  W --> SVC[账号清单服务 ① / 凭证服务 ②]
+  W --> SVC[账号清单服务 ① / 凭证服务 ② / findings 服务 ③]
   W --> EP[VPC endpoints] --> T[目标账号<br/>AWS Config / Cloud Control]
 ```
 
@@ -54,7 +55,8 @@ aws-inventory-discovery/
 │   │   ├── core/            # 配置、数据库、日志
 │   │   ├── models/          # 数据库表和 API 模型
 │   │   ├── api/             # 路由和依赖
-│   │   ├── query/           # 筛选、分类计数、导出
+│   │   ├── query/           # 筛选、分类计数、导出、报表求值
+│   │   ├── reports/         # 报表定义的模型和校验
 │   │   ├── types/           # 资源类型：注册表、映射、脱敏、每个类型的 JSON 配置、特殊处理（TYPE_HOOKS）
 │   │   ├── aws/             # 与 AWS 和内部服务通信
 │   │   └── worker/          # 任务队列、租约、Discovery（读取）、Writer（写入和删除判断）、调度、清理
@@ -88,7 +90,7 @@ podman compose run --rm seed
 |---|---|---|
 | postgres、redis | 数据库和缓存 | 55432、56379 |
 | moto | 模拟 EC2（`DescribeRegions`、`DescribeImages`）、STS、CloudWatch Logs | 5001（macOS 的 AirPlay 占着 5000） |
-| fake-aws | 模拟 Cloud Control、AWS Config（moto 的服务器模式预设不了 `SelectResourceConfig` 的结果）、账号清单服务 ①、凭证服务 ② | 4567 |
+| fake-aws | 模拟 Cloud Control、AWS Config（moto 的服务器模式预设不了 `SelectResourceConfig` 的结果）、账号清单服务 ①、凭证服务 ②、findings 服务 ③ | 4567 |
 | migrate | 一次性，`alembic upgrade head` | — |
 | api、worker | 本项目；api 同时托管 dashboard | 8000 |
 | seed | 一次性，灌入演示数据 | — |
@@ -203,6 +205,7 @@ npm run e2e
 | [docs/specs/resource-types.md](docs/specs/resource-types.md) | 资源类型配置格式和 v1 类型清单 |
 | [docs/specs/api.md](docs/specs/api.md) | API 规格 |
 | [docs/specs/dashboard.md](docs/specs/dashboard.md) | Dashboard 规格 |
+| [docs/specs/reports.md](docs/specs/reports.md) | 自定义报表的详细规格 |
 | [docs/diagrams/](docs/diagrams/) | 架构图（部署架构、扫描流程、资源状态、数据库） |
 | [deploy/CHECKLIST.md](deploy/CHECKLIST.md) | 部署清单 |
 | [devtools/README.md](devtools/README.md) | 本地模拟服务的接口和管理接口 |

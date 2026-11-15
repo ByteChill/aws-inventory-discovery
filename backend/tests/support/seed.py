@@ -149,6 +149,18 @@ def resource_rows(registry: TypeRegistry) -> list[dict[str, Any]]:
                 first_seen_at=OBSERVED,
             )
         )
+    # The image the instance fixture uses, so the instance has a resolved AMI relationship.
+    own = load_json(AWS_FIXTURES / "aws.ec2.image" / "describe_images_self.json")["Images"][0]
+    item = ami_to_config_item(spec, own, account_id=MAIN_ACCOUNT, region="us-east-1")
+    rows.append(
+        _row(
+            item,
+            spec_registry=registry,
+            source="native",
+            observed_at=OBSERVED,
+            first_seen_at=OBSERVED,
+        )
+    )
     return rows
 
 

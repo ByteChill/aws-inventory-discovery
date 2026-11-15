@@ -7,18 +7,19 @@ thing the tests set by hand; resource data always comes from the simulated AWS r
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from threading import Barrier, local
+from threading import Barrier, Event, local
 from typing import Any
 
 import pytest
 import seed  # ty: ignore[import-not-found]
 from botocore.exceptions import ClientError
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, event, text
 from sqlmodel import Session, select
 
 from app.core.config import Settings
@@ -30,7 +31,7 @@ from app.types.registry import TypeRegistry
 from app.worker import leases, queue, requests
 from app.worker.discovery import Discovery, Observation
 from app.worker.errors import TaskLost
-from app.worker.writer import RelationJob, ResourceWriter
+from app.worker.writer import INCOMING_RELATION_SOURCES, RelationJob, ResourceWriter
 from tests.conftest import AwsEnv
 
 REGISTRY = TypeRegistry.from_directory()
@@ -420,12 +421,11 @@ def test_concurrent_source_and_target_writes_resolve_after_both_commit(
     thread_state = local()
     replace_relations = writer._replace_relations
 
-    def overlap(db: Session, jobs: list[RelationJob]) -> set[int]:
-        unresolved = replace_relations(db, jobs)
+    def overlap(db: Session, jobs: list[RelationJob]) -> None:
+        replace_relations(db, jobs)
         if not getattr(thread_state, "waited", False):
             thread_state.waited = True
             rendezvous.wait()
-        return unresolved
 
     monkeypatch.setattr(writer, "_replace_relations", overlap)
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -471,7 +471,8 @@ def test_arn_resolution_stays_in_account_region_and_does_not_guess_ambiguous_tar
 
     assert edge().to_resource_id is None
     writer.write([function_obs])
-    assert edge().to_resource_id is not None
+    unique_target_id = edge().to_resource_id
+    assert unique_target_id is not None
     duplicate = replace(
         function_obs,
         item=function_obs.item.model_copy(
@@ -480,6 +481,215 @@ def test_arn_resolution_stays_in_account_region_and_does_not_guess_ambiguous_tar
     )
     writer.write([duplicate])
     assert edge().to_resource_id is None
+    before_source = (
+        secret.observed_at,
+        secret.last_changed_at,
+        secret.content_hash,
+    )
+    assert duplicate.item.arn is not None
+    changed_duplicate = replace(
+        duplicate,
+        item=duplicate.item.model_copy(update={"arn": duplicate.item.arn + "-changed"}),
+        observed_at=duplicate.observed_at + minutes(1),
+    )
+    writer.write([changed_duplicate])
+    assert edge().to_resource_id == unique_target_id
+    assert (secret.observed_at, secret.last_changed_at, secret.content_hash) == before_source
+    assert writer.write([duplicate]).stale == 1
+    assert edge().to_resource_id == unique_target_id
+
+
+def test_deleting_an_ambiguous_target_resolves_the_surviving_target(
+    writer: ResourceWriter, disc: Discovery, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sweep = disc.sweep_config(["AWS::Lambda::Function", "AWS::SecretsManager::Secret"])
+    (function_obs,) = sweep.by_type[LAMBDA]
+    (secret_obs,) = sweep.by_type["AWS::SecretsManager::Secret"]
+    writer.write([function_obs])
+    writer.write([replace(secret_obs, relationships=[])])
+    (function,) = rows(session, LAMBDA).values()
+    duplicate = replace(
+        function_obs,
+        item=function_obs.item.model_copy(
+            update={"resource_id": function_obs.item.resource_id + "-duplicate"}
+        ),
+    )
+    writer.write([duplicate])
+    (secret,) = rows(session, "AWS::SecretsManager::Secret").values()
+
+    def edge() -> ResourceRelation:
+        session.expire_all()
+        return session.exec(
+            select(ResourceRelation).where(ResourceRelation.from_resource_id == secret.id)
+        ).one()
+
+    assert edge().to_resource_id is None
+    outcome = writer.finish_scope(
+        account_id=duplicate.item.account_id,
+        region=duplicate.item.aws_region,
+        resource_type=duplicate.item.resource_type,
+        seen_ids=[function_obs.item.resource_id],
+        observed_at=duplicate.observed_at + minutes(1),
+        complete=True,
+    )
+    assert outcome.missing == 1
+
+    resolve = writer._resolve_dangling_relations
+
+    def lose_claim(*args: Any, **kwargs: Any) -> None:
+        raise TaskLost
+
+    monkeypatch.setattr(writer, "_resolve_dangling_relations", lose_claim)
+    with pytest.raises(TaskLost):
+        gone(writer, duplicate, duplicate.observed_at + minutes(2))
+    assert edge().to_resource_id is None
+    monkeypatch.setattr(writer, "_resolve_dangling_relations", resolve)
+    assert gone(writer, duplicate, duplicate.observed_at + minutes(2)) == "stale"
+    assert edge().to_resource_id == function.id
+
+    outcome = writer.finish_scope(
+        account_id=function_obs.item.account_id,
+        region=function_obs.item.aws_region,
+        resource_type=function_obs.item.resource_type,
+        seen_ids=[],
+        observed_at=function_obs.observed_at + minutes(3),
+        complete=True,
+    )
+    assert outcome.missing == 1
+    assert gone(writer, function_obs, function_obs.observed_at + minutes(4)) == "deleted"
+    assert edge().to_resource_id is None
+
+
+def test_resolved_source_rechecks_a_target_arn_changed_before_source_commit(
+    writer: ResourceWriter, disc: Discovery, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sweep = disc.sweep_config(["AWS::Lambda::Function", "AWS::SecretsManager::Secret"])
+    (function_obs,) = sweep.by_type[LAMBDA]
+    (secret_obs,) = sweep.by_type["AWS::SecretsManager::Secret"]
+    writer.write([function_obs])
+    source_ready, allow_commit = Event(), Event()
+    replace_relations = writer._replace_relations
+
+    def hold_source(db: Session, jobs: list[RelationJob]) -> None:
+        replace_relations(db, jobs)
+        if any(
+            relationship.get("relationshipName") == "RotationLambda"
+            for job in jobs
+            for relationship in job.relationships
+        ):
+            source_ready.set()
+            assert allow_commit.wait(10)
+
+    monkeypatch.setattr(writer, "_replace_relations", hold_source)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        source_write = executor.submit(writer.write, [replace(secret_obs, relationships=[])])
+        try:
+            assert source_ready.wait(10)
+            assert function_obs.item.arn is not None
+            changed = replace(
+                function_obs,
+                item=function_obs.item.model_copy(
+                    update={"arn": function_obs.item.arn + "-changed"}
+                ),
+                observed_at=function_obs.observed_at + minutes(1),
+            )
+            writer.write([changed])
+        finally:
+            allow_commit.set()
+        assert source_write.result(timeout=15).new == 1
+
+    (secret,) = rows(session, "AWS::SecretsManager::Secret").values()
+    relation = session.exec(
+        select(ResourceRelation).where(ResourceRelation.from_resource_id == secret.id)
+    ).one()
+    assert relation.to_resource_id is None
+    assert relation.to_resource_key == function_obs.item.arn
+    assert secret.observed_at == secret.last_changed_at == secret_obs.observed_at
+
+
+def test_finish_scope_and_reconciliation_lock_active_and_missing_rows_together(
+    writer: ResourceWriter, disc: Discovery, session: Session, engine: Engine
+) -> None:
+    sweep = disc.sweep_config(["AWS::EC2::VPC", "AWS::EC2::Subnet"])
+    (vpc_obs,) = sweep.by_type["AWS::EC2::VPC"]
+    (subnet_obs,) = sweep.by_type["AWS::EC2::Subnet"]
+    second = replace(
+        subnet_obs,
+        item=subnet_obs.item.model_copy(
+            update={"resource_id": subnet_obs.item.resource_id + "-second"}
+        ),
+    )
+    writer.write([vpc_obs, subnet_obs, second])
+    assert gone(writer, subnet_obs, subnet_obs.observed_at + minutes(1)) == "missing"
+    (vpc,) = rows(session, "AWS::EC2::VPC").values()
+    assert vpc.id is not None
+    target_id = vpc.id
+    session.commit()
+    candidates_locked, release_finish, reconciling = Event(), Event(), Event()
+    reconcile_pids: list[int] = []
+
+    def after_sql(connection, cursor, statement, parameters, context, executemany):
+        if (
+            statement.startswith(
+                "SELECT t_inv_aws_resource.id, t_inv_aws_resource.resource_id,"
+                " t_inv_aws_resource.arn"
+            )
+            and "FOR UPDATE" in statement
+        ):
+            candidates_locked.set()
+            assert release_finish.wait(10)
+
+    def before_sql(connection, cursor, statement, parameters, context, executemany):
+        if "FOR NO KEY UPDATE" in statement:
+            reconcile_pids.append(
+                connection.exec_driver_sql("SELECT pg_backend_pid()").scalar_one()
+            )
+            reconciling.set()
+
+    event.listen(engine, "after_cursor_execute", after_sql)
+    event.listen(engine, "before_cursor_execute", before_sql)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            finished = executor.submit(
+                writer.finish_scope,
+                account_id=subnet_obs.item.account_id,
+                region=subnet_obs.item.aws_region,
+                resource_type=subnet_obs.item.resource_type,
+                seen_ids=[],
+                observed_at=subnet_obs.observed_at + minutes(2),
+                complete=True,
+            )
+            try:
+                assert candidates_locked.wait(10)
+                reconciled = executor.submit(writer._resolve_dangling_relations, [target_id])
+                assert reconciling.wait(10)
+                with engine.connect() as connection:
+                    deadline = time.monotonic() + 5
+                    while time.monotonic() < deadline:
+                        if connection.execute(
+                            text("SELECT cardinality(pg_blocking_pids(:pid))"),
+                            {"pid": reconcile_pids[0]},
+                        ).scalar_one():
+                            break
+                        time.sleep(0.01)
+                    else:
+                        pytest.fail("reconciliation did not wait for finish_scope")
+            finally:
+                release_finish.set()
+            outcome = finished.result(timeout=15)
+            reconciled.result(timeout=15)
+    finally:
+        release_finish.set()
+        event.remove(engine, "after_cursor_execute", after_sql)
+        event.remove(engine, "before_cursor_execute", before_sql)
+
+    assert (outcome.missing, outcome.confirm_pending, outcome.guard) == (1, 2, "normal")
+    subnets = rows(session, "AWS::EC2::Subnet")
+    assert all(resource.status == "missing" for resource in subnets.values())
+    assert all(
+        resource.absent_in_scan_at == subnet_obs.observed_at + minutes(2)
+        for resource in subnets.values()
+    )
 
 
 def test_existing_target_receiving_an_arn_resolves_incoming_edges(
@@ -508,6 +718,120 @@ def test_existing_target_receiving_an_arn_resolves_incoming_edges(
     session.expire_all()
     assert session.exec(relation_query).one().to_resource_id == function.id
     assert function.last_changed_at == unchanged_at
+
+
+def test_incoming_reconciliation_uses_bounded_lookups_at_inventory_scale(
+    writer: ResourceWriter, disc: Discovery, session: Session, engine: Engine, tmp_path: Path
+) -> None:
+    sweep = disc.sweep_config(["AWS::Lambda::Function", "AWS::SecretsManager::Secret"])
+    (function_obs,) = sweep.by_type[LAMBDA]
+    (secret_obs,) = sweep.by_type["AWS::SecretsManager::Secret"]
+    writer.write([function_obs, replace(secret_obs, relationships=[])])
+    (function,) = rows(session, LAMBDA).values()
+    assert function.id is not None
+    function_id = function.id
+    session.commit()
+
+    with engine.begin() as connection:
+        connection.exec_driver_sql("""
+            CREATE TEMP TABLE perf_base ON COMMIT DROP AS
+            SELECT id, resource_type, resource_id, arn, account_id, aws_region
+              FROM t_inv_aws_resource
+        """)
+        connection.exec_driver_sql("""
+            CREATE TEMP TABLE t_inv_aws_resource ON COMMIT DROP AS
+            SELECT * FROM perf_base WITH NO DATA
+        """)
+        connection.exec_driver_sql("""
+            INSERT INTO t_inv_aws_resource
+            SELECT series * 2 + base.id, base.resource_type,
+                   base.resource_id || '-' || series::text,
+                   base.arn || '-' || series::text,
+                   (base.account_id::bigint + mod(series, 1000))::text::char(12),
+                   base.aws_region
+              FROM perf_base base CROSS JOIN generate_series(1, 100000) series
+        """)
+        connection.exec_driver_sql("CREATE UNIQUE INDEX ON t_inv_aws_resource(id)")
+        connection.exec_driver_sql("""
+            CREATE UNIQUE INDEX ON t_inv_aws_resource
+                (account_id, aws_region, resource_type, resource_id)
+        """)
+        connection.exec_driver_sql("CREATE INDEX ON t_inv_aws_resource(arn)")
+        connection.exec_driver_sql("""
+            CREATE TEMP TABLE t_inv_aws_resource_relation ON COMMIT DROP AS
+            SELECT from_resource_id, to_resource_type, to_resource_field,
+                   to_resource_key, to_resource_id
+              FROM t_inv_aws_resource_relation WITH NO DATA
+        """)
+        connection.execute(
+            text("""
+                INSERT INTO t_inv_aws_resource_relation
+                SELECT source.id, target.resource_type, 'arn', target.arn, target.id
+                  FROM t_inv_aws_resource target
+                  JOIN t_inv_aws_resource source ON source.id = target.id + 1
+                 WHERE target.resource_type = :resource_type
+            """),
+            {"resource_type": LAMBDA},
+        )
+        connection.exec_driver_sql("""
+            CREATE INDEX ON t_inv_aws_resource_relation
+                (from_resource_id, to_resource_type, to_resource_key, to_resource_field)
+        """)
+        connection.exec_driver_sql("""
+            CREATE INDEX ON t_inv_aws_resource_relation(to_resource_id)
+        """)
+        connection.exec_driver_sql("""
+            CREATE INDEX ON t_inv_aws_resource_relation
+                (to_resource_type, to_resource_field, to_resource_key)
+        """)
+        connection.exec_driver_sql("ANALYZE t_inv_aws_resource")
+        connection.exec_driver_sql("ANALYZE t_inv_aws_resource_relation")
+        assert (
+            connection.exec_driver_sql(
+                "SELECT count(*) FROM t_inv_aws_resource_relation"
+            ).scalar_one()
+            == 100000
+        )
+        batches = [
+            [function_id + 2],
+            [function_id + 2 * series for series in range(1, 100001, 1000)],
+            [function_id + 2 * series for series in range(1, 501)],
+        ]
+        for ids in batches:
+            previous = (
+                connection.execute(
+                    text("SELECT id, arn FROM t_inv_aws_resource WHERE id = ANY(:ids)"),
+                    {"ids": ids},
+                ).all()
+                if len(ids) == 500
+                else []
+            )
+            parameters = {
+                "ids": ids,
+                "previous_ids": [row[0] for row in previous],
+                "previous_arns": [row[1] for row in previous],
+            }
+            plan = connection.execute(
+                text("EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) " + str(INCOMING_RELATION_SOURCES)),
+                parameters,
+            ).scalar_one()[0]
+            (tmp_path / f"query-plan-{len(ids)}.json").write_text(json.dumps(plan, indent=2))
+            nodes = [plan["Plan"]]
+            scans = []
+            while nodes:
+                node = nodes.pop()
+                nodes.extend(node.get("Plans", []))
+                if node.get("Relation Name") in (
+                    "t_inv_aws_resource",
+                    "t_inv_aws_resource_relation",
+                ):
+                    scans.append(node)
+            assert scans
+            assert all(
+                "Index" in node["Node Type"] or "Bitmap" in node["Node Type"] for node in scans
+            )
+            sources = connection.execute(INCOMING_RELATION_SOURCES, parameters).scalars().all()
+            assert set(sources) == {target_id + 1 for target_id in ids}
 
 
 def test_a_config_relationship_is_not_duplicated_by_the_derived_one(

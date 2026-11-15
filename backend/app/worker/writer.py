@@ -17,7 +17,20 @@ from datetime import UTC, datetime, timedelta
 from itertools import batched
 from typing import Any, Literal, Self
 
-from sqlalchemy import ARRAY, Engine, Text, any_, bindparam, delete, func, text, tuple_, update
+from sqlalchemy import (
+    ARRAY,
+    Engine,
+    Text,
+    and_,
+    any_,
+    bindparam,
+    delete,
+    func,
+    or_,
+    text,
+    tuple_,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlmodel import Session, col, select
 
@@ -43,6 +56,40 @@ BATCH_SIZE = 500
 Key = tuple[str, str, str, str]  # account_id, aws_region, resource_type, resource_id
 ACCESS_TASK_KINDS = ("sweep_account", "config_group", "shard", "confirm_missing")
 GoneOutcome = Literal["missing", "deleted", "unchanged", "stale", "not_found"]
+
+INCOMING_RELATION_SOURCES = text("""
+    SELECT DISTINCT source.id
+      FROM t_inv_aws_resource target
+      LEFT JOIN unnest(CAST(:previous_ids AS bigint[]), CAST(:previous_arns AS text[]))
+        previous(id, arn) ON previous.id = target.id
+      CROSS JOIN LATERAL (
+        SELECT rel.from_resource_id FROM t_inv_aws_resource_relation rel
+         WHERE rel.to_resource_id = target.id
+        UNION
+        SELECT rel.from_resource_id FROM t_inv_aws_resource_relation rel
+         WHERE rel.to_resource_type = target.resource_type
+           AND rel.to_resource_field = 'resourceId'
+           AND rel.to_resource_key = target.resource_id
+        UNION
+        SELECT rel.from_resource_id FROM t_inv_aws_resource_relation rel
+         WHERE rel.to_resource_type = target.resource_type
+           AND rel.to_resource_field = 'arn'
+           AND target.arn <> '' AND rel.to_resource_key = target.arn
+        UNION
+        SELECT rel.from_resource_id FROM t_inv_aws_resource_relation rel
+         WHERE rel.to_resource_type = target.resource_type
+           AND rel.to_resource_field = 'arn'
+           AND rel.to_resource_key = previous.arn
+      ) incoming
+      CROSS JOIN LATERAL (
+        SELECT resource.id FROM t_inv_aws_resource resource
+         WHERE resource.id = incoming.from_resource_id
+           AND resource.account_id = target.account_id
+           AND (resource.aws_region = target.aws_region OR target.aws_region = 'global')
+         OFFSET 0
+      ) source
+     WHERE target.id = ANY(CAST(:ids AS bigint[]))
+""")
 
 
 @dataclass
@@ -215,12 +262,12 @@ class ResourceWriter:
                 if current is None or obs.observed_at > current.observed_at:
                     latest[key_of(obs)] = obs
             written_ids: list[int] = []
-            unresolved_ids: set[int] = set()
+            previous_arns: dict[int, str] = {}
             scopes = [Scope(*key[:3]) for key in latest]
             with Session(self.engine) as db, db.begin():
                 if task is not None:
                     lock_worker_claim(db, task, scopes)
-                counts = self._apply(db, latest, task_id, written_ids, unresolved_ids)
+                counts = self._apply(db, latest, task_id, written_ids, previous_arns)
                 add_task_stats(
                     db,
                     task_id,
@@ -241,7 +288,9 @@ class ResourceWriter:
                         ),
                         {"new": counts.new, "updated": counts.updated, "id": scan_request_id},
                     )
-            self._resolve_dangling_relations(written_ids, unresolved_ids, task=task, scopes=scopes)
+            self._resolve_dangling_relations(
+                written_ids, previous_arns=previous_arns, task=task, scopes=scopes
+            )
             total.add(counts)
         return total
 
@@ -251,7 +300,7 @@ class ResourceWriter:
         batch: dict[Key, Observation],
         task_id: int | None,
         written_ids: list[int],
-        unresolved_ids: set[int],
+        previous_arns: dict[int, str],
     ) -> WriteCounts:
         counts = WriteCounts()
         keys = sorted(batch)
@@ -315,6 +364,8 @@ class ResourceWriter:
             row.observed_at = obs.observed_at
             row.observed_source = obs.source
             row.last_task_id = task_id
+            if row.arn and values["arn"] and row.arn != values["arn"]:
+                previous_arns[row.id] = row.arn
             row.arn = values["arn"] or row.arn
             self._stamp_source_time(row, obs)
             if obs.live_raw is not None:
@@ -383,15 +434,15 @@ class ResourceWriter:
             counts.new += len(done)
             lost_race = {k: o for k, o in new_obs.items() if k not in done}
             if lost_race:  # another writer inserted it first: take the update path
-                counts.add(self._apply(db, lost_race, task_id, written_ids, unresolved_ids))
-        unresolved_ids.update(self._replace_relations(db, relation_jobs))
+                counts.add(self._apply(db, lost_race, task_id, written_ids, previous_arns))
+        self._replace_relations(db, relation_jobs)
         return counts
 
     def _resolve_dangling_relations(
         self,
         written_ids: list[int],
-        unresolved_ids: set[int],
         *,
+        previous_arns: dict[int, str] | None = None,
         task: ScanTask | None = None,
         scopes: Collection[Scope] = (),
     ) -> None:
@@ -400,42 +451,32 @@ class ResourceWriter:
         Locking sources before their edges avoids reversing the Writer's lock order.
         Rechecking both directions lets the last of two concurrent writers see the other's
         committed row. Reconciliation uses current stored data and preserves observation times.
+        Incoming references use separate per-target index lookups; the lateral source lookup
+        keeps scope checks after reference matching instead of scanning all sources.
+        Previous ARNs exist only in memory for this batch, so removing an ambiguous candidate
+        also repairs unresolved references to its former ARN.
         """
         targets = sorted(set(written_ids))
-        if not targets and not unresolved_ids:
+        if not targets:
             return
+        previous_arns = previous_arns or {}
         with Session(self.engine) as db, db.begin():
             if task is not None:
                 lock_worker_claim(db, task, scopes)
             incoming_ids = (
                 db.connection()
                 .execute(
-                    text("""
-                SELECT DISTINCT rel.from_resource_id
-                  FROM t_inv_aws_resource n
-                  JOIN t_inv_aws_resource_relation rel
-                    ON rel.to_resource_type = n.resource_type
-                   AND (
-                     rel.to_resource_id = n.id
-                     OR (rel.to_resource_field = 'resourceId'
-                         AND rel.to_resource_key = n.resource_id)
-                     OR (rel.to_resource_field = 'arn'
-                         AND n.arn <> '' AND rel.to_resource_key = n.arn)
-                   )
-                  JOIN t_inv_aws_resource f
-                    ON f.id = rel.from_resource_id
-                   AND n.account_id = f.account_id
-                   AND (n.aws_region = f.aws_region OR n.aws_region = 'global')
-                 WHERE n.id = ANY(CAST(:ids AS bigint[]))
-                """),
-                    {"ids": targets},
+                    INCOMING_RELATION_SOURCES,
+                    {
+                        "ids": targets,
+                        "previous_ids": list(previous_arns),
+                        "previous_arns": list(previous_arns.values()),
+                    },
                 )
                 .scalars()
                 .all()
             )
-            source_ids = set(incoming_ids) | unresolved_ids
-            if not source_ids:
-                return
+            source_ids = set(incoming_ids) | set(written_ids)
             resources = db.exec(
                 select(Resource)
                 .where(col(Resource.id).in_(source_ids))
@@ -503,9 +544,9 @@ class ResourceWriter:
         }
         return values
 
-    def _replace_relations(self, db: Session, jobs: list[RelationJob]) -> set[int]:
+    def _replace_relations(self, db: Session, jobs: list[RelationJob]) -> None:
         if not jobs:
-            return set()
+            return
         db.exec(
             delete(ResourceRelation).where(
                 col(ResourceRelation.from_resource_id).in_([job.row_id for job in jobs])
@@ -557,7 +598,6 @@ class ResourceWriter:
                     targets[(account, region, rtype, field, value)] = matches[0]
 
         canonical: dict[int, list[dict[str, Any]]] = {}
-        unresolved: set[int] = set()
         for job in jobs:
             kept: list[dict[str, Any]] = []
             config_targets: set[tuple[Any, ...]] = set()
@@ -597,8 +637,6 @@ class ResourceWriter:
                 copy = dict(rel)
                 config_by_target.setdefault(identity, copy)
                 kept.append(copy)
-                if target_id is None:
-                    unresolved.add(job.row_id)
 
             for rel in job.relationships:
                 if not is_derived(rel):
@@ -633,8 +671,6 @@ class ResourceWriter:
                 derived_targets.add(identity)
                 copy = dict(rel)
                 kept.append(copy)
-                if target_id is None:
-                    unresolved.add(job.row_id)
             canonical[job.row_id] = kept
             db.exec(
                 update(Resource)
@@ -665,7 +701,6 @@ class ResourceWriter:
                 }
         if rows:
             db.exec(pg_insert(ResourceRelation).values(list(rows.values())))
-        return unresolved
 
     def _target_region(self, target_type: str, source_region: str) -> str:
         if target_type in self.registry and self.registry.get(target_type).global_:
@@ -724,12 +759,18 @@ class ResourceWriter:
                 col(Resource.resource_id)
                 == any_(bindparam("seen", list(seen_ids), type_=ARRAY(Text)))
             )
-            candidates = list(
+            locked = list(
                 db.exec(
-                    select(Resource.id, Resource.resource_id, Resource.arn)
+                    select(Resource.id, Resource.resource_id, Resource.arn, Resource.status)
                     .where(
                         *in_scope,
-                        col(Resource.status) == "active",
+                        or_(
+                            col(Resource.status) == "active",
+                            and_(
+                                col(Resource.status) == "missing",
+                                col(Resource.absent_in_scan_at).is_(None),
+                            ),
+                        ),
                         unseen,
                         col(Resource.observed_at) < cutoff,
                     )
@@ -742,6 +783,14 @@ class ResourceWriter:
                     .with_for_update()
                 ).all()
             )
+            candidates = [
+                (row_id, resource_id, arn)
+                for row_id, resource_id, arn, status in locked
+                if status == "active"
+            ]
+            previously_missing_ids = [
+                row_id for row_id, _, _, status in locked if status == "missing"
+            ]
             candidate_ids = [row[0] for row in candidates]
             active_total = db.exec(
                 select(func.count())
@@ -774,17 +823,12 @@ class ResourceWriter:
                         missing_checks=0,
                     )
                 )
-            db.exec(  # missing before (e.g. a refresh) and still not seen: first evidence now
-                update(Resource)
-                .where(
-                    *in_scope,
-                    col(Resource.status) == "missing",
-                    col(Resource.absent_in_scan_at).is_(None),
-                    unseen,
-                    col(Resource.observed_at) < cutoff,
+            if previously_missing_ids:
+                db.exec(
+                    update(Resource)
+                    .where(col(Resource.id).in_(previously_missing_ids))
+                    .values(absent_in_scan_at=cutoff)
                 )
-                .values(absent_in_scan_at=cutoff)
-            )
             if shard.guard_state in ("confirmed", "abnormal"):
                 shard.guard_state = "normal"
                 shard.candidate_count = None
@@ -836,25 +880,38 @@ class ResourceWriter:
             ).one_or_none()
             if row is None:
                 return "not_found"
+            resource_row_id = row.id
             if observed_at <= row.observed_at:
-                return "stale"
-            row.last_task_id = task_id
-            row.observed_at = observed_at
-            row.observed_source = source
-            if row.status == "active":
-                row.status = "missing"
-                row.missing_since = observed_at
-                outcome: GoneOutcome = "missing"
-            elif row.status == "missing" and row.absent_in_scan_at is not None:
-                row.status = "deleted"
-                row.deleted_at = observed_at
-                outcome = "deleted"
+                reconcile = row.status == "deleted"
+                outcome = "stale"
             else:
-                outcome = "unchanged"
-            db.add(row)
-            db.flush()
-            add_task_stats(db, task_id, missing=outcome == "missing", deleted=outcome == "deleted")
-            return outcome
+                row.last_task_id = task_id
+                row.observed_at = observed_at
+                row.observed_source = source
+                if row.status == "active":
+                    row.status = "missing"
+                    row.missing_since = observed_at
+                    outcome = "missing"
+                elif row.status == "missing" and row.absent_in_scan_at is not None:
+                    row.status = "deleted"
+                    row.deleted_at = observed_at
+                    outcome = "deleted"
+                else:
+                    outcome = "unchanged"
+                reconcile = row.status == "deleted"
+                db.add(row)
+                db.flush()
+                add_task_stats(
+                    db, task_id, missing=outcome == "missing", deleted=outcome == "deleted"
+                )
+        if reconcile:
+            assert resource_row_id is not None
+            self._resolve_dangling_relations(
+                [resource_row_id],
+                task=task,
+                scopes=[Scope(account_id, region, resource_type)],
+            )
+        return outcome
 
     def record_check_failed(
         self,

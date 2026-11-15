@@ -10,7 +10,15 @@ from sqlmodel import Session, select
 
 from app.aws.account_registry import RegistryAccount
 from app.core.config import Settings
-from app.models import Account, AccountRegion, Resource, ScanRequest, ScanShard, ScanTask
+from app.models import (
+    Account,
+    AccountRegion,
+    FindingSummary,
+    Resource,
+    ScanRequest,
+    ScanShard,
+    ScanTask,
+)
 from app.worker import cleanup, leases, queue, requests
 from app.worker.scheduler import Scheduler, sync_accounts
 from tests.worker.conftest import (
@@ -129,6 +137,17 @@ def resource(account_id: str, resource_id: str, status: str, deleted_at: datetim
     )
 
 
+def finding(account_id: str, resource_id: str) -> FindingSummary:
+    return FindingSummary(
+        account_id=account_id,
+        aws_region=REGION,
+        resource_type=TYPE,
+        resource_id=resource_id,
+        high_count=1,
+        checked_at=TODAY,
+    )
+
+
 def test_cleanup_purges_old_deleted_resources_and_long_inactive_accounts(
     session: Session,
     settings: Settings,
@@ -147,6 +166,11 @@ def test_cleanup_purges_old_deleted_resources_and_long_inactive_accounts(
             resource(PAYMENTS_DEV, "orphan-1", "active", None),
             resource(PAYMENTS_DEV, "orphan-2", "active", None),
             resource(PAYMENTS_DEV, "orphan-3", "missing", None),
+            # Findings follow their resource: purged ones go with it, the rest stay.
+            finding(IMAGES, "old-1"),
+            finding(IMAGES, "recent"),
+            finding(IMAGES, "alive"),
+            finding(PAYMENTS_DEV, "orphan-1"),
             AccountRegion(
                 account_id=PAYMENTS_DEV,
                 region=REGION,
@@ -169,9 +193,13 @@ def test_cleanup_purges_old_deleted_resources_and_long_inactive_accounts(
 
     result = cleanup.run_cleanup(session, settings, TODAY)
 
-    assert (result.resources, result.accounts) == (3, 1)
+    assert (result.resources, result.findings, result.accounts) == (3, 1, 1)
     session.expire_all()
     assert sorted(r.resource_id for r in session.exec(select(Resource))) == ["alive", "recent"]
+    assert sorted(f.resource_id for f in session.exec(select(FindingSummary))) == [
+        "alive",
+        "recent",
+    ]
     assert sorted(a.account_id for a in session.exec(select(Account))) == sorted(
         [IMAGES, PAYMENTS_PROD]
     )

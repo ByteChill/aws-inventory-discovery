@@ -54,6 +54,23 @@ def test_registry(env: Env):
     assert entries == env.dataset["registry"]
 
 
+def test_findings_service_returns_counts_and_zeros_for_unknown_images(env: Env):
+    unknown = httpx.get(f"{env.fake_url}/ami/ami-00000000000000000/findings").json()
+    assert unknown == {
+        "counts": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+        "maxScore": None,
+    }
+
+    body = {
+        "imageId": "ami-1234567890EXAMPLE",
+        "counts": {"critical": 1, "high": 2, "medium": 0, "low": 3},
+        "maxScore": 8.4,
+    }
+    httpx.put(f"{env.fake_url}/_admin/findings", json=body).raise_for_status()
+
+    assert httpx.get(f"{env.fake_url}/ami/ami-1234567890EXAMPLE/findings").json() == body
+
+
 def test_cloudcontrol_list_paginates_and_get(env: Env):
     cc = env.client("cloudcontrol", A, "us-east-1")
     type_name = "AWS::ECS::Cluster"

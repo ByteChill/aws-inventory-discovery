@@ -21,7 +21,7 @@ RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
 
 
 class RegistryError(Exception):
-    """The registry could not be read (error_code `registry_error`)."""
+    """The optional import source could not be read."""
 
 
 class RegistryAccount(BaseModel):

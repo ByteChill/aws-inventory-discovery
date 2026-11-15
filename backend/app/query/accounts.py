@@ -9,6 +9,7 @@ from pydantic import TypeAdapter
 from sqlalchemy import ColumnElement, Row, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.accounts import region_state, selected_regions
 from app.core.cache import Cache, validated
 from app.core.errors import ApiError
 from app.query.cache_keys import params_digest
@@ -16,7 +17,13 @@ from app.query.columns import STALE_AFTER
 from app.query.paging import PagingParams
 from app.query.search import like_pattern
 from app.query.tables import ACCOUNT, ACCOUNT_REGION, A, R, S
-from app.schemas.accounts import AccountDetail, AccountRegionInfo, AccountSummary, CoverageCell
+from app.schemas.accounts import (
+    AccountDetail,
+    AccountRegionInfo,
+    AccountSummary,
+    CoverageCell,
+    ScanRegionMode,
+)
 from app.schemas.base import Page
 
 SORTABLE: dict[str, ColumnElement[Any]] = {
@@ -28,6 +35,9 @@ SORTABLE: dict[str, ColumnElement[Any]] = {
     "accessStatus": A.access_status,
     "lastScanOkAt": A.last_scan_ok_at,
     "active": A.active,
+    "scanEnabled": A.scan_enabled,
+    "source": A.source,
+    "updatedAt": A.updated_at,
 }
 RESOURCE_COUNT = (
     select(func.count())
@@ -46,6 +56,7 @@ class AccountFilter(PagingParams):
     access_status: list[str] = []
     q: str | None = None
     active: bool = True
+    scan_enabled: bool | None = None
     sort: str = "accountName"
 
 
@@ -64,6 +75,10 @@ def _summary(row: Row[Any], purge_days: int) -> dict[str, Any]:
         "eim_app": m["eim_app"],
         "ba_id": m["ba_id"],
         "active": m["active"],
+        "source": m["source"],
+        "scan_enabled": m["scan_enabled"],
+        "scan_region_mode": m["scan_region_mode"],
+        "updated_at": m["updated_at"],
         "access_status": m["access_status"],
         "access_error": m["access_error"],
         "resource_count": m["resource_count"],
@@ -82,6 +97,10 @@ def _account_select() -> Any:
         A.ba_id,
         A.active,
         A.inactive_since,
+        A.source,
+        A.scan_enabled,
+        A.scan_region_mode,
+        A.updated_at,
         A.access_status,
         A.access_error,
         A.last_scan_ok_at,
@@ -97,6 +116,8 @@ def list_accounts(
     if cached is not None:
         return cached
     conditions: list[ColumnElement[bool]] = [A.active == params.active]
+    if params.scan_enabled is not None:
+        conditions.append(A.scan_enabled == params.scan_enabled)
     for values, column in (
         (params.account_type, A.account_type),
         (params.eim_id, A.eim_id),
@@ -145,24 +166,48 @@ def _require(session: Session, account_id: str) -> Row[Any]:
     return row
 
 
-def get_account(session: Session, account_id: str, purge_days: int) -> AccountDetail:
+def get_account(
+    session: Session,
+    account_id: str,
+    purge_days: int,
+    reachable_regions: list[str],
+) -> AccountDetail:
     row = _require(session, account_id)
-    regions = session.execute(
+    observed = session.execute(
         select(ACCOUNT_REGION)
         .where(ACCOUNT_REGION.c.account_id == account_id)
         .order_by(ACCOUNT_REGION.c.region)
     ).all()
+    selected = selected_regions(session, account_id)
+    mode: ScanRegionMode = row._mapping["scan_region_mode"]
+    observed_by_region = {region.region: region for region in observed}
+    names = sorted(set(reachable_regions) | selected | set(observed_by_region))
+    regions: list[AccountRegionInfo] = []
+    for name in names:
+        current = observed_by_region.get(name)
+        opt_in_status = current.opt_in_status if current is not None else "unknown"
+        reachable = name in reachable_regions and (
+            current.reachable if current is not None else True
+        )
+        chosen, effective, state = region_state(name, opt_in_status, reachable, mode, selected)
+        regions.append(
+            AccountRegionInfo(
+                region=name,
+                opt_in_status=opt_in_status,
+                reachable=reachable,
+                config_recording=(
+                    (current.config_recorder or {}).get("recording")
+                    if current is not None
+                    else None
+                ),
+                selected=chosen,
+                effective=effective,
+                state=state,
+            )
+        )
     return AccountDetail(
         **_summary(row, purge_days),
-        regions=[
-            AccountRegionInfo(
-                region=region.region,
-                opt_in_status=region.opt_in_status,
-                reachable=region.reachable,
-                config_recording=(region.config_recorder or {}).get("recording"),
-            )
-            for region in regions
-        ],
+        regions=regions,
     )
 
 

@@ -65,7 +65,6 @@ const ERROR_CODES = [
   "endpoint_unreachable",
   "region_disabled",
   "unsupported",
-  "registry_error",
   "worker_lost",
   "internal",
 ]

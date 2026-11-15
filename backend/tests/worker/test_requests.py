@@ -7,7 +7,7 @@ from sqlmodel import Session, select
 
 from app.aws.account_registry import RegistryAccount
 from app.core.config import Settings
-from app.models import ScanRequest, ScanTask
+from app.models import Account, ScanRequest, ScanTask
 from app.worker import queue, requests
 from app.worker.scheduler import Scheduler
 from tests.worker.conftest import (
@@ -139,6 +139,58 @@ def test_scan_of_all_accounts_starts_at_once_and_is_shared_while_it_runs(
     third = requests.create_scan(session, requests.ScanSpec(all_accounts=True), settings, now=NOW)
     assert third.created
     assert third.request.id != first.request.id
+
+
+def test_a_scan_obeys_scan_enabled_unless_the_request_explicitly_overrides_it(
+    session: Session, settings: Settings, accounts: list[RegistryAccount]
+) -> None:
+    del accounts
+    account = session.get_one(Account, PAYMENTS_DEV)
+    account.scan_enabled = False
+    session.add(account)
+    session.commit()
+
+    with pytest.raises(requests.ScanDisabled) as disabled:
+        requests.create_scan(
+            session,
+            requests.ScanSpec(account_ids=[PAYMENTS_DEV]),
+            settings,
+            now=NOW,
+        )
+    assert disabled.value.account_ids == [PAYMENTS_DEV]
+
+    created = requests.create_scan(
+        session,
+        requests.ScanSpec(account_ids=[PAYMENTS_DEV], override_scan_policy=True),
+        settings,
+        now=NOW,
+    )
+    assert created.created
+    assert created.request.scope == {
+        "all": False,
+        "accountIds": [PAYMENTS_DEV],
+        "awsRegions": [],
+        "resourceTypes": [],
+        "overrideScanPolicy": True,
+    }
+    assert {task.account_id for task in tasks_of(session, created.request)} == {PAYMENTS_DEV}
+
+
+def test_all_accounts_without_override_skips_scan_disabled_accounts(
+    session: Session, settings: Settings, accounts: list[RegistryAccount]
+) -> None:
+    del accounts
+    account = session.get_one(Account, PAYMENTS_DEV)
+    account.scan_enabled = False
+    session.add(account)
+    session.commit()
+
+    created = requests.create_scan(session, requests.ScanSpec(all_accounts=True), settings, now=NOW)
+
+    assert {task.account_id for task in tasks_of(session, created.request)} == {
+        PAYMENTS_PROD,
+        IMAGES,
+    }
 
 
 def test_refreshing_a_resource_shares_the_in_flight_task(session: Session) -> None:

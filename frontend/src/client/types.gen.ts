@@ -5,6 +5,77 @@ export type ClientOptions = {
 };
 
 /**
+ * AccountBatchResult
+ */
+export type AccountBatchResult = {
+    /**
+     * Updated
+     */
+    updated: number;
+};
+
+/**
+ * AccountBatchUpdate
+ */
+export type AccountBatchUpdate = {
+    selector: AccountSelector;
+    /**
+     * Scanenabled
+     */
+    scanEnabled?: boolean | null;
+    /**
+     * Scanregionmode
+     */
+    scanRegionMode?: 'all' | 'selected' | null;
+    /**
+     * Selectedregions
+     */
+    selectedRegions?: Array<string> | null;
+};
+
+/**
+ * AccountCreate
+ */
+export type AccountCreate = {
+    /**
+     * Accountid
+     */
+    accountId: string;
+    /**
+     * Accountname
+     */
+    accountName: string;
+    /**
+     * Accounttype
+     */
+    accountType: 'dev' | 'preprod' | 'prod';
+    /**
+     * Eimid
+     */
+    eimId?: string | null;
+    /**
+     * Eimapp
+     */
+    eimApp?: string | null;
+    /**
+     * Baid
+     */
+    baId?: string | null;
+    /**
+     * Scanenabled
+     */
+    scanEnabled?: boolean;
+    /**
+     * Scanregionmode
+     */
+    scanRegionMode?: 'all' | 'selected';
+    /**
+     * Selectedregions
+     */
+    selectedRegions?: Array<string>;
+};
+
+/**
  * AccountDetail
  */
 export type AccountDetail = {
@@ -37,6 +108,22 @@ export type AccountDetail = {
      */
     active: boolean;
     /**
+     * Source
+     */
+    source: 'manual' | 'imported' | 'legacy';
+    /**
+     * Scanenabled
+     */
+    scanEnabled: boolean;
+    /**
+     * Scanregionmode
+     */
+    scanRegionMode: 'all' | 'selected';
+    /**
+     * Updatedat
+     */
+    updatedAt: string;
+    /**
      * Accessstatus
      */
     accessStatus: string;
@@ -60,6 +147,24 @@ export type AccountDetail = {
      * Regions
      */
     regions: Array<AccountRegionInfo>;
+};
+
+/**
+ * AccountImportResult
+ */
+export type AccountImportResult = {
+    /**
+     * Fetched
+     */
+    fetched: number;
+    /**
+     * Imported
+     */
+    imported: number;
+    /**
+     * Skipped
+     */
+    skipped: number;
 };
 
 /**
@@ -112,6 +217,123 @@ export type AccountRegionInfo = {
      * Configrecording
      */
     configRecording: boolean | null;
+    /**
+     * Selected
+     */
+    selected: boolean;
+    /**
+     * Effective
+     */
+    effective: boolean;
+    /**
+     * State
+     */
+    state: 'selected' | 'not_selected' | 'account_disabled' | 'unreachable' | 'unknown';
+};
+
+/**
+ * AccountRegionOptions
+ */
+export type AccountRegionOptions = {
+    /**
+     * Reachableregions
+     */
+    reachableRegions: Array<string>;
+    /**
+     * Knownregions
+     */
+    knownRegions: Array<string>;
+};
+
+/**
+ * AccountScanPreview
+ */
+export type AccountScanPreview = {
+    /**
+     * Accounts
+     */
+    accounts: number;
+    /**
+     * Regions
+     */
+    regions: number;
+    /**
+     * Estimatedtasks
+     */
+    estimatedTasks: number;
+    /**
+     * Accountswithoutregiondata
+     */
+    accountsWithoutRegionData: number;
+    /**
+     * Skippeddisabledaccounts
+     */
+    skippedDisabledAccounts: number;
+};
+
+/**
+ * AccountScanPreviewRequest
+ */
+export type AccountScanPreviewRequest = {
+    selector: AccountSelector;
+    /**
+     * Overridescanpolicy
+     */
+    overrideScanPolicy?: boolean;
+    /**
+     * Scanenabled
+     */
+    scanEnabled?: boolean | null;
+    /**
+     * Scanregionmode
+     */
+    scanRegionMode?: 'all' | 'selected' | null;
+    /**
+     * Selectedregions
+     */
+    selectedRegions?: Array<string> | null;
+};
+
+/**
+ * AccountSelector
+ */
+export type AccountSelector = {
+    /**
+     * Accountids
+     */
+    accountIds?: Array<string>;
+    /**
+     * Eimids
+     */
+    eimIds?: Array<string>;
+    /**
+     * Eimapps
+     */
+    eimApps?: Array<string>;
+    /**
+     * Baids
+     */
+    baIds?: Array<string>;
+    /**
+     * Accounttypes
+     */
+    accountTypes?: Array<'dev' | 'preprod' | 'prod'>;
+    /**
+     * Accessstatuses
+     */
+    accessStatuses?: Array<string>;
+    /**
+     * Q
+     */
+    q?: string | null;
+    /**
+     * Scanenabled
+     */
+    scanEnabled?: boolean | null;
+    /**
+     * All
+     */
+    all?: boolean;
 };
 
 /**
@@ -146,6 +368,22 @@ export type AccountSummary = {
      * Active
      */
     active: boolean;
+    /**
+     * Source
+     */
+    source: 'manual' | 'imported' | 'legacy';
+    /**
+     * Scanenabled
+     */
+    scanEnabled: boolean;
+    /**
+     * Scanregionmode
+     */
+    scanRegionMode: 'all' | 'selected';
+    /**
+     * Updatedat
+     */
+    updatedAt: string;
     /**
      * Accessstatus
      */
@@ -184,6 +422,44 @@ export type AccountTypeCount = {
      * Count
      */
     count: number;
+};
+
+/**
+ * AccountUpdate
+ */
+export type AccountUpdate = {
+    /**
+     * Accountname
+     */
+    accountName?: string | null;
+    /**
+     * Accounttype
+     */
+    accountType?: 'dev' | 'preprod' | 'prod' | null;
+    /**
+     * Eimid
+     */
+    eimId?: string | null;
+    /**
+     * Eimapp
+     */
+    eimApp?: string | null;
+    /**
+     * Baid
+     */
+    baId?: string | null;
+    /**
+     * Scanenabled
+     */
+    scanEnabled?: boolean | null;
+    /**
+     * Scanregionmode
+     */
+    scanRegionMode?: 'all' | 'selected' | null;
+    /**
+     * Selectedregions
+     */
+    selectedRegions?: Array<string> | null;
 };
 
 /**
@@ -1567,6 +1843,10 @@ export type ScanScope = {
      * All
      */
     all?: boolean | null;
+    /**
+     * Overridescanpolicy
+     */
+    overrideScanPolicy?: boolean | null;
 };
 
 /**
@@ -1629,6 +1909,10 @@ export type ScanSpec = {
      * All
      */
     all?: boolean;
+    /**
+     * Overridescanpolicy
+     */
+    overrideScanPolicy?: boolean;
 };
 
 /**
@@ -2658,6 +2942,88 @@ export type OverviewResponses = {
 
 export type OverviewResponse = OverviewResponses[keyof OverviewResponses];
 
+export type RegionOptionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/accounts/region-options';
+};
+
+export type RegionOptionsResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountRegionOptions;
+};
+
+export type RegionOptionsResponse = RegionOptionsResponses[keyof RegionOptionsResponses];
+
+export type ScanPreviewData = {
+    body: AccountScanPreviewRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/accounts/scan-preview';
+};
+
+export type ScanPreviewErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ScanPreviewError = ScanPreviewErrors[keyof ScanPreviewErrors];
+
+export type ScanPreviewResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountScanPreview;
+};
+
+export type ScanPreviewResponse = ScanPreviewResponses[keyof ScanPreviewResponses];
+
+export type BatchPolicyData = {
+    body: AccountBatchUpdate;
+    path?: never;
+    query?: never;
+    url: '/api/v1/accounts/batch-policy';
+};
+
+export type BatchPolicyErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type BatchPolicyError = BatchPolicyErrors[keyof BatchPolicyErrors];
+
+export type BatchPolicyResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountBatchResult;
+};
+
+export type BatchPolicyResponse = BatchPolicyResponses[keyof BatchPolicyResponses];
+
+export type ImportFromRegistryData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/accounts/import';
+};
+
+export type ImportFromRegistryResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountImportResult;
+};
+
+export type ImportFromRegistryResponse = ImportFromRegistryResponses[keyof ImportFromRegistryResponses];
+
 export type ListAccountsData = {
     body?: never;
     path?: never;
@@ -2695,6 +3061,10 @@ export type ListAccountsData = {
          */
         active?: boolean;
         /**
+         * Scanenabled
+         */
+        scanEnabled?: boolean | null;
+        /**
          * Sort
          */
         sort?: string;
@@ -2719,6 +3089,61 @@ export type ListAccountsResponses = {
 };
 
 export type ListAccountsResponse = ListAccountsResponses[keyof ListAccountsResponses];
+
+export type CreateAccountData = {
+    body: AccountCreate;
+    path?: never;
+    query?: never;
+    url: '/api/v1/accounts';
+};
+
+export type CreateAccountErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateAccountError = CreateAccountErrors[keyof CreateAccountErrors];
+
+export type CreateAccountResponses = {
+    /**
+     * Successful Response
+     */
+    201: AccountDetail;
+};
+
+export type CreateAccountResponse = CreateAccountResponses[keyof CreateAccountResponses];
+
+export type DeleteAccountData = {
+    body?: never;
+    path: {
+        /**
+         * Account Id
+         */
+        account_id: string;
+    };
+    query?: never;
+    url: '/api/v1/accounts/{account_id}';
+};
+
+export type DeleteAccountErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteAccountError = DeleteAccountErrors[keyof DeleteAccountErrors];
+
+export type DeleteAccountResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteAccountResponse = DeleteAccountResponses[keyof DeleteAccountResponses];
 
 export type GetAccountData = {
     body?: never;
@@ -2749,6 +3174,66 @@ export type GetAccountResponses = {
 };
 
 export type GetAccountResponse = GetAccountResponses[keyof GetAccountResponses];
+
+export type UpdateAccountData = {
+    body: AccountUpdate;
+    path: {
+        /**
+         * Account Id
+         */
+        account_id: string;
+    };
+    query?: never;
+    url: '/api/v1/accounts/{account_id}';
+};
+
+export type UpdateAccountErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateAccountError = UpdateAccountErrors[keyof UpdateAccountErrors];
+
+export type UpdateAccountResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountDetail;
+};
+
+export type UpdateAccountResponse = UpdateAccountResponses[keyof UpdateAccountResponses];
+
+export type RestoreAccountData = {
+    body?: never;
+    path: {
+        /**
+         * Account Id
+         */
+        account_id: string;
+    };
+    query?: never;
+    url: '/api/v1/accounts/{account_id}/restore';
+};
+
+export type RestoreAccountErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RestoreAccountError = RestoreAccountErrors[keyof RestoreAccountErrors];
+
+export type RestoreAccountResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountDetail;
+};
+
+export type RestoreAccountResponse = RestoreAccountResponses[keyof RestoreAccountResponses];
 
 export type GetCoverageData = {
     body?: never;

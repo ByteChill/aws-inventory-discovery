@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { type ReactNode, useMemo, useState } from "react"
 
+import { useDeleteAccount, useRestoreAccount } from "@/api/accounts"
 import {
   useAccount,
   useCoverage,
@@ -13,9 +14,13 @@ import { Breadcrumb } from "@/components/layout/crumbs"
 import { Page, PageHeader, Panel } from "@/components/layout/page"
 import { Time } from "@/components/time"
 import { Button } from "@/components/ui/button"
+import { Dialog } from "@/components/ui/dialog"
+import { AccountEditor } from "@/features/account-editor"
+import { AccountScanPolicy } from "@/features/account-scan-policy"
 import { CoverageGrid } from "@/features/coverage-grid"
 import { ScanDialog } from "@/features/scan-dialog"
 import { type MessageKey, useI18n } from "@/i18n"
+import { errorText } from "@/lib/errors"
 import { formatNumber } from "@/lib/format"
 
 export const Route = createFileRoute("/accounts/$accountId")({
@@ -46,6 +51,10 @@ function AccountPage() {
 function Detail({ account: a }: { account: AccountDetail }) {
   const { t, locale } = useI18n()
   const [scanOpen, setScanOpen] = useState(false)
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const remove = useDeleteAccount()
+  const restore = useRestoreAccount()
   const scanPreset = useMemo(
     () => ({ accountIds: [a.accountId] }),
     [a.accountId],
@@ -116,12 +125,35 @@ function Detail({ account: a }: { account: AccountDetail }) {
         })}
         actions={
           <>
+            <Button variant="outline" onClick={() => setEditorOpen(true)}>
+              {t("accounts.edit")}
+            </Button>
+            {a.active ? (
+              <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+                {t("accounts.delete")}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                disabled={restore.isPending}
+                onClick={() => restore.mutate(a.accountId)}
+              >
+                {t("accounts.restore")}
+              </Button>
+            )}
             <Button asChild variant="outline">
               <Link to="/resources" search={{ s: `acct:${a.accountId}` }}>
                 {t("accounts.viewResources")}
               </Link>
             </Button>
-            <Button aria-haspopup="dialog" onClick={() => setScanOpen(true)}>
+            <Button
+              aria-haspopup="dialog"
+              disabled={!a.active || !a.scanEnabled}
+              title={
+                a.scanEnabled ? undefined : t("accounts.scanDisabledButtonHint")
+              }
+              onClick={() => setScanOpen(true)}
+            >
               {t("accounts.scanThis")}
             </Button>
           </>
@@ -132,6 +164,38 @@ function Detail({ account: a }: { account: AccountDetail }) {
         onClose={() => setScanOpen(false)}
         preset={scanPreset}
       />
+      <AccountEditor
+        open={editorOpen}
+        account={a}
+        onClose={() => setEditorOpen(false)}
+      />
+      <Dialog
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        title={t("accounts.confirmDeleteTitle")}
+      >
+        <p>{t("accounts.confirmDeleteBody", { name: a.accountName })}</p>
+        <p className="text-muted-foreground">{t("accounts.deleteNote")}</p>
+        {remove.error && (
+          <p className="text-danger">{errorText(t, remove.error)}</p>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+            {t("action.cancel")}
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={remove.isPending}
+            onClick={() =>
+              remove.mutate(a.accountId, {
+                onSuccess: () => setDeleteOpen(false),
+              })
+            }
+          >
+            {t("accounts.delete")}
+          </Button>
+        </div>
+      </Dialog>
       {a.accessStatus !== "ok" && (
         <section className="rounded-lg border border-warn/30 bg-warn-soft px-4 py-3">
           <h2 className="text-warn">
@@ -195,7 +259,26 @@ function Detail({ account: a }: { account: AccountDetail }) {
               {formatNumber(a.resourceCount, locale)}
             </Link>
           </Field>
+          <Field label={t("accounts.column.scan")}>
+            <span className={a.scanEnabled ? "text-primary" : undefined}>
+              {t(
+                a.scanEnabled
+                  ? "accounts.scanIncluded"
+                  : "accounts.scanStopped",
+              )}
+            </span>
+          </Field>
+          <Field label={t("accounts.source")}>
+            {t(`accounts.sourceValue.${a.source}` as MessageKey)}
+          </Field>
+          <Field label={t("accounts.updatedAt")}>
+            <Time value={a.updatedAt} />
+          </Field>
         </dl>
+      </Panel>
+
+      <Panel title={t("accounts.scanPolicy")}>
+        <AccountScanPolicy account={a} />
       </Panel>
 
       <div className="grid items-start gap-4 lg:grid-cols-2">

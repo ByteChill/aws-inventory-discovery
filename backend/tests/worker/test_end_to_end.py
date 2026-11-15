@@ -21,7 +21,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
 from app import cli
-from app.aws.account_registry import AccountRegistryClient
 from app.core.config import Settings
 from app.core.logging import JsonFormatter
 from app.worker.main import Worker
@@ -139,7 +138,9 @@ def stack(
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
     monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
     client = make_client(ACCOUNT_REGISTRY_URL=registry_url)
-    scheduler = Scheduler(engine, settings, AccountRegistryClient(registry_url))
+    imported = client.post("/api/v1/accounts/import")
+    assert imported.status_code == 200, imported.text
+    scheduler = Scheduler(engine, settings)
     worker = Worker(engine, settings, poll_interval=0.05, heartbeat_interval=1)
     worker.start()
     try:
@@ -446,7 +447,7 @@ def test_refreshing_an_ecs_cluster_that_is_not_in_the_inventory_derives_the_name
 def test_cancel_stops_a_queued_scan(stack: Stack, engine: Engine) -> None:
     # no sweep can start before the cancel: the worker's claim loop is not that fast, so the
     # scan is cancelled while its first tasks are queued or running
-    created = stack.post("/scans", {"all": True}, expect=201)  # the registry fills the accounts
+    created = stack.post("/scans", {"all": True}, expect=201)
 
     cancelled = stack.post(f"/scans/{created['id']}/cancel")
 
@@ -522,7 +523,7 @@ def test_task_logs_come_from_cloudwatch_and_carry_the_task_id(stack: Stack) -> N
     assert len(limited["events"]) <= 2 and limited["nextToken"]
 
 
-def test_doctor_passes_against_the_fakes_and_fails_when_a_dependency_is_down(
+def test_doctor_passes_against_the_fakes_and_treats_the_registry_as_optional(
     stack: Stack, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     from tests.conftest import NOWHERE, clear_caches
@@ -546,7 +547,7 @@ def test_doctor_passes_against_the_fakes_and_fails_when_a_dependency_is_down(
 
     monkeypatch.setenv("ACCOUNT_REGISTRY_URL", f"http://{NOWHERE}/accounts")
     clear_caches()
-    assert cli.run_doctor() == 1
+    assert cli.run_doctor() == 0
     table = capsys.readouterr().out
-    assert table.count("FAIL") == 2  # the registry, and the credential check that needs it
+    assert "FAIL" not in table and "optional import source unavailable" in table
     clear_caches()

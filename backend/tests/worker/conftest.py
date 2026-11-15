@@ -8,12 +8,13 @@ import pytest
 from sqlalchemy import Engine, text
 from sqlmodel import Session
 
+from app.accounts import import_accounts
 from app.aws.account_registry import AccountRegistryClient, RegistryAccount
 from app.core.config import Settings
 from app.core.db import make_engine
 from app.models import ScanShard, ScanTask
 from app.worker import leases, queue, requests
-from app.worker.scheduler import Scheduler, sync_accounts
+from app.worker.scheduler import Scheduler
 from tests.conftest import TEST_DATABASE_URL
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "registry"
@@ -72,7 +73,8 @@ def clean_tables(engine: Engine) -> None:
         connection.execute(
             text(
                 "TRUNCATE t_inv_aws_scan_task, t_inv_aws_scan_request, t_inv_aws_scan_shard,"
-                " t_inv_aws_resource, t_inv_aws_account_region, t_inv_aws_account"
+                " t_inv_aws_resource, t_inv_aws_finding_summary, t_inv_aws_account_region,"
+                " t_inv_aws_account_scan_region, t_inv_aws_account"
                 " RESTART IDENTITY CASCADE"
             )
         )
@@ -114,17 +116,17 @@ def settings(make_settings: Callable[..., Settings]) -> Settings:
 
 
 @pytest.fixture
-def scheduler(engine: Engine, settings: Settings, registry: RegistryServer) -> Iterator[Scheduler]:
-    scheduler = Scheduler(engine, settings, registry.client())
+def scheduler(engine: Engine, settings: Settings) -> Iterator[Scheduler]:
+    scheduler = Scheduler(engine, settings)
     yield scheduler
     scheduler.lock.release()
 
 
 @pytest.fixture
 def accounts(session: Session, registry: RegistryServer) -> list[RegistryAccount]:
-    """The accounts of the registry fixture file, fetched over HTTP and synced like a sweep."""
+    """The accounts of the registry fixture file, fetched over HTTP and imported once."""
     fetched = registry.client().fetch_accounts()
-    sync_accounts(session, fetched, NOW - timedelta(days=1))
+    import_accounts(session, fetched, NOW - timedelta(days=1))
     return fetched
 
 

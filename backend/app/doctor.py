@@ -21,12 +21,13 @@ from alembic.script import ScriptDirectory
 from botocore.exceptions import BotoCoreError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlmodel import Session
+from sqlmodel import Session, col, select
 
 from app.aws.account_registry import AccountRegistryClient, RegistryError
 from app.aws.credentials import CredentialError, CredentialService
 from app.core.config import Settings
 from app.core.db import make_engine
+from app.models import Account
 
 ALEMBIC_INI = Path(__file__).resolve().parents[1] / "alembic.ini"
 ENDPOINT_SERVICES = {"config": "config", "cloudcontrol": "cloudcontrol", "ec2": "ec2"}
@@ -92,25 +93,47 @@ def redis_check(settings: Settings) -> Check:
     return _check("redis", "REDIS_URL", probe)
 
 
-def registry(settings: Settings) -> tuple[Check, str | None]:
-    """The registry check, and the id of one account for the credential check."""
-    first: list[str] = []
+def registry(settings: Settings) -> Check:
+    """The registry is an optional import source: unavailable is informational, not a failure."""
+    if not settings.ACCOUNT_REGISTRY_URL:
+        return Check(
+            "account registry (1)",
+            "ACCOUNT_REGISTRY_URL",
+            True,
+            "not configured (optional)",
+        )
+    url = settings.ACCOUNT_REGISTRY_URL
 
     def probe() -> str:
-        if not settings.ACCOUNT_REGISTRY_URL:
-            raise RuntimeError("ACCOUNT_REGISTRY_URL is not set")
-        accounts = AccountRegistryClient(settings.ACCOUNT_REGISTRY_URL, retries=0).fetch_accounts()
-        first.extend(a.account_id for a in accounts[:1])
+        accounts = AccountRegistryClient(url, retries=0).fetch_accounts()
         return f"{len(accounts)} accounts"
 
     check = _check("account registry (1)", "ACCOUNT_REGISTRY_URL", probe)
-    return check, first[0] if first else None
+    if not check.ok:
+        return Check(
+            check.name,
+            check.target,
+            True,
+            f"optional import source unavailable: {check.detail}",
+        )
+    return check
 
 
-def credentials(settings: Settings, account_id: str | None) -> Check:
+def credentials(settings: Settings) -> Check:
     def probe() -> str:
+        engine = make_engine(settings.DATABASE_URL, settings.DATABASE_SCHEMA)
+        try:
+            with Session(engine) as session:
+                account_id = session.exec(
+                    select(Account.account_id)
+                    .where(col(Account.active))
+                    .order_by(col(Account.account_id))
+                    .limit(1)
+                ).first()
+        finally:
+            engine.dispose()
         if account_id is None:
-            raise RuntimeError("no account to test with (the registry check failed)")
+            return "no active account configured"
         if not settings.CREDENTIAL_SERVICE_URL:
             raise RuntimeError("CREDENTIAL_SERVICE_URL is not set")
         service = CredentialService(settings.CREDENTIAL_SERVICE_URL, attempts=1)
@@ -136,12 +159,12 @@ def endpoint(service: str, region: str) -> Check:
 
 
 def run_checks(settings: Settings) -> list[Check]:
-    registry_check, account_id = registry(settings)
+    registry_check = registry(settings)
     checks = [
         database(settings),
         redis_check(settings),
         registry_check,
-        credentials(settings, account_id),
+        credentials(settings),
     ]
     for region in settings.REACHABLE_REGIONS:
         checks.extend(endpoint(service, region) for service in ENDPOINT_SERVICES.values())

@@ -44,6 +44,14 @@ class UnknownAccounts(Exception):
         self.account_ids = account_ids
 
 
+class ScanDisabled(Exception):
+    """An account exists and is active, but its scan policy excludes it."""
+
+    def __init__(self, account_ids: list[str]) -> None:
+        super().__init__(f"scan disabled for accounts: {', '.join(account_ids)}")
+        self.account_ids = account_ids
+
+
 class InvalidRequestState(Exception):
     """The operation does not apply to the request in its current status."""
 
@@ -55,6 +63,7 @@ class ScanSpec(ApiModel):
     aws_regions: list[str] = Field(default_factory=list)
     resource_types: list[str] = Field(default_factory=list)
     all_accounts: bool = Field(default=False, alias="all")
+    override_scan_policy: bool = False
 
     @model_validator(mode="after")
     def check_shape(self) -> Self:
@@ -62,6 +71,8 @@ class ScanSpec(ApiModel):
             raise ValueError("give either account_ids or all_accounts=true")
         if self.all_accounts and (self.aws_regions or self.resource_types):
             raise ValueError("all_accounts cannot be narrowed by region or resource type")
+        if self.all_accounts and self.override_scan_policy:
+            raise ValueError("all_accounts does not accept override_scan_policy")
         for account_id in self.account_ids:
             if len(account_id) != 12 or not account_id.isdigit():
                 raise ValueError(f"invalid account id {account_id!r}")
@@ -74,6 +85,7 @@ class ScanSpec(ApiModel):
             "accountIds": sorted(set(self.account_ids)),
             "awsRegions": sorted(set(self.aws_regions)),
             "resourceTypes": sorted(set(self.resource_types)),
+            **({"overrideScanPolicy": True} if self.override_scan_policy else {}),
         }
 
 
@@ -233,7 +245,10 @@ def create_scan(
             session.commit()
             session.refresh(existing_sweep)
             return CreatedScan(existing_sweep, False)
-        account_ids = list(session.exec(select(Account.account_id).where(col(Account.active))))
+        account_filter = [col(Account.active)]
+        if not spec.override_scan_policy:
+            account_filter.append(col(Account.scan_enabled))
+        account_ids = list(session.exec(select(Account.account_id).where(*account_filter)))
         sweep: dict[str, Any] = {"skip_in_flight": True}
     else:
         account_ids = sorted(set(spec.account_ids))
@@ -248,6 +263,17 @@ def create_scan(
         )
         if unknown := [a for a in account_ids if a not in known]:
             raise UnknownAccounts(unknown)
+        if not spec.override_scan_policy:
+            disabled = set(
+                session.exec(
+                    select(Account.account_id).where(
+                        col(Account.account_id).in_(account_ids),
+                        col(Account.scan_enabled).is_(False),
+                    )
+                )
+            )
+            if blocked := [a for a in account_ids if a in disabled]:
+                raise ScanDisabled(blocked)
         sweep = {}
     try:
         with session.begin_nested():

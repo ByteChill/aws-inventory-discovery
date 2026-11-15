@@ -20,7 +20,6 @@ from tests.worker.conftest import (
     PAYMENTS_DEV,
     PAYMENTS_PROD,
     WORKER,
-    RegistryServer,
     claim,
     claim_one,
     complete,
@@ -398,12 +397,10 @@ def race_actions(request_id: int, running: ScanTask) -> list[Callable[[Session],
 def test_request_counts_persist_task_totals_and_resource_deltas(
     session: Session,
     scheduler: Scheduler,
-    registry: RegistryServer,
     accounts: list[RegistryAccount],
 ) -> None:
-    registry.always_fail = 500  # the sweep runs on the stored snapshot and records why
+    assert accounts  # the sweep uses the locally imported master data
     sweep = scheduler.start_sweep(session, NOW)
-    assert "registryError" in (sweep.counts or {})
     total = (sweep.counts or {})["accounts"]
     later = NOW + timedelta(hours=6)  # every account's stagger offset has passed
     first, second = claim_one(session, later), claim_one(session, later)
@@ -418,4 +415,3 @@ def test_request_counts_persist_task_totals_and_resource_deltas(
     assert counts["resources"] == {"new": 5, "updated": 1, "missing": 4, "deleted": 1}
     assert counts["tasks"] == {"succeeded": 2, "queued": total - 2}
     assert counts["accounts"] == total
-    assert "registryError" in counts

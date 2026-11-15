@@ -8,11 +8,13 @@ import pytest
 from sqlalchemy import Engine, event, func, text
 from sqlmodel import Session, select
 
+from app.accounts import restore_account, soft_delete_account
 from app.aws.account_registry import RegistryAccount
 from app.core.config import Settings
 from app.models import (
     Account,
     AccountRegion,
+    AccountScanRegion,
     FindingSummary,
     Resource,
     ScanRequest,
@@ -20,7 +22,7 @@ from app.models import (
     ScanTask,
 )
 from app.worker import cleanup, leases, queue, requests
-from app.worker.scheduler import Scheduler, sync_accounts
+from app.worker.scheduler import Scheduler
 from tests.worker.conftest import (
     IMAGES,
     PAYMENTS_DEV,
@@ -62,7 +64,7 @@ def test_the_scheduler_purges_finished_tasks_and_requests_after_their_retention(
     run_one_refresh(session, "queue-old", PAYMENTS_DEV, TODAY - timedelta(days=100))
     run_one_refresh(session, "queue-mid", IMAGES, TODAY - timedelta(days=20))
     run_one_refresh(session, "queue-new", PAYMENTS_PROD, TODAY - timedelta(days=1))
-    scheduler = Scheduler(engine, make_settings(SWEEP_ENABLED=False), registry.client())
+    scheduler = Scheduler(engine, make_settings(SWEEP_ENABLED=False))
 
     # Only the 03:00 hour triggers the cleanup, and only once a day.
     assert scheduler.tick(TODAY.replace(hour=12))
@@ -178,15 +180,13 @@ def test_cleanup_purges_old_deleted_resources_and_long_inactive_accounts(
                 reachable=True,
                 checked_at=TODAY,
             ),
+            AccountScanRegion(account_id=PAYMENTS_DEV, region=REGION),
         ]
     )
     session.commit()
-    # PAYMENTS_DEV left the registry 40 days ago, IMAGES 5 days ago.
-    without_dev = [a for a in accounts if a.account_id != PAYMENTS_DEV]
-    sync_accounts(session, without_dev, TODAY - timedelta(days=40))
-    sync_accounts(
-        session, [a for a in without_dev if a.account_id != IMAGES], TODAY - timedelta(days=5)
-    )
+    # PAYMENTS_DEV was deleted locally 40 days ago, IMAGES 5 days ago.
+    soft_delete_account(session, PAYMENTS_DEV, TODAY - timedelta(days=40))
+    soft_delete_account(session, IMAGES, TODAY - timedelta(days=5))
     on_demand_shard(session, TODAY)  # a shard task holds a lease on the account's scope
     task = claim_one(session, TODAY)
     assert leases.try_acquire(session, task, lease_scope(), TODAY) is leases.LeaseState.ACQUIRED
@@ -204,18 +204,37 @@ def test_cleanup_purges_old_deleted_resources_and_long_inactive_accounts(
         [IMAGES, PAYMENTS_PROD]
     )
     assert count(session, AccountRegion) == 0
+    assert count(session, AccountScanRegion) == 0
     assert count(session, ScanShard) == 0
 
 
+def test_stopping_scans_does_not_start_the_account_cleanup_window(
+    session: Session, settings: Settings, accounts: list[RegistryAccount]
+) -> None:
+    del accounts
+    account = session.get_one(Account, PAYMENTS_PROD)
+    account.scan_enabled = False
+    session.add(account)
+    session.add(resource(PAYMENTS_PROD, "kept", "active", None))
+    session.commit()
+
+    result = cleanup.run_cleanup(session, settings, TODAY)
+
+    assert result.accounts == 0
+    session.expire_all()
+    assert session.get(Account, PAYMENTS_PROD) is not None
+    assert (
+        session.exec(select(Resource).where(Resource.resource_id == "kept")).one().account_id
+        == PAYMENTS_PROD
+    )
+
+
 def deactivate_account(session: Session, accounts: list[RegistryAccount]) -> None:
-    """PAYMENTS_DEV left the registry 40 days ago; its active resources are still in the DB."""
+    """PAYMENTS_DEV was deleted 40 days ago; its active resources are still in the DB."""
+    del accounts
     session.add(resource(PAYMENTS_DEV, "orphan-1", "active", None))
     session.commit()
-    sync_accounts(
-        session,
-        [a for a in accounts if a.account_id != PAYMENTS_DEV],
-        TODAY - timedelta(days=40),
-    )
+    soft_delete_account(session, PAYMENTS_DEV, TODAY - timedelta(days=40))
 
 
 def wait_for_a_lock(db: psycopg.Connection, *markers: str, timeout: float = 10) -> None:
@@ -250,10 +269,10 @@ def test_reactivation_after_selection_keeps_the_account_and_its_resources(
         ):
             return
         reactivated = True
-        # The API's account sync commits while cleanup is between selecting the expired
+        # The API's account restore commits while cleanup is between selecting the expired
         # accounts and deleting their data.
         with Session(engine) as other:
-            sync_accounts(other, accounts, TODAY)
+            restore_account(other, PAYMENTS_DEV, TODAY)
 
     connection = session.connection()
     event.listen(connection, "after_cursor_execute", reactivate_after_selection)
@@ -289,16 +308,16 @@ def test_account_sync_holds_the_purge_off_a_reactivating_account(
             with Session(engine) as own:
                 connection = own.connection()
 
-                def pause_after_upsert(conn, cursor, statement, parameters, context, executemany):
-                    if "INSERT INTO t_inv_aws_account" in statement:
+                def pause_after_lock(conn, cursor, statement, parameters, context, executemany):
+                    if "SELECT pg_advisory_xact_lock" in statement:
                         syncing.set()
                         resume.wait(10)
 
-                event.listen(connection, "after_cursor_execute", pause_after_upsert)
+                event.listen(connection, "after_cursor_execute", pause_after_lock)
                 try:
-                    sync_accounts(own, accounts, TODAY)
+                    restore_account(own, PAYMENTS_DEV, TODAY)
                 finally:
-                    event.remove(connection, "after_cursor_execute", pause_after_upsert)
+                    event.remove(connection, "after_cursor_execute", pause_after_lock)
             synced.set()
         except BaseException as exc:
             errors.append(exc)
@@ -317,7 +336,7 @@ def test_account_sync_holds_the_purge_off_a_reactivating_account(
 
     sync_thread = threading.Thread(target=run_sync)
     sync_thread.start()
-    assert syncing.wait(10), "sync did not reach the upsert"
+    assert syncing.wait(10), "restore did not take the account lock"
     cleanup_thread = threading.Thread(target=run_cleanup)
     cleanup_thread.start()
     # The sync holds the account lock, so cleanup leaves the account for the next run

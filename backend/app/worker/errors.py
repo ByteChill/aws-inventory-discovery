@@ -8,7 +8,6 @@ ERROR_CODES: dict[str, bool] = {
     "endpoint_unreachable": True,
     "region_disabled": False,
     "unsupported": False,
-    "registry_error": True,
     "worker_lost": False,
     "internal": True,
 }

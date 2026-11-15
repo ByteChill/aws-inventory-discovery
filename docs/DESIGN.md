@@ -40,7 +40,7 @@
 | 数据存储 | 已有的 Aurora PostgreSQL（已为本服务分配独立 schema）；专用的 ElastiCache for Valkey（cluster mode disabled，自定义端口 16379），只做缓存 |
 | 目标账号 | 同一个组织内 1000 多个账号，每个账号都有 ADFS-readonly 角色（AWS 托管的 ReadOnlyAccess 策略） |
 | AWS Config | 每个账号都已开启，按账号调用，**没有组织级聚合器** |
-| 账号清单服务 ① | 返回 `account_id、account_name、account_type（dev/preprod/prod）、eim_id（8 位字符串）、eim_app、ba_id（如 BA2011234）`。EIM 是一个应用的资源集合：EIM ID、BA ID、应用名各自唯一、一一对应；每个账号只属于一个 EIM，一个 EIM 通常有 dev、preprod、prod 各一个账号。**接口格式暂按假设实现，上线前确认** |
+| 账号清单服务 ① | **可选的一次性导入源**，返回 `account_id、account_name、account_type（dev/preprod/prod）、eim_id（8 位字符串）、eim_app、ba_id（如 BA2011234）`。EIM 是一个应用的资源集合：EIM ID、BA ID、应用名各自唯一、一一对应；每个账号只属于一个 EIM，一个 EIM 通常有 dev、preprod、prod 各一个账号。账号主数据由本服务维护，导入不覆盖本地字段。**接口格式暂按假设实现，上线前确认** |
 | 凭证服务 ② | 返回目标账号 ADFS-readonly 角色的临时凭证，**自带缓存**。**接口格式暂按 STS 格式假设，上线前确认** |
 | findings 服务 ③ | 按镜像 ID 返回 critical / high / medium / low 计数和最高风险分，供报表使用。**接口格式暂按假设实现**（`GET {FINDINGS_SERVICE_URL}/ami/{imageId}/findings`），上线前确认；worker 在扫描 AMI 时**尽力**读取，失败不影响扫描（D-37） |
 
@@ -54,8 +54,8 @@ flowchart LR
   API --> PG[(Aurora PostgreSQL<br/>任务队列 + 资产数据)]
   API --> R[(ElastiCache for Valkey<br/>缓存 · 16379)]
   API --> CWL[CloudWatch Logs<br/>任务日志]
+  API --> REG[① 账号清单服务<br/>可选一次性导入]
   W[aws-inventory-discovery-worker<br/>ECS · 扫描 + 定时调度] --> PG
-  W --> REG[① 账号清单服务]
   W --> CRED[② 凭证服务]
   W --> FIND[③ findings 服务<br/>AMI 扫描时读取]
   W --> EP[VPC endpoints<br/>本地 + 经 peering 的远端区域]
@@ -74,12 +74,16 @@ api 和 worker 只通过数据库协作：api 写扫描请求和任务，worker 
 ## 4. 扫描
 
 ### 4.1 账号与凭证
-- **账号清单**：每轮全量扫描开始时调用一次 ①，结果就是这一轮的扫描范围，同时更新账号表，供 dashboard 按 EIM、BA、环境筛选。清单里没有的账号标记为不活跃，30 天后清理数据。`POST /scans {all: true}` 由 API 先调用一次 ① 刷新账号快照。按需扫描指定了库里没有的账号时，API 先调用一次 ① 确认：清单里有就同步进来，没有返回 `account_not_found`。账号清单服务调用失败时用库里现有的快照，不把任何账号标为不活跃；清单为空也当作失败。
+- **账号主数据**：账号表由本服务维护，是 dashboard、扫描和筛选的唯一来源。账号有 `source`（`manual` / `imported` / `legacy`）、`scan_enabled` 和 `scan_region_mode`（见 4.2）；账号 ID 不能修改。新增、修改、软删除和恢复走 `POST/PATCH/DELETE /accounts` 和 `POST /accounts/{id}/restore`；删除是 `active = false` 并记 `inactive_since`，保留 30 天清理窗口，不是停止扫描。
+- **账号清单服务 ①**：降级为可选的一次性导入源（`POST /accounts/import`）。导入只插入本地不存在的账号，不覆盖本地字段、扫描策略或 `active` 状态，也不因为清单里没有某个账号而把它标为不活跃。① 不可用不影响启动、全量扫描或 `doctor`；本地账号的 `registry_fetched_at` 可以为空。
+- **扫描范围**：全量扫描只取 `active AND scan_enabled` 的账号。按需扫描只接受本地存在且活跃的账号，不再向 ① 查询未知账号；停用扫描的账号需要显式 `overrideScanPolicy` 才能按需扫描（见 4.4）。
 - **凭证**：每个任务开始时向 ② 要凭证，本服务不做缓存。用 botocore 的凭证提供器返回 `RefreshableCredentials`，过期时由 boto3 自动调用 ② 刷新。凭证只在内存里，不写数据库、Redis 或日志。
 
 ### 4.2 区域
 - 每个账号开启了哪些区域，用 `ec2:DescribeRegions(AllRegions=true)` 查询，存到账号区域表。**调用的区域是 `REACHABLE_REGIONS` 里第一个默认开启（不是 opt-in）的区域**：ap-east-1 这样的 opt-in 区域在目标账号里可能没有开启，在那里调用会失败。`REACHABLE_REGIONS` 里没有默认开启的区域时，扫描任务明确失败并说明原因（要求加一个，比如 us-east-1）。opt-in 区域的清单来自 AWS 官方文档，写在 `aws/regions.py`。
-- **扫描的区域 = 账号已开启的区域（`opt-in-not-required` 或 `opted-in`）∩ `REACHABLE_REGIONS`**（网络能到达的区域）。开启了但网络到不了的区域，dashboard 显示为「已开启，未扫描」。
+- **区域策略**：每个账号有 `scan_region_mode`。`all` 表示跟随账号的 `DescribeRegions` 结果；`selected` 表示只考虑 `t_inv_aws_account_scan_region` 里选的区域。新账号默认 `all`；1000+ 账号可以按账号 ID、EIM、应用、环境或当前筛选条件批量修改。
+- **实际扫描的区域 = 区域策略 ∩ 账号已开启的区域（`opt-in-not-required` 或 `opted-in`）∩ `REACHABLE_REGIONS`**。`selected` 下未开启、网络不可达或还没确认的区域不能生效；dashboard 对每个区域显示「已选择」「账号未开启」「网络不可达」「待确认」或「未选择」。`selected` 为空是合法的：账号仍然启用，但这一轮没有有效区域。
+- **生效时间**：策略修改保存后从下一轮扫描开始生效；已经在跑的扫描任务不强制中断。停用扫描或删除账号后，排队中的账号级任务在真正执行时直接结束，不创建区域任务，因此不会因为「没有成功 listing」而产生 missing/deleted。
 - 增加区域：建 VPC、peering、endpoint、私有托管区，再改 `REACHABLE_REGIONS`。不用改代码。
 
 ### 4.3 数据源
@@ -98,7 +102,8 @@ api 和 worker 只通过数据库协作：api 写扫描请求和任务，worker 
 
 ### 4.4 扫描单元与调度
 - **扫描单元（范围）**：账号 + 区域 + 类型。全局资源（Route 53）的区域记为 `global`。
-- **全量扫描**：每 6 小时一次，由调度器创建一轮扫描。每个账号在窗口内有一个固定的开始时间（账号 ID 的 SHA-256 对窗口长度取模），把 1000 个账号错开。窗口 = 扫描间隔 − 30 分钟（默认 5.5 小时），保证最后一个账号在下一轮开始前有时间完成，平均每 20 秒左右开始一个。到点后由一个账号级任务拉起这个账号的所有区域和类型的子任务；定时扫描遇到上一轮还在排队的同范围子任务（积压）时不重复入队，按需扫描不去重。
+- **全量扫描**：每 6 小时一次，由调度器创建一轮扫描，只取 `active AND scan_enabled` 的账号。每个账号在窗口内有一个固定的开始时间（账号 ID 的 SHA-256 对窗口长度取模），把 1000 个账号错开。窗口 = 扫描间隔 − 30 分钟（默认 5.5 小时），保证最后一个账号在下一轮开始前有时间完成，平均每 20 秒左右开始一个。到点后由一个账号级任务按区域策略拉起这个账号的子任务；定时扫描遇到上一轮还在排队的同范围子任务（积压）时不重复入队，按需扫描不去重。
+- **按需扫描**：`POST /scans` 默认遵守账号开关和区域策略；只有显式传 `overrideScanPolicy: true` 才绕过它们。这个标志只覆盖扫描策略，不覆盖软删除：已删除的账号永远不会被扫描。被停用或删除的账号不会产生区域任务，因此不会触发 missing/deleted 判断，已有数据保留。
 - **定时调度**：在 worker 里运行，每分钟一次，用 Postgres advisory lock 保证只有一个实例负责。锁的 key 由 `<名称>:<DATABASE_SCHEMA>` 计算得出（名称是 `aws-inventory-discovery:scheduler`；共用一个数据库、schema 不同的部署互不干扰）。负责的实例还每分钟回收失联的任务，每天 03:00（UTC）清理。可以用环境变量 `SWEEP_ENABLED=false` 停掉定时扫描（回收和清理仍然运行）；本地环境就是这样做的，演示靠按需扫描。
 - **任务种类**：`sweep_account`（账号级）、`config_group`（一个账号区域的一次 Config 查询）、`shard`（一个范围的 Cloud Control 扫描）、`resource`（单个资源刷新）、`confirm_missing`（删除确认）。
 - **领任务**：`SELECT … FOR UPDATE SKIP LOCKED`，按需任务优先。每个 worker 留出一部分线程只处理按需任务。每个账号同时最多跑 4 个任务（可配置，软上限），用来避免被 Config 和 Cloud Control 限流。
@@ -167,10 +172,10 @@ api 和 worker 只通过数据库协作：api 写扫描请求和任务，worker 
 
 ## 6. 数据库
 
-所有表都放在 `DATABASE_SCHEMA` 指定的 schema 里（已为本服务分配的独立 schema），连接时设置 `search_path`；Alembic 的版本表也放在这个 schema。共 9 张表。下面的 DDL 是迁移 0001–0007 之后的结果（0001 初始表，含关系表；0002 加围栏令牌和运行中任务的索引；0003 加 `candidate_count`；0004 加排队账号的索引；0005 加 `scan_shard_id` 和 `candidate_ids`；0006 加报表表；0007 加 findings 汇总表）；三列 trigram 索引需要 `pg_trgm` 扩展，迁移里用 `CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA public`（共享集群上通常已经装好）。
+所有表都放在 `DATABASE_SCHEMA` 指定的 schema 里（已为本服务分配的独立 schema），连接时设置 `search_path`；Alembic 的版本表也放在这个 schema。共 10 张表。下面的 DDL 是迁移 0001–0007 和 `87b6f3ba8251` 之后的结果（0001 初始表，含关系表；0002 加围栏令牌和运行中任务的索引；0003 加 `candidate_count`；0004 加排队账号的索引；0005 加 `scan_shard_id` 和 `candidate_ids`；0006 加报表表；0007 加 findings 汇总表；`87b6f3ba8251` 加账号扫描策略和区域选择表）；三列 trigram 索引需要 `pg_trgm` 扩展，迁移里用 `CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA public`（共享集群上通常已经装好）。
 
 ```sql
--- 账号快照：每轮全量扫描开始时，从账号清单服务 ① 更新
+-- 账号主数据：本服务维护；① 只通过 POST /accounts/import 一次性插入未知账号
 CREATE TABLE t_inv_aws_account (
   account_id           char(12) PRIMARY KEY,
   account_name         text        NOT NULL,
@@ -179,15 +184,19 @@ CREATE TABLE t_inv_aws_account (
   eim_app              text,
   ba_id                text,
   active               boolean     NOT NULL DEFAULT true,
-  inactive_since       timestamptz,                   -- 超过 30 天就清理数据
-  registry_fetched_at  timestamptz NOT NULL,
+  inactive_since       timestamptz,                   -- 删除后超过 30 天就清理数据
+  registry_fetched_at  timestamptz,                   -- 手动/导入账号可以为空
+  source               text        NOT NULL DEFAULT 'manual',  -- manual / imported / legacy
+  scan_enabled         boolean     NOT NULL DEFAULT true,
+  scan_region_mode     text        NOT NULL DEFAULT 'all',     -- all / selected
+  updated_at           timestamptz NOT NULL DEFAULT now(),
   access_status        text        NOT NULL DEFAULT 'unknown',
                        -- unknown / ok / partial / access_denied / credential_error
   access_error         text,
   access_checked_at    timestamptz,
   last_scan_ok_at      timestamptz
 );
--- 索引：account_type、eim_id、ba_id、access_status
+-- 索引：account_type、eim_id、ba_id、access_status、scan_enabled
 
 -- 每个账号开启的区域，以及该区域的 Config 记录器配置
 CREATE TABLE t_inv_aws_account_region (
@@ -197,6 +206,13 @@ CREATE TABLE t_inv_aws_account_region (
   reachable        boolean     NOT NULL,   -- 在不在 REACHABLE_REGIONS 里
   config_recorder  jsonb,                  -- {recording, allSupported, includeGlobal, resourceTypes[], excludedTypes[], dailyTypes[]}；只有定时扫描会更新
   checked_at       timestamptz NOT NULL,
+  PRIMARY KEY (account_id, region)
+);
+
+-- scan_region_mode = 'selected' 时选中的区域；扫描时还要和账号已开启区域、REACHABLE_REGIONS 取交集
+CREATE TABLE t_inv_aws_account_scan_region (
+  account_id       char(12) REFERENCES t_inv_aws_account ON DELETE CASCADE,
+  region           text,
   PRIMARY KEY (account_id, region)
 );
 
@@ -254,7 +270,7 @@ CREATE TABLE t_inv_aws_scan_request (
   target           jsonb,                  -- 单个资源
   priority         smallint    NOT NULL,   -- 0 = 按需，1 = 定时
   status           text        NOT NULL,   -- queued / running / succeeded / partial / failed / cancelled
-  counts           jsonb,                  -- {tasks: {状态: 数量}, resources: {new, updated, missing, deleted}}，由任务结束时汇总；另有 accounts、skippedAccounts、registryError 等
+  counts           jsonb,                  -- {tasks: {状态: 数量}, resources: {new, updated, missing, deleted}}，由任务结束时汇总；另有 accounts、skippedAccounts 等
   idempotency_key  text        UNIQUE,
   created_at       timestamptz NOT NULL DEFAULT now(),
   started_at       timestamptz,
@@ -351,7 +367,7 @@ CREATE TABLE t_inv_aws_finding_summary (
 **清理**（worker 每天凌晨执行一次）
 - 任务明细保留 14 天，扫描请求保留 90 天
 - 已删除的资源保留 30 天；随之删除它的 findings 汇总
-- 从清单移除超过 30 天的账号，连同它的资源和 findings 汇总一起清理
+- 软删除超过 30 天的账号，连同它的资源、区域、扫描策略和 findings 汇总一起清理；只是停止扫描（`scan_enabled = false`）的账号不清理
 
 ## 7. 并发与一致性
 
@@ -474,12 +490,20 @@ T2  定时扫描写入 q1、q2，observed_at = T0
 | GET | `/resource-types` | 支持的资源类型，带中英文名称 |
 | GET | `/columns?resourceType=` | 列定义，不传类型时返回通用列；前端据此生成列和筛选控件 |
 | GET | `/stats/overview` | 概览数据 |
-| GET | `/accounts` | 账号列表 |
-| GET | `/accounts/{accountId}` | 账号详情：信息、权限状态、开启的区域 |
+| GET | `/accounts` | 账号列表：可按环境、EIM、BA、权限状态、搜索、`active`、`scanEnabled` 筛选；返回 `source`、`scanEnabled`、`scanRegionMode` 等主数据字段 |
+| POST | `/accounts` | 新增本地账号；账号 ID 必须是 12 位数字，不能重复 |
+| GET | `/accounts/region-options` | 区域选项：`reachableRegions` 和已知区域，给批量编辑用 |
+| POST | `/accounts/scan-preview` | 预览批量策略的生效范围：账号数、区域数、预计任务数，以及没有区域数据和被停用账号的数量 |
+| POST | `/accounts/batch-policy` | 按 `accountIds`、EIM、应用、环境、权限状态、搜索或 `all` 批量修改扫描开关和区域策略 |
+| POST | `/accounts/import` | 从 ① 一次性导入本地不存在的账号；不覆盖本地字段，不把清单外账号标为不活跃 |
+| GET | `/accounts/{accountId}` | 账号详情：信息、权限状态、来源、更新时间和每个区域的策略状态 |
+| PATCH | `/accounts/{accountId}` | 修改可编辑字段和扫描策略；账号 ID 不可修改 |
+| DELETE | `/accounts/{accountId}` | 软删除：`active = false` 并进入 30 天清理窗口；不是停止扫描 |
+| POST | `/accounts/{accountId}/restore` | 在清理前恢复账号 |
 | GET | `/accounts/{accountId}/coverage` | 「区域 × 类型」的扫描状态 |
 | GET | `/applications` | 应用列表：按 `q` 搜索应用名、EIM、BA，分页；只统计活跃账号 |
 | GET | `/scans/summary` | 扫描页上半部分：全量扫描进度、任务积压、按原因汇总的失败、可能已删除的数量、数据异常的范围 |
-| POST | `/scans` | 发起扫描：`{accountIds, awsRegions?, resourceTypes?}` 或 `{all: true}`。超过 50 个账号返回 `scope_too_large`；库里没有的账号先向账号清单服务确认，也没有就返回 `account_not_found`；`all` 时先刷新账号快照，如果已经有一轮全量扫描在跑，就返回那一轮 |
+| POST | `/scans` | 发起扫描：`{accountIds, awsRegions?, resourceTypes?}` 或 `{all: true}`，可选 `overrideScanPolicy: true`。超过 50 个账号返回 `scope_too_large`；未知或已删除账号返回 `account_not_found`；默认跳过或拒绝停用扫描的账号（409 `account_scan_disabled`），只有显式覆盖才扫描；`all` 只取 `active AND scan_enabled`，如果已经有一轮全量扫描在跑，就返回那一轮 |
 | GET | `/scans` | 扫描记录 |
 | GET | `/scans/{id}` | 扫描详情：任务按状态汇总，失败按原因分组 |
 | GET | `/scans/{id}/tasks` | 任务列表，可以按状态、原因筛选 |
@@ -540,7 +564,7 @@ T2  定时扫描写入 q1、q2，observed_at = T0
 | **应用列表** | 按应用名、EIM、BA 搜索，按环境筛选；列应用名、EIM、BA、账号数、环境、资源数；点击进入这个应用的资源范围 |
 | **资源列表** | 表格上方一行筛选（当前范围的搜索、环境、区域、类型、清单状态；账号、EIM、BA 和标签收在「更多筛选」里，选项带数量）；没选类型时显示通用列，选了一个类型后加上这个类型的专属列。**每一列的筛选控件按列的数据类型自动生成**，筛选和排序在后端执行；可以显示和隐藏列；导出；筛选条件都在 URL 里，可以收藏或分享。表格用「名称 / 资源 ID」、账号、应用、环境、区域、类型和类型列的固定布局，长值单行省略，完整值在悬停、预览侧栏和详情里；点击行打开预览，点击名称进详情。异常状态只在不正常时显示：「可能已删除」「已删除」「数据过期」。带 `scanRequestId` 时显示某次扫描范围内的当前清单，并写明不代表本次变化 |
 | **资源详情** | 名称、类型、状态、「刷新」按钮；ARN（可复制）、账号、EIM、BA、环境、区域、首次发现时间；「更新于 3 分钟前」，悬停显示具体时间和数据来源；标签；关联资源（按关系分组，可跳转）；配置（Config 格式，可以折叠和搜索）；有实时数据时另起一块显示 |
-| **账号** | 列表：名称、ID、环境、EIM、BA、资源数、权限状态、上次扫描时间，可以按状态筛选。详情：权限状态（直接写原因，比如「没有读取权限」）、区域（已扫描 / 已开启但未扫描）、「区域 × 类型」的状态格子、「扫描」按钮；从清单移除的账号显示「12 天后清理」 |
+| **账号** | 列表：名称、ID、环境、EIM、BA、资源数、是否纳入扫描、权限状态、上次扫描时间；可以按状态和是否纳入扫描筛选，支持批量选择改策略、新增、编辑、删除确认和恢复。详情：权限状态（直接写原因，比如「没有读取权限」）、账号开关、区域模式（全部 / 指定）、区域勾选和「已选择 / 账号未开启 / 网络不可达 / 待确认」状态、「区域 × 类型」的状态格子、「扫描」按钮；策略修改提示下一轮生效。删除的账号显示「12 天后清理」；「停止扫描」和「删除账号」是两个不同的动作 |
 | **扫描**（管理） | 上半部分是当前状态：全量扫描进度和预计完成时间（比计划慢时提示「比计划慢了」，接口不返回计划完成时间，所以不写时长）、任务积压、最近 24 小时按原因汇总的失败（每个原因配一句白话说明和处理建议，点击跳到最近一次扫描的任务列表，因为没有全局的任务列表接口）、可能已删除的资源（「再检查一次」）、数据异常的范围（「核对资源」「重新扫描」）。下半部分是扫描记录：每次扫描的结果，比如「新增 12，更新 340，可能已删除 3，已删除 2，失败 5」，结果数字只作统计，失败可以跳到任务列表，另提供「查看当前范围资源」；扫描详情里可以「重试失败的任务」「取消」，任务详情里直接显示日志。「扫描」按钮打开表单：选账号（可以按名称、ID、EIM、BA 搜索，或选全部）、区域、类型，提交前写清范围；超过 50 个账号时在按钮旁直接提示 |
 | **待核对的范围** | 从扫描页的异常范围进入：账号、区域、类型、检测时间、本次未发现的数量和当前总数；候选资源的名称、ID、ARN、本次未发现和保留的清单状态；明确「未发现不等于已删除」；「暂不确认」返回，「确认是真实变化」二次确认后重新扫描这个范围 |
 | **报表** | 列表：名称、说明或主体类型、当前匹配数（跟随全局范围，打开页面时重新计算，可能缓存 60 秒）、最近修改时间，停用的报表和失效的规则分别标记；「新建报表」打开编辑器。详情：结果表复用资源列表的表格（分页、排序、行状态标记，名称链接到资源详情），身份列总是显示，其余是本报表选择的列；可以导出、编辑、删除。编辑器：名称、说明、主体类型、条件树（all / any 分组、NOT、按字段类型给出操作符，标签条件单独给键）、显示列、启用；切换主体类型会重置条件。定义失效的报表仍可删除 |
@@ -711,7 +735,7 @@ aws-inventory-discovery/
 | 健康检查 | ALB 目标组和容器都访问 `<BASE_PATH>/api/v1/health`（生产是 `/aws-inventory/api/v1/health`） | 容器内运行 `python -m app.cli healthcheck`：心跳线程每 30 秒刷新文件 `WORKER_HEARTBEAT_FILE`（默认 `/tmp/aws-inventory-discovery-worker.heartbeat`），文件超过 60 秒没更新就不健康；检查不访问数据库。**容器里 `/tmp`（或这个变量指向的路径）必须可写** | 镜像自带的 HTTP 检查在一次性任务里没有意义，任务定义里改成 `exit 0` |
 | 停止 | 默认 | `stopTimeout` 120 秒：收到 SIGTERM 后不再领新任务，处理完当前这一页，释放租约，没做完的任务放回队列 | — |
 
-**发布流程**：构建镜像 → 推送到 ECR `aws-inventory-discovery` → 运行 migrate 任务 → 滚动更新 api 和 worker（`minimumHealthyPercent` 100%）。任务定义示例在 `deploy/ecs/`（`api.json`、`worker.json`、`migrate.json`），`<…>` 是要按环境替换的值。
+**发布流程**：构建镜像 → 推送到 ECR `aws-inventory-discovery` → 运行 migrate 任务 → 滚动更新 api 和 worker（`minimumHealthyPercent` 100%）。任务定义示例在 `deploy/ecs/`（`api.json`、`worker.json`、`migrate.json`），`<…>` 是要按环境替换的值。账号扫描策略迁移 `87b6f3ba8251` 是普通 Alembic 迁移，由现有的 migrate 任务先执行；发布不需要新的环境变量或一次性脚本。
 
 **日志**：`awslogs` 写到 `/aws-inventory-discovery/api`、`/aws-inventory-discovery/worker`、`/aws-inventory-discovery/migrate`，保留 30 天（至少 14 天，和任务明细的保留时间一致）。
 
@@ -723,7 +747,7 @@ aws-inventory-discovery/
 | `DATABASE_URL`、`DATABASE_READ_URL`、`DATABASE_SCHEMA` | — |
 | `REDIS_URL` | 由 Secrets Manager 注入，形如 `rediss://:<token>@<primary-endpoint>:16379/0` |
 | `CACHE_TTL_SECONDS` | `60`（分类计数、资源计数、账号 / 应用列表、概览统计的缓存秒数；写入时向下抖动最多 10%。扫描页摘要固定 10 秒） |
-| `ACCOUNT_REGISTRY_URL`、`CREDENTIAL_SERVICE_URL` | — |
+| `ACCOUNT_REGISTRY_URL`、`CREDENTIAL_SERVICE_URL` | —（① 是可选导入源；不设置不影响启动、扫描或 `doctor`） |
 | `REACHABLE_REGIONS` | `ap-east-1,us-east-1,eu-west-1,eu-west-2` |
 | `SWEEP_ENABLED`、`SWEEP_INTERVAL_HOURS` | `true`、`6` |
 | `WORKER_THREADS`、`WORKER_ONDEMAND_THREADS` | `16`、`4` |
@@ -800,7 +824,7 @@ aws-inventory-discovery/
 | 按队列积压自动扩缩 | 按 CPU 和内存自动扩缩 |
 
 ## 15. 上线前要确认的事
-1. **账号清单服务 ① 的真实接口格式**：地址、鉴权方式、是否分页、字段名。
+1. **账号清单服务 ① 的真实接口格式**：地址、鉴权方式、是否分页、字段名。账号主数据已在本服务，① 只用于可选的一次性导入。
 2. **凭证服务 ② 的真实接口格式**：怎么传账号、返回的字段、过期时间的格式、鉴权方式、调用频率限制。
 3. **findings 服务 ③ 的真实接口格式**：地址、鉴权方式、怎么传镜像 ID、返回的字段、四个级别的口径和最高分的含义、调用频率限制。
 4. **样本数据和真实数据的差异**：用一个真实账号抓取每个类型的 Config 和 Cloud Control 数据，修正样本和映射。

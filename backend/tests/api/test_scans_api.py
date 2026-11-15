@@ -98,6 +98,7 @@ def test_create_scan_status_codes_and_idempotency(api: TestClient) -> None:
         "awsRegions": ["us-east-1"],
         "resourceTypes": None,
         "all": None,
+        "overrideScanPolicy": None,
     }
     assert error_of(different, 409)["code"] == "idempotency_conflict"
 

@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CancelScanData, CancelScanErrors, CancelScanResponses, ConfirmScopeChangeData, ConfirmScopeChangeErrors, ConfirmScopeChangeResponses, CreateReportData, CreateReportErrors, CreateReportResponses, CreateScanData, CreateScanErrors, CreateScanResponses, DeleteReportData, DeleteReportErrors, DeleteReportResponses, ExportReportData, ExportReportErrors, ExportReportResponses, ExportResourcesData, ExportResourcesErrors, ExportResourcesResponses, GetAccountData, GetAccountErrors, GetAccountResponses, GetCoverageData, GetCoverageErrors, GetCoverageResponses, GetRelationshipsData, GetRelationshipsErrors, GetRelationshipsResponses, GetReportData, GetReportErrors, GetReportResponses, GetResourceData, GetResourceErrors, GetResourceResponses, GetScanData, GetScanErrors, GetScanResponses, GetScanScopeData, GetScanScopeErrors, GetScanScopeResponses, GetTaskData, GetTaskErrors, GetTaskLogsData, GetTaskLogsErrors, GetTaskLogsResponses, GetTaskResponses, HealthData, HealthResponses, ListAccountsData, ListAccountsErrors, ListAccountsResponses, ListApplicationsData, ListApplicationsErrors, ListApplicationsResponses, ListColumnsData, ListColumnsErrors, ListColumnsResponses, ListReportsData, ListReportsErrors, ListReportsResponses, ListResourcesData, ListResourcesErrors, ListResourcesResponses, ListResourceTypesData, ListResourceTypesErrors, ListResourceTypesResponses, ListScanScopesData, ListScanScopesErrors, ListScanScopesResponses, ListScansData, ListScansErrors, ListScansResponses, ListScanTasksData, ListScanTasksErrors, ListScanTasksResponses, ListScopeCandidatesData, ListScopeCandidatesErrors, ListScopeCandidatesResponses, LookupResourceData, LookupResourceErrors, LookupResourceResponses, OverviewData, OverviewErrors, OverviewResponses, RefreshResourceData, RefreshResourceErrors, RefreshResourceResponses, ReportFieldsData, ReportFieldsErrors, ReportFieldsResponses, ReportResultsData, ReportResultsErrors, ReportResultsResponses, ReportsOverviewData, ReportsOverviewErrors, ReportsOverviewResponses, ResourceFacetsData, ResourceFacetsErrors, ResourceFacetsResponses, ResourceSummaryData, ResourceSummaryErrors, ResourceSummaryResponses, RetryFailedData, RetryFailedErrors, RetryFailedResponses, ScanSummaryData, ScanSummaryResponses, UpdateReportData, UpdateReportErrors, UpdateReportResponses } from './types.gen';
+import type { BatchPolicyData, BatchPolicyErrors, BatchPolicyResponses, CancelScanData, CancelScanErrors, CancelScanResponses, ConfirmScopeChangeData, ConfirmScopeChangeErrors, ConfirmScopeChangeResponses, CreateAccountData, CreateAccountErrors, CreateAccountResponses, CreateReportData, CreateReportErrors, CreateReportResponses, CreateScanData, CreateScanErrors, CreateScanResponses, DeleteAccountData, DeleteAccountErrors, DeleteAccountResponses, DeleteReportData, DeleteReportErrors, DeleteReportResponses, ExportReportData, ExportReportErrors, ExportReportResponses, ExportResourcesData, ExportResourcesErrors, ExportResourcesResponses, GetAccountData, GetAccountErrors, GetAccountResponses, GetCoverageData, GetCoverageErrors, GetCoverageResponses, GetRelationshipsData, GetRelationshipsErrors, GetRelationshipsResponses, GetReportData, GetReportErrors, GetReportResponses, GetResourceData, GetResourceErrors, GetResourceResponses, GetScanData, GetScanErrors, GetScanResponses, GetScanScopeData, GetScanScopeErrors, GetScanScopeResponses, GetTaskData, GetTaskErrors, GetTaskLogsData, GetTaskLogsErrors, GetTaskLogsResponses, GetTaskResponses, HealthData, HealthResponses, ImportFromRegistryData, ImportFromRegistryResponses, ListAccountsData, ListAccountsErrors, ListAccountsResponses, ListApplicationsData, ListApplicationsErrors, ListApplicationsResponses, ListColumnsData, ListColumnsErrors, ListColumnsResponses, ListReportsData, ListReportsErrors, ListReportsResponses, ListResourcesData, ListResourcesErrors, ListResourcesResponses, ListResourceTypesData, ListResourceTypesErrors, ListResourceTypesResponses, ListScanScopesData, ListScanScopesErrors, ListScanScopesResponses, ListScansData, ListScansErrors, ListScansResponses, ListScanTasksData, ListScanTasksErrors, ListScanTasksResponses, ListScopeCandidatesData, ListScopeCandidatesErrors, ListScopeCandidatesResponses, LookupResourceData, LookupResourceErrors, LookupResourceResponses, OverviewData, OverviewErrors, OverviewResponses, RefreshResourceData, RefreshResourceErrors, RefreshResourceResponses, RegionOptionsData, RegionOptionsResponses, ReportFieldsData, ReportFieldsErrors, ReportFieldsResponses, ReportResultsData, ReportResultsErrors, ReportResultsResponses, ReportsOverviewData, ReportsOverviewErrors, ReportsOverviewResponses, ResourceFacetsData, ResourceFacetsErrors, ResourceFacetsResponses, ResourceSummaryData, ResourceSummaryErrors, ResourceSummaryResponses, RestoreAccountData, RestoreAccountErrors, RestoreAccountResponses, RetryFailedData, RetryFailedErrors, RetryFailedResponses, ScanPreviewData, ScanPreviewErrors, ScanPreviewResponses, ScanSummaryData, ScanSummaryResponses, UpdateAccountData, UpdateAccountErrors, UpdateAccountResponses, UpdateReportData, UpdateReportErrors, UpdateReportResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -88,14 +88,82 @@ export const listColumns = <ThrowOnError extends boolean = false>(options?: Opti
 export const overview = <ThrowOnError extends boolean = false>(options?: Options<OverviewData, ThrowOnError>): RequestResult<OverviewResponses, OverviewErrors, ThrowOnError> => (options?.client ?? client).get<OverviewResponses, OverviewErrors, ThrowOnError>({ url: '/api/v1/stats/overview', ...options });
 
 /**
+ * Region Options
+ */
+export const regionOptions = <ThrowOnError extends boolean = false>(options?: Options<RegionOptionsData, ThrowOnError>): RequestResult<RegionOptionsResponses, unknown, ThrowOnError> => (options?.client ?? client).get<RegionOptionsResponses, unknown, ThrowOnError>({ url: '/api/v1/accounts/region-options', ...options });
+
+/**
+ * Scan Preview
+ */
+export const scanPreview = <ThrowOnError extends boolean = false>(options: Options<ScanPreviewData, ThrowOnError>): RequestResult<ScanPreviewResponses, ScanPreviewErrors, ThrowOnError> => (options.client ?? client).post<ScanPreviewResponses, ScanPreviewErrors, ThrowOnError>({
+    url: '/api/v1/accounts/scan-preview',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Batch Policy
+ */
+export const batchPolicy = <ThrowOnError extends boolean = false>(options: Options<BatchPolicyData, ThrowOnError>): RequestResult<BatchPolicyResponses, BatchPolicyErrors, ThrowOnError> => (options.client ?? client).post<BatchPolicyResponses, BatchPolicyErrors, ThrowOnError>({
+    url: '/api/v1/accounts/batch-policy',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Import From Registry
+ */
+export const importFromRegistry = <ThrowOnError extends boolean = false>(options?: Options<ImportFromRegistryData, ThrowOnError>): RequestResult<ImportFromRegistryResponses, unknown, ThrowOnError> => (options?.client ?? client).post<ImportFromRegistryResponses, unknown, ThrowOnError>({ url: '/api/v1/accounts/import', ...options });
+
+/**
  * List Accounts
  */
 export const listAccounts = <ThrowOnError extends boolean = false>(options?: Options<ListAccountsData, ThrowOnError>): RequestResult<ListAccountsResponses, ListAccountsErrors, ThrowOnError> => (options?.client ?? client).get<ListAccountsResponses, ListAccountsErrors, ThrowOnError>({ url: '/api/v1/accounts', ...options });
 
 /**
+ * Create Account
+ */
+export const createAccount = <ThrowOnError extends boolean = false>(options: Options<CreateAccountData, ThrowOnError>): RequestResult<CreateAccountResponses, CreateAccountErrors, ThrowOnError> => (options.client ?? client).post<CreateAccountResponses, CreateAccountErrors, ThrowOnError>({
+    url: '/api/v1/accounts',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete Account
+ */
+export const deleteAccount = <ThrowOnError extends boolean = false>(options: Options<DeleteAccountData, ThrowOnError>): RequestResult<DeleteAccountResponses, DeleteAccountErrors, ThrowOnError> => (options.client ?? client).delete<DeleteAccountResponses, DeleteAccountErrors, ThrowOnError>({ url: '/api/v1/accounts/{account_id}', ...options });
+
+/**
  * Get Account
  */
 export const getAccount = <ThrowOnError extends boolean = false>(options: Options<GetAccountData, ThrowOnError>): RequestResult<GetAccountResponses, GetAccountErrors, ThrowOnError> => (options.client ?? client).get<GetAccountResponses, GetAccountErrors, ThrowOnError>({ url: '/api/v1/accounts/{account_id}', ...options });
+
+/**
+ * Update Account
+ */
+export const updateAccount = <ThrowOnError extends boolean = false>(options: Options<UpdateAccountData, ThrowOnError>): RequestResult<UpdateAccountResponses, UpdateAccountErrors, ThrowOnError> => (options.client ?? client).patch<UpdateAccountResponses, UpdateAccountErrors, ThrowOnError>({
+    url: '/api/v1/accounts/{account_id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Restore Account
+ */
+export const restoreAccount = <ThrowOnError extends boolean = false>(options: Options<RestoreAccountData, ThrowOnError>): RequestResult<RestoreAccountResponses, RestoreAccountErrors, ThrowOnError> => (options.client ?? client).post<RestoreAccountResponses, RestoreAccountErrors, ThrowOnError>({ url: '/api/v1/accounts/{account_id}/restore', ...options });
 
 /**
  * Get Coverage

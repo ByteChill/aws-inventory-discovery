@@ -96,7 +96,10 @@ def test_account_detail_lists_regions(get_json: Callable[..., Any]) -> None:
     assert body["accountName"] == "payments-prod"
     assert {r["region"]: (r["reachable"], r["configRecording"]) for r in body["regions"]} == {
         "ap-southeast-1": (False, None),
+        "ap-east-1": (True, None),
         "us-east-1": (True, True),
+        "eu-west-1": (True, None),
+        "eu-west-2": (True, None),
     }
 
 

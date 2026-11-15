@@ -2046,7 +2046,170 @@
         }
       }
     },
+    "/api/v1/accounts/region-options": {
+      "get": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "Region Options",
+        "operationId": "region_options",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountRegionOptions"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/accounts/scan-preview": {
+      "post": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "Scan Preview",
+        "operationId": "scan_preview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountScanPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountScanPreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/accounts/batch-policy": {
+      "post": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "Batch Policy",
+        "operationId": "batch_policy",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountBatchUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountBatchResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/accounts/import": {
+      "post": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "Import From Registry",
+        "operationId": "import_from_registry",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountImportResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/accounts": {
+      "post": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "Create Account",
+        "operationId": "create_account",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": [
           "accounts"
@@ -2156,6 +2319,22 @@
             }
           },
           {
+            "name": "scanEnabled",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scanenabled"
+            }
+          },
+          {
             "name": "sort",
             "in": "query",
             "required": false,
@@ -2191,12 +2370,137 @@
       }
     },
     "/api/v1/accounts/{account_id}": {
+      "patch": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "Update Account",
+        "operationId": "update_account",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "Delete Account",
+        "operationId": "delete_account",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": [
           "accounts"
         ],
         "summary": "Get Account",
         "operationId": "get_account",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/restore": {
+      "post": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "Restore Account",
+        "operationId": "restore_account",
         "parameters": [
           {
             "name": "account_id",
@@ -3794,6 +4098,168 @@
   },
   "components": {
     "schemas": {
+      "AccountBatchResult": {
+        "properties": {
+          "updated": {
+            "type": "integer",
+            "title": "Updated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "updated"
+        ],
+        "title": "AccountBatchResult"
+      },
+      "AccountBatchUpdate": {
+        "properties": {
+          "selector": {
+            "$ref": "#/components/schemas/AccountSelector"
+          },
+          "scanEnabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanenabled"
+          },
+          "scanRegionMode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "all",
+                  "selected"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanregionmode"
+          },
+          "selectedRegions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "pattern": "^[a-z0-9-]+$"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selectedregions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "selector"
+        ],
+        "title": "AccountBatchUpdate"
+      },
+      "AccountCreate": {
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "pattern": "^\\d{12}$",
+            "title": "Accountid"
+          },
+          "accountName": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Accountname"
+          },
+          "accountType": {
+            "type": "string",
+            "enum": [
+              "dev",
+              "preprod",
+              "prod"
+            ],
+            "title": "Accounttype"
+          },
+          "eimId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d{8}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eimid"
+          },
+          "eimApp": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eimapp"
+          },
+          "baId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baid"
+          },
+          "scanEnabled": {
+            "type": "boolean",
+            "title": "Scanenabled",
+            "default": true
+          },
+          "scanRegionMode": {
+            "type": "string",
+            "enum": [
+              "all",
+              "selected"
+            ],
+            "title": "Scanregionmode",
+            "default": "all"
+          },
+          "selectedRegions": {
+            "items": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-z0-9-]+$"
+            },
+            "type": "array",
+            "title": "Selectedregions",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "accountId",
+          "accountName",
+          "accountType"
+        ],
+        "title": "AccountCreate"
+      },
       "AccountDetail": {
         "properties": {
           "accountId": {
@@ -3849,6 +4315,32 @@
           "active": {
             "type": "boolean",
             "title": "Active"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "imported",
+              "legacy"
+            ],
+            "title": "Source"
+          },
+          "scanEnabled": {
+            "type": "boolean",
+            "title": "Scanenabled"
+          },
+          "scanRegionMode": {
+            "type": "string",
+            "enum": [
+              "all",
+              "selected"
+            ],
+            "title": "Scanregionmode"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updatedat"
           },
           "accessStatus": {
             "type": "string",
@@ -3910,6 +4402,10 @@
           "eimApp",
           "baId",
           "active",
+          "source",
+          "scanEnabled",
+          "scanRegionMode",
+          "updatedAt",
           "accessStatus",
           "accessError",
           "resourceCount",
@@ -3918,6 +4414,29 @@
           "regions"
         ],
         "title": "AccountDetail"
+      },
+      "AccountImportResult": {
+        "properties": {
+          "fetched": {
+            "type": "integer",
+            "title": "Fetched"
+          },
+          "imported": {
+            "type": "integer",
+            "title": "Imported"
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fetched",
+          "imported",
+          "skipped"
+        ],
+        "title": "AccountImportResult"
       },
       "AccountRef": {
         "properties": {
@@ -4007,6 +4526,25 @@
               }
             ],
             "title": "Configrecording"
+          },
+          "selected": {
+            "type": "boolean",
+            "title": "Selected"
+          },
+          "effective": {
+            "type": "boolean",
+            "title": "Effective"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "selected",
+              "not_selected",
+              "account_disabled",
+              "unreachable",
+              "unknown"
+            ],
+            "title": "State"
           }
         },
         "type": "object",
@@ -4014,9 +4552,217 @@
           "region",
           "optInStatus",
           "reachable",
-          "configRecording"
+          "configRecording",
+          "selected",
+          "effective",
+          "state"
         ],
         "title": "AccountRegionInfo"
+      },
+      "AccountRegionOptions": {
+        "properties": {
+          "reachableRegions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reachableregions"
+          },
+          "knownRegions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Knownregions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reachableRegions",
+          "knownRegions"
+        ],
+        "title": "AccountRegionOptions"
+      },
+      "AccountScanPreview": {
+        "properties": {
+          "accounts": {
+            "type": "integer",
+            "title": "Accounts"
+          },
+          "regions": {
+            "type": "integer",
+            "title": "Regions"
+          },
+          "estimatedTasks": {
+            "type": "integer",
+            "title": "Estimatedtasks"
+          },
+          "accountsWithoutRegionData": {
+            "type": "integer",
+            "title": "Accountswithoutregiondata"
+          },
+          "skippedDisabledAccounts": {
+            "type": "integer",
+            "title": "Skippeddisabledaccounts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accounts",
+          "regions",
+          "estimatedTasks",
+          "accountsWithoutRegionData",
+          "skippedDisabledAccounts"
+        ],
+        "title": "AccountScanPreview"
+      },
+      "AccountScanPreviewRequest": {
+        "properties": {
+          "selector": {
+            "$ref": "#/components/schemas/AccountSelector"
+          },
+          "overrideScanPolicy": {
+            "type": "boolean",
+            "title": "Overridescanpolicy",
+            "default": false
+          },
+          "scanEnabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanenabled"
+          },
+          "scanRegionMode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "all",
+                  "selected"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanregionmode"
+          },
+          "selectedRegions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "pattern": "^[a-z0-9-]+$"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selectedregions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "selector"
+        ],
+        "title": "AccountScanPreviewRequest"
+      },
+      "AccountSelector": {
+        "properties": {
+          "accountIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Accountids",
+            "default": []
+          },
+          "eimIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Eimids",
+            "default": []
+          },
+          "eimApps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Eimapps",
+            "default": []
+          },
+          "baIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Baids",
+            "default": []
+          },
+          "accountTypes": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "dev",
+                "preprod",
+                "prod"
+              ]
+            },
+            "type": "array",
+            "title": "Accounttypes",
+            "default": []
+          },
+          "accessStatuses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Accessstatuses",
+            "default": []
+          },
+          "q": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
+          "scanEnabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanenabled"
+          },
+          "all": {
+            "type": "boolean",
+            "title": "All",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AccountSelector"
       },
       "AccountSummary": {
         "properties": {
@@ -4074,6 +4820,32 @@
             "type": "boolean",
             "title": "Active"
           },
+          "source": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "imported",
+              "legacy"
+            ],
+            "title": "Source"
+          },
+          "scanEnabled": {
+            "type": "boolean",
+            "title": "Scanenabled"
+          },
+          "scanRegionMode": {
+            "type": "string",
+            "enum": [
+              "all",
+              "selected"
+            ],
+            "title": "Scanregionmode"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updatedat"
+          },
           "accessStatus": {
             "type": "string",
             "title": "Accessstatus"
@@ -4127,6 +4899,10 @@
           "eimApp",
           "baId",
           "active",
+          "source",
+          "scanEnabled",
+          "scanRegionMode",
+          "updatedAt",
           "accessStatus",
           "accessError",
           "resourceCount",
@@ -4157,6 +4933,121 @@
           "count"
         ],
         "title": "AccountTypeCount"
+      },
+      "AccountUpdate": {
+        "properties": {
+          "accountName": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accountname"
+          },
+          "accountType": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "dev",
+                  "preprod",
+                  "prod"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accounttype"
+          },
+          "eimId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d{8}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eimid"
+          },
+          "eimApp": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eimapp"
+          },
+          "baId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baid"
+          },
+          "scanEnabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanenabled"
+          },
+          "scanRegionMode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "all",
+                  "selected"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanregionmode"
+          },
+          "selectedRegions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "pattern": "^[a-z0-9-]+$"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selectedregions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AccountUpdate"
       },
       "Application": {
         "properties": {
@@ -6622,6 +7513,17 @@
               }
             ],
             "title": "All"
+          },
+          "overrideScanPolicy": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overridescanpolicy"
           }
         },
         "type": "object",
@@ -6709,6 +7611,11 @@
           "all": {
             "type": "boolean",
             "title": "All",
+            "default": false
+          },
+          "overrideScanPolicy": {
+            "type": "boolean",
+            "title": "Overridescanpolicy",
             "default": false
           }
         },

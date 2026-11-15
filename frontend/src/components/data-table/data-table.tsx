@@ -93,6 +93,12 @@ export type DataTableProps<Row extends object> = {
   rowLabel?: (row: Row) => string
   /** Filters that define the page itself (a service's types) and stay on clear. */
   preservedFilters?: string[]
+  /** Optional row checkboxes for batch actions. */
+  selection?: {
+    selected: Set<string>
+    onChange: (next: Set<string>) => void
+    label: (row: Row) => string
+  }
 }
 
 const DEFAULT_WIDTH: Record<Column["type"], number> = {
@@ -142,6 +148,7 @@ export function DataTable<Row extends object>({
   onRowActivate,
   rowLabel,
   preservedFilters,
+  selection,
 }: DataTableProps<Row>) {
   const { t } = useI18n()
   const [visibility, setVisibility] = useLocalStorage<VisibilityState>(
@@ -234,6 +241,23 @@ export function DataTable<Row extends object>({
   }
 
   const visibleHeaders = table.getHeaderGroups()[0]?.headers ?? []
+  const selectable = selection !== undefined
+  const pageIds = table.getRowModel().rows.map((row) => row.id)
+  const selectedOnPage = pageIds.filter((id) => selection?.selected.has(id))
+  const allOnPageSelected =
+    pageIds.length > 0 && selectedOnPage.length === pageIds.length
+  const someOnPageSelected = selectedOnPage.length > 0 && !allOnPageSelected
+
+  function toggleAllOnPage() {
+    if (!selection) return
+    const next = new Set(selection.selected)
+    if (allOnPageSelected) {
+      for (const id of pageIds) next.delete(id)
+    } else {
+      for (const id of pageIds) next.add(id)
+    }
+    selection.onChange(next)
+  }
 
   let body: ReactNode = null
   if (error) {
@@ -338,6 +362,24 @@ export function DataTable<Row extends object>({
             >
               <thead>
                 <tr>
+                  {selectable && (
+                    <th
+                      scope="col"
+                      aria-label={t("table.selectAll")}
+                      className="sticky top-0 z-10 w-11 border-b bg-card px-3 py-2"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={allOnPageSelected}
+                        ref={(node) => {
+                          if (node) node.indeterminate = someOnPageSelected
+                        }}
+                        onChange={toggleAllOnPage}
+                        aria-label={t("table.selectAll")}
+                        className="accent-[var(--accent)]"
+                      />
+                    </th>
+                  )}
                   {visibleHeaders.map((header, index) => {
                     const col = header.column.columnDef.meta as Column
                     const sorted =
@@ -446,6 +488,11 @@ export function DataTable<Row extends object>({
                   Array.from({ length: 8 }, (_, r) => (
                     // biome-ignore lint/suspicious/noArrayIndexKey: static placeholders
                     <tr key={r}>
+                      {selectable && (
+                        <td className="border-b px-3.5 py-3">
+                          <Skeleton className="size-4" />
+                        </td>
+                      )}
                       {visibleHeaders.map((h) => (
                         <td key={h.id} className="border-b px-3.5 py-3">
                           <Skeleton className="h-4 w-3/4" />
@@ -493,6 +540,22 @@ export function DataTable<Row extends object>({
                             "cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary",
                         )}
                       >
+                        {selectable && selection && (
+                          <td className="w-11 border-b px-3 py-2.5 align-middle">
+                            <input
+                              type="checkbox"
+                              checked={selection.selected.has(row.id)}
+                              onChange={(e) => {
+                                const next = new Set(selection.selected)
+                                if (e.target.checked) next.add(row.id)
+                                else next.delete(row.id)
+                                selection.onChange(next)
+                              }}
+                              aria-label={selection.label(row.original)}
+                              className="accent-[var(--accent)]"
+                            />
+                          </td>
+                        )}
                         {row.getVisibleCells().map((cell, i) => {
                           const col = cell.column.columnDef.meta as Column
                           const pinned = stickyFirst && i === 0

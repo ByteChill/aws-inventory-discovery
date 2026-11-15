@@ -28,7 +28,7 @@ type Error = { code: string; message: string; details?: Record<string, unknown> 
 | 400 | `invalid_filter` | 筛选参数不合法：**不认识的查询参数**（资源列表、分类计数、导出只认第 8.2 节的参数和 `attr.*`），没指定单一类型就使用 `attr.*`，`attr.*` 的列不存在或不可筛选、取值和列类型不符、或对这个类型的列不适用（比如对文本列用 `.gte`），分类计数的 `field` 不支持 |
 | 400 | `invalid_sort` | 排序字段不允许（资源列表、导出、账号列表、应用列表） |
 | 404 | `resource_not_found` | 资源不存在（详情、按 ARN 查询、刷新一个库里没有的 ARN 或 AWS 里也不存在的资源） |
-| 404 | `account_not_found` | 账号不在账号快照里，查询账号清单服务后也没有，或已经不再活跃（扫描和刷新单个资源都按不存在处理）；`POST /scans` 里 `details.accountIds` 也列出已经不活跃的账号 |
+| 404 | `account_not_found` | 账号不在本地账号主数据里，或已经被软删除/不再活跃（扫描和刷新单个资源都按不存在处理）；`POST /scans` 里 `details.accountIds` 也列出已经不活跃的账号 |
 | 404 | `scan_not_found` / `task_not_found` | |
 | 404 | `scope_not_found` | 确认异常范围时，这个范围从没扫描过（`t_inv_aws_scan_shard` 里没有） |
 | 404 | `report_not_found` | 报表不存在（详情、结果、导出、修改、删除） |
@@ -36,6 +36,8 @@ type Error = { code: string; message: string; details?: Record<string, unknown> 
 | 405 | `method_not_allowed` | |
 | 409 | `idempotency_conflict` | 同一个 `Idempotency-Key` 对应了不同的请求内容 |
 | 409 | `ambiguous_arn` | 刷新时只传了 ARN，但它对应多个账号（共享 AMI） |
+| 409 | `account_exists` | 新增账号时这个 12 位账号 ID 已经存在（包括已软删除、尚未清理的账号；可以恢复） |
+| 409 | `account_scan_disabled` | 按需扫描指定了停用扫描的账号，且请求没有显式 `overrideScanPolicy: true`（`details.accountIds` 列出） |
 | 409 | `scan_not_cancellable` | 扫描已经结束 |
 | 409 | `scan_cancelled` | 对已取消的扫描重试失败的任务 |
 | 409 | `scope_not_abnormal` | 确认异常范围时，这个范围当前不是 `abnormal`（`details.guardState`） |
@@ -44,7 +46,7 @@ type Error = { code: string; message: string; details?: Record<string, unknown> 
 | 422 | `validation_error` | 请求体或参数校验失败（FastAPI 默认的校验错误，转为统一格式，`details.errors` 里带字段错误；也包括未知的 `resourceType`、不能换算成 Cloud Control Identifier 的 `resourceId`、未知的导出列，以及账号列表、扫描列表等接口收到不认识的参数） |
 | 422 | `scope_too_large` | 按需扫描超过 `MAX_SCAN_ACCOUNTS` 个账号（`details.limit`、`details.requested`） |
 | 502 | `refresh_failed` | 刷新单个资源失败，而且库里没有这个资源可以返回（`details.taskId`、`details.errorCode`）；库里有时返回 200 加 `refreshError` |
-| 503 | `dependency_unavailable` | 数据库不可用，账号清单服务不可用（只在需要确认账号时），或查询 CloudWatch Logs 失败（包括日志组不存在） |
+| 503 | `dependency_unavailable` | 数据库不可用，`POST /accounts/import` 时账号清单服务 ① 未配置或不可用，或查询 CloudWatch Logs 失败（包括日志组不存在）。① 不可用不影响其他账号接口、扫描或启动 |
 
 `message` 是给人看的中文说明；dashboard 根据 `code` 显示本地化后的文字。
 
@@ -54,6 +56,16 @@ type Error = { code: string; message: string; details?: Record<string, unknown> 
 type AccountRef = {
   accountId: string; accountName: string; accountType: "dev" | "preprod" | "prod";
   eimId: string | null; eimApp: string | null; baId: string | null
+}
+
+type AccountSummary = AccountRef & {
+  active: boolean;
+  source: "manual" | "imported" | "legacy";
+  scanEnabled: boolean;
+  scanRegionMode: "all" | "selected";
+  updatedAt: string;
+  accessStatus: string; accessError: string | null;
+  resourceCount: number; lastScanOkAt: string | null; purgeAt: string | null
 }
 
 type ResourceStatus = "active" | "missing" | "deleted"
@@ -146,7 +158,7 @@ type ScopeCandidate = {
 ### `POST /resources/refresh`
 - 参数：`wait`（秒，0–20，默认 0）。
 - 请求体，二选一：
-  - `{ "accountId", "awsRegion", "resourceType", "resourceId" }`：**主要写法**，永远没有歧义，也能刷新库里还没有的资源。`resourceId` 就是 Config 格式里的 `resourceId`（和列表、详情里显示的一样），系统按类型规则在内部换算成 Cloud Control 的 Identifier：库里有这个资源时用它存着的 `configuration`；库里没有时用类型钩子从 `resourceId` 推出，目前 **ECS Service**（`resourceId` 是长格式的 Service ARN，Cluster 从 ARN 解析，不带集群名的旧格式 ARN 返回 422 `validation_error`）和 **ECS Cluster**（`resourceId` 是 Cluster ARN，Identifier 是集群名）都支持用 `resourceId` 刷新库里没有的资源。账号不在快照里时先向账号清单服务确认（404 `account_not_found` 或 503 `dependency_unavailable`）。
+  - `{ "accountId", "awsRegion", "resourceType", "resourceId" }`：**主要写法**，永远没有歧义，也能刷新库里还没有的资源。`resourceId` 就是 Config 格式里的 `resourceId`（和列表、详情里显示的一样），系统按类型规则在内部换算成 Cloud Control 的 Identifier：库里有这个资源时用它存着的 `configuration`；库里没有时用类型钩子从 `resourceId` 推出，目前 **ECS Service**（`resourceId` 是长格式的 Service ARN，Cluster 从 ARN 解析，不带集群名的旧格式 ARN 返回 422 `validation_error`）和 **ECS Cluster**（`resourceId` 是 Cluster ARN，Identifier 是集群名）都支持用 `resourceId` 刷新库里没有的资源。账号不在本地账号主数据里或已不活跃时返回 404 `account_not_found`。
   - `{ "arn": string }`：方便的写法，只能刷新库里已有的资源（库里没有返回 404 `resource_not_found`）。ARN 对应多个账号时（共享 AMI）返回 409 `ambiguous_arn`。
 - 返回：
 
@@ -190,12 +202,42 @@ type ScopeCandidate = {
 ## 5. 账号
 
 ### `GET /accounts`
-- 参数：`accountType`、`eimId`、`baId`、`accessStatus`（都可以重复，是「或」）、`q`（名称或 ID，包含匹配）、`active`（默认 `true`；`false` 是从清单里移除的账号）、分页、排序（默认 `accountName`，可以排序的有 `accountId`、`accountName`、`accountType`、`eimId`、`baId`、`accessStatus`、`lastScanOkAt`、`active`、`resourceCount`；不认识的参数返回 422）。`resourceCount` 不含已删除的资源。
-- 返回：`Page<AccountRef & { active: boolean; accessStatus: string; accessError: string | null; resourceCount: number; lastScanOkAt: string | null; purgeAt: string | null }>`。`purgeAt` 只对不活跃的账号有值。
+- 参数：`accountType`、`eimId`、`baId`、`accessStatus`（都可以重复，是「或」）、`q`（名称或 ID，包含匹配）、`active`（默认 `true`；`false` 是已软删除的账号）、`scanEnabled`（可筛选是否纳入扫描）、分页、排序（默认 `accountName`，可以排序的有 `accountId`、`accountName`、`accountType`、`eimId`、`baId`、`accessStatus`、`lastScanOkAt`、`active`、`scanEnabled`、`source`、`updatedAt`、`resourceCount`；不认识的参数返回 422）。`resourceCount` 不含已删除的资源。
+- 返回：`Page<AccountSummary>`。`source` 是 `manual` / `imported` / `legacy`，`updatedAt` 是最近一次本地修改时间；`purgeAt` 只对不活跃的账号有值。
 - 缓存：整页缓存在 Redis，`CACHE_TTL_SECONDS`（默认 60 秒），key 由筛选、分页、排序和 `INACTIVE_ACCOUNT_PURGE_DAYS` 决定。
 
+### `POST /accounts`
+- 请求体：`{accountId, accountName, accountType, eimId?, eimApp?, baId?, scanEnabled?, scanRegionMode?, selectedRegions?}`。`accountId` 必须是 12 位数字；`scanEnabled` 默认 `true`，`scanRegionMode` 默认 `all`，`selectedRegions` 默认空。`source` 由服务端设为 `manual`。
+- 返回：`201 AccountDetail`。ID 已存在（即使已软删除、尚未清理）返回 409 `account_exists`；校验失败返回 422。
+
+### `PATCH /accounts/{accountId}`
+- 请求体：`accountName?`、`accountType?`、`eimId?`、`eimApp?`、`baId?`、`scanEnabled?`、`scanRegionMode?`、`selectedRegions?`。`eimId` / `eimApp` / `baId` 传 `null` 表示清空；`selectedRegions: []` 表示清空选择；其他字段传 `null`、或给空对象，返回 422。`accountId` 不可修改，传了会被拒绝。
+- 返回：`200 AccountDetail`。不存在的账号返回 404 `account_not_found`。策略修改从下一轮扫描生效，不中断已经在跑的任务。
+
+### `DELETE /accounts/{accountId}`
+- 软删除：`active = false`、`inactive_since = now()`，返回 204。资源不删除，保留 30 天清理窗口；清理前可以恢复。它和「停止扫描」不同，不会修改 `scanEnabled`。
+
+### `POST /accounts/{accountId}/restore`
+- 恢复：`active = true`、清空 `inactive_since`，返回 `200 AccountDetail`。已不存在（超过保留期被清理）返回 404。
+
+### `POST /accounts/batch-policy`
+- 请求体：`{selector, scanEnabled?, scanRegionMode?, selectedRegions?}`。`selector` 支持 `accountIds`、`eimIds`、`eimApps`、`baIds`、`accountTypes`、`accessStatuses`、`q`、`scanEnabled`、`all`；批量操作只作用于活跃账号，`all: true` 不能和其他筛选混用。至少给一个策略字段。
+- 返回：`{updated: number}`。1000+ 账号应优先用筛选条件或 `all`，不需要逐个选择；修改从下一轮扫描生效。
+
+### `POST /accounts/scan-preview`
+- 请求体：`{selector, overrideScanPolicy?, scanEnabled?, scanRegionMode?, selectedRegions?}`。可选的策略字段表示「如果按这个策略保存」，没给就用账号当前值。
+- 返回：`{accounts, regions, estimatedTasks, accountsWithoutRegionData, skippedDisabledAccounts}`。`estimatedTasks = accounts + regions × 资源类型数`；没有区域数据的账号记在 `accountsWithoutRegionData`，实际范围以首次扫描为准；被停用的账号记在 `skippedDisabledAccounts`，不参与账号和区域计数。
+
+### `POST /accounts/import`
+- 从账号清单服务 ① 一次性导入。只插入本地不存在的账号（`source = imported`，默认纳入扫描、所有区域），**不覆盖本地字段和策略，不把清单外账号标为不活跃**。
+- 返回：`{fetched, imported, skipped}`。① 未配置、不可用或返回空清单时返回 503 `dependency_unavailable`；不影响其他账号接口、扫描或启动。
+
+### `GET /accounts/region-options`
+- 返回：`{reachableRegions, knownRegions}`。`reachableRegions` 来自 `REACHABLE_REGIONS`，`knownRegions` 是已经观察到的区域和已选择区域的并集，给批量编辑下拉框用。
+
 ### `GET /accounts/{accountId}`
-返回：上面的账号信息，加上 `regions: { region: string; optInStatus: string; reachable: boolean; configRecording: boolean | null }[]`。
+- 返回：`AccountSummary` 加上 `regions: { region: string; optInStatus: string; reachable: boolean; configRecording: boolean | null; selected: boolean; effective: boolean; state: "selected" | "not_selected" | "account_disabled" | "unreachable" | "unknown" }[]`。
+- `selected` 表示这个区域是否在区域策略里（`all` 时对可见区域都是 `true`，是否真正生效看 `effective` 和 `state`）；`effective` 表示下一轮实际会扫描（已经和账号已开启区域、当前 `REACHABLE_REGIONS` 取过交集）；`state` 是 dashboard 显示的「已选择 / 未选择 / 账号未开启 / 网络不可达 / 待确认」。可见区域是 `REACHABLE_REGIONS`、该账号已观察区域和已选择区域的并集。
 
 ### `GET /accounts/{accountId}/coverage`
 返回：`{ region: string; resourceType: string; state: "ok" | "failed" | "access_denied" | "stale" | "never"; lastSucceededAt: string | null; lastErrorCode: string | null }[]`，来自 `t_inv_aws_scan_shard`，所以只有扫描过的范围有格子，没有的组合 dashboard 显示为「未扫描」。`state`：连续失败次数大于 0 时是 `failed`（最近一次错误码是 `access_denied` 一类时是 `access_denied`）；否则从没成功过是 `never`；最近一次成功超过 12 小时前是 `stale`；其余是 `ok`。
@@ -211,7 +253,7 @@ type ScopeCandidate = {
 ```ts
 type ScanRequest = {
   id: number; trigger: "schedule" | "api"; callerId: string | null;
-  scope: { accountIds?: string[]; awsRegions?: string[]; resourceTypes?: string[]; all?: boolean } | null;
+  scope: { accountIds?: string[]; awsRegions?: string[]; resourceTypes?: string[]; all?: boolean; overrideScanPolicy?: boolean } | null;
   target: Record<string, string> | null;
   status: "queued" | "running" | "succeeded" | "partial" | "failed" | "cancelled";
   counts: {
@@ -253,9 +295,10 @@ type Task = {
 
 ### `POST /scans`
 - 请求头：`Idempotency-Key`（可选）。
-- 请求体：`{ "accountIds": string[], "awsRegions"?: string[], "resourceTypes"?: string[] }` 或 `{ "all": true }`，两者必须且只能给一个；账号 ID 必须是 12 位数字；`all` 不能再限定区域和类型；`resourceTypes` 里有不认识的类型返回 422 `validation_error`。
-- `all = true` 时先刷新账号快照（失败就用现有的）；账号列表里不在快照里的账号先向账号清单服务确认（404 `account_not_found` / 503 `dependency_unavailable`）；超过 `MAX_SCAN_ACCOUNTS` 返回 422 `scope_too_large`。
-- 返回：`201 ScanRequest`；`all` 并且已有一轮（定时的或手动的）在跑时返回 `200` 和那一轮；同一个 `Idempotency-Key` 再次提交相同内容时返回 `200` 和原来的请求，内容不同返回 409 `idempotency_conflict`。请求的 `scope` 保存规范化后的内容（账号、区域、类型排序去重）。
+- 请求体：`{ "accountIds": string[], "awsRegions"?: string[], "resourceTypes"?: string[], "overrideScanPolicy"?: boolean }` 或 `{ "all": true }`，两者必须且只能给一个；账号 ID 必须是 12 位数字；`all` 不能再限定区域和类型；`resourceTypes` 里有不认识的类型返回 422 `validation_error`。
+- `all = true` 只取 `active AND scan_enabled` 的账号，不调用账号清单服务 ①，也不再从 ① 刷新账号数据；`all` 不接受 `overrideScanPolicy`（传了返回 422）。账号列表只接受本地存在且活跃的账号，不再向 ① 查询：未知或已删除返回 404 `account_not_found`，超过 `MAX_SCAN_ACCOUNTS` 返回 422 `scope_too_large`。
+- 默认遵守账号的 `scan_enabled` 和区域策略；指定的账号里有停用扫描的账号时返回 409 `account_scan_disabled`，只有显式传 `overrideScanPolicy: true` 才创建。覆盖只绕过扫描策略，不绕过软删除；被停用或删除的账号不会产生区域任务，也不会产生 missing/deleted。
+- 返回：`201 ScanRequest`；`all` 并且已有一轮（定时的或手动的）在跑时返回 `200` 和那一轮；同一个 `Idempotency-Key` 再次提交相同内容时返回 `200` 和原来的请求，内容不同返回 409 `idempotency_conflict`。请求的 `scope` 保存规范化后的内容（账号、区域、类型排序去重），显式覆盖时带 `overrideScanPolicy: true`。
 
 ### `GET /scans`
 参数：`trigger`、`status`、分页（默认按 `createdAt` 倒序）。返回：`Page<ScanRequest>`。

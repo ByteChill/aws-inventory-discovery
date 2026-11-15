@@ -60,6 +60,7 @@ def request_out(request: ScanRequest) -> ScanRequestOut:
         "aws_regions": stored.get("awsRegions") or None,
         "resource_types": stored.get("resourceTypes") or None,
         "all": True if stored.get("all") else None,
+        "override_scan_policy": True if stored.get("overrideScanPolicy") else None,
     }
     counts = request.counts or {}
     assert request.id is not None

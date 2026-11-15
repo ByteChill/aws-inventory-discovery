@@ -610,7 +610,7 @@ def test_a_relation_field_can_cross_an_array_on_the_target(
     matching = {
         service_id
         for service_id, uris in by_service.items()
-        if any("public.ecr.aws" in uri for uri in uris)
+        if any("mysql" in uri for uri in uris)
     }
     assert matching
 
@@ -625,7 +625,7 @@ def test_a_relation_field_can_cross_an_array_on_the_target(
         client,
         report(
             unique("service-image"),
-            condition("taskdefinition.image", "contains", "public.ecr.aws"),
+            condition("taskdefinition.image", "contains", "mysql"),
             subject_type=SERVICE,
             columns=["taskdefinition.image"],
         ),
@@ -659,6 +659,16 @@ def test_a_relation_field_can_cross_an_array_on_the_target(
     assert ids(results(client, negative["id"])) == {
         service_id for service_id, uris in by_service.items() if wordpress not in uris
     }
+    # The control that proves the negated condition can be true: no element equals this URI.
+    absent = create(
+        client,
+        report(
+            unique("service-image-not-absent"),
+            condition("taskdefinition.image", "neq", "no-such-registry.invalid/x:latest"),
+            subject_type=SERVICE,
+        ),
+    )
+    assert ids(results(client, absent["id"])) == set(by_service)
 
     # A crossing relation column is an array: it cannot be sorted.
     invalid = client.get(f"{API}/{body['id']}/results?sort=taskdefinition.image")

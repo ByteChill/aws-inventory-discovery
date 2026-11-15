@@ -1,0 +1,14 @@
+{
+  "LoadBalancers": [
+    {
+      "TargetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:012345678910:targetgroup/tg1/18ce32cc074018ed",
+      "ContainerName": "simple-app",
+      "ContainerPort": 80
+    },
+    {
+      "TargetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:012345678910:targetgroup/tg2/737bead11d516e2a",
+      "ContainerName": "simple-app",
+      "ContainerPort": 8080
+    }
+  ]
+}

@@ -155,16 +155,19 @@ def upgrade() -> None:
     sa.Column('from_resource_id', sa.BigInteger(), nullable=False),
     sa.Column('to_resource_type', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('to_resource_key', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+    sa.Column('to_resource_field', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('to_resource_id', sa.BigInteger(), nullable=True),
     sa.Column('relation_name', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.ForeignKeyConstraint(['from_resource_id'], ['t_inv_aws_resource.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['to_resource_id'], ['t_inv_aws_resource.id'], ondelete='SET NULL'),
-    sa.PrimaryKeyConstraint('from_resource_id', 'to_resource_type', 'to_resource_key', 'relation_name')
+    sa.PrimaryKeyConstraint('from_resource_id', 'to_resource_type', 'to_resource_key', 'to_resource_field', 'relation_name')
     )
     op.create_index('ix_t_inv_aws_resource_relation_to', 't_inv_aws_resource_relation', ['to_resource_id'], unique=False)
+    op.create_index('ix_t_inv_aws_resource_relation_target_reference', 't_inv_aws_resource_relation', ['to_resource_type', 'to_resource_field', 'to_resource_key'], unique=False)
 
 
 def downgrade() -> None:
+    op.drop_index('ix_t_inv_aws_resource_relation_target_reference', table_name='t_inv_aws_resource_relation')
     op.drop_index('ix_t_inv_aws_resource_relation_to', table_name='t_inv_aws_resource_relation')
     op.drop_table('t_inv_aws_resource_relation')
     op.drop_index('uq_t_inv_aws_scan_task_resource_inflight', table_name='t_inv_aws_scan_task', postgresql_where=sa.text("kind = 'resource' AND status IN ('queued', 'running')"))

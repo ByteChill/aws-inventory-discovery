@@ -13,12 +13,13 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Engine, insert
+from sqlalchemy import Engine, insert, update
 
 from app.query.tables import ACCOUNT, ACCOUNT_REGION, RELATION, RESOURCE, SHARD
 from app.types.mapping import ami_to_config_item, to_config_item
 from app.types.redact import redact_configuration, redact_live_raw
 from app.types.registry import TypeRegistry
+from app.types.relationships import effective_relationships
 
 TESTS = Path(__file__).resolve().parents[1]
 AWS_FIXTURES = TESTS / "fixtures" / "aws"
@@ -67,6 +68,7 @@ def _row(
     """One `t_inv_aws_resource` row from a Config-format item (a dict or a `ConfigItem`)."""
     data = item if isinstance(item, dict) else item.model_dump(by_alias=True)
     spec = spec_registry.get(data["resourceType"])
+    configuration = redact_configuration(spec, data["configuration"])
     return {
         "arn": data["arn"],
         "account_id": data["accountId"],
@@ -75,8 +77,8 @@ def _row(
         "resource_id": data["resourceId"],
         "resource_name": data.get("resourceName"),
         "tags": [{"key": t["key"], "value": t["value"]} for t in data.get("tags", [])],
-        "configuration": redact_configuration(spec, data["configuration"]),
-        "relationships": relationships or [],
+        "configuration": configuration,
+        "relationships": effective_relationships(spec, configuration, relationships or []),
         "live_raw": redact_live_raw(spec, live_raw) if live_raw is not None else None,
         "config_capture_time": capture_time,
         "live_observed_at": observed_at if live_raw is not None else None,
@@ -197,17 +199,25 @@ def seed(engine: Engine, registry: TypeRegistry) -> Seeded:
             seeded.resources.append(row)
         # Relationships as the Writer stores them: resolved when the target is in the database.
         for resource in seeded.resources:
+            kept: dict[tuple[Any, ...], tuple[dict[str, Any], dict[str, Any]]] = {}
             for related in resource["relationships"]:
+                field = related.get("toField", "resourceId")
+                target_region = (
+                    "global"
+                    if related["resourceType"] in registry
+                    and registry.get(related["resourceType"]).global_
+                    else resource["aws_region"]
+                )
                 target = next(
                     (
                         r
                         for r in seeded.resources
-                        if (r["account_id"], r["aws_region"], r["resource_type"], r["resource_id"])
-                        == (
-                            resource["account_id"],
-                            resource["aws_region"],
-                            related["resourceType"],
-                            related["resourceId"],
+                        if r["account_id"] == resource["account_id"]
+                        and r["aws_region"] == target_region
+                        and r["resource_type"] == related["resourceType"]
+                        and (
+                            (field == "resourceId" and r["resource_id"] == related["resourceId"])
+                            or (field == "arn" and r["arn"] == related["resourceId"])
                         )
                     ),
                     None,
@@ -216,9 +226,29 @@ def seed(engine: Engine, registry: TypeRegistry) -> Seeded:
                     "from_resource_id": resource["id"],
                     "to_resource_type": related["resourceType"],
                     "to_resource_key": related["resourceId"],
+                    "to_resource_field": field,
                     "to_resource_id": target["id"] if target else None,
                     "relation_name": related.get("relationshipName", ""),
                 }
+                identity = (
+                    ("target", target["id"])
+                    if target
+                    else ("reference", related["resourceType"], field, related["resourceId"])
+                )
+                if identity in kept:
+                    existing, existing_relation = kept[identity]
+                    if not existing.get("relationshipName") and related.get("relationshipName"):
+                        existing["relationshipName"] = related["relationshipName"]
+                        existing_relation["relation_name"] = related["relationshipName"]
+                    continue
+                kept[identity] = (related, relation)
+            resource["relationships"] = [related for related, _ in kept.values()]
+            connection.execute(
+                update(RESOURCE)
+                .where(RESOURCE.c.id == resource["id"])
+                .values(relationships=resource["relationships"])
+            )
+            for _, relation in kept.values():
                 connection.execute(insert(RELATION).values(**relation))
                 seeded.relations.append(relation)
         # Scan scopes: fresh for the main account, except the VPC scope scanned 13 hours ago.

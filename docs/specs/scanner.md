@@ -190,16 +190,17 @@ RETURNING *;
 1. **加锁**：资源按 `(account_id, aws_region, resource_type, resource_id)` 识别（ARN 不唯一，见 DESIGN.md 5.1）。按这个键排序执行 `SELECT … FOR UPDATE`，避免死锁。
 2. **叠加**（只对 Cloud Control 和服务 API 来源）：把转换结果叠加到**刚锁住的**现有 `configuration` 上。映射覆盖到的字段以新数据为准，新数据里没有就视为被清空；映射覆盖不到的字段保留原值。Config 来源直接使用。
 3. **脱敏**：按资源类型配置的路径，对 `configuration` 和 `live_raw` 都执行。这是唯一的脱敏关卡，之前的数据只在内存里。
-4. **内容哈希**：`sha256(resourceName, tags, configuration 去掉会自己变化的字段)`，JSON 按键排序后计算。
-5. **写入**：
+4. **关系**：Config 来源用 Config 的 `relationships`；Cloud Control 和服务 API 来源保留库里已有的 Config 关系。两者都按类型配置的 `derivedRelationships` 从当前 `configuration` 重算派生边（带 `origin: "derived"`）。规则路径可以用 `[]` 遍历数组，目标按 `resourceId` 或 ARN 解析；Config 关系优先，同一个实际目标只保留一条。派生字段从 `configuration` 消失时，旧派生边随之删除。关系不参与内容哈希。
+5. **内容哈希**：`sha256(resourceName, tags, configuration 去掉会自己变化的字段)`，JSON 按键排序后计算。
+6. **写入**：
    - 新资源：插入（冲突时说明别的 worker 抢先插入了，改走更新路径），`first_seen_at = last_changed_at = 观察时间`，计入 `new`。
    - 已有资源，且 `observed_at` 晚于库里的值：
      - 哈希不同：更新所有字段，`last_changed_at = 观察时间`，计入 `updated`，并整体替换这个资源在 `t_inv_aws_resource_relation` 里的记录。
      - 哈希相同：只更新 `observed_at`、`observed_source` 和时间字段（不改内容），计入 `unchanged`。**关系不在哈希里，也不算资源变化**：只有关系（按集合比较，Config 不保证顺序）变了时，只更新关系和关系表，不计入 `updated`，不动 `last_changed_at`。
      - 状态是 `missing` 或 `deleted`：恢复为 `active`，清空 `missing_since`、`absent_in_scan_at`、`deleted_at`、`missing_checks`，计入 `restored`。
    - 已有资源，`observed_at` 不晚于库里的值：跳过（R4）。
-   - 关系表里 `to_resource_id` 按 账号 + 区域 + 类型 + resourceId 解析。**迟到的解析**：新资源插入后，同一个账号里（区域相同，目标是全局资源时不限区域）那些 `to_resource_id` 还是空的关系，指向它。
-6. **统计在同一个事务里**写入 `scan_task.stats`（累加 `new`、`updated`、`unchanged`、`restored`；删除步骤累加 `missing`、`deleted`），所以任务上报的数字就是它已经提交的写入，任务失败或重试也不丢。所属扫描请求的 `counts.resources` 在任务结束时由各任务的 `stats` 汇总（见第 2 节）。
+   - 关系表里 `to_resource_id` 按 账号 + 区域 + 类型 + `resourceId`/ARN 解析。**迟到的解析**：写入事务提交后，在另一个事务内复查 claim token，再按资源身份排序锁来源资源并重算关系。同时检查本批资源的出边和引用它们的入边，使并发写入双方中后提交的一方能解析先提交的资源；目标更新 ARN 也重新解析。只用锁定后的当前配置，不修改观测时间或哈希。多个 ARN 候选不选取；Config 和派生引用落到同一行时按 Config 优先去重。
+7. **统计在同一个事务里**写入 `scan_task.stats`（累加 `new`、`updated`、`unchanged`、`restored`；删除步骤累加 `missing`、`deleted`），所以任务上报的数字就是它已经提交的写入，任务失败或重试也不丢。所属扫描请求的 `counts.resources` 在任务结束时由各任务的 `stats` 汇总（见第 2 节）。
 
 ## 8. 删除判断（R5、R6）
 

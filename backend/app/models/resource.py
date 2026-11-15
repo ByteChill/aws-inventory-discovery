@@ -111,7 +111,15 @@ class ResourceRelation(SQLModel, table=True):
     """Relationships between resources, for reverse lookups."""
 
     __tablename__ = "t_inv_aws_resource_relation"
-    __table_args__ = (Index("ix_t_inv_aws_resource_relation_to", "to_resource_id"),)
+    __table_args__ = (
+        Index("ix_t_inv_aws_resource_relation_to", "to_resource_id"),
+        Index(
+            "ix_t_inv_aws_resource_relation_target_reference",
+            "to_resource_type",
+            "to_resource_field",
+            "to_resource_key",
+        ),
+    )
 
     from_resource_id: int = Field(
         sa_column=Column(
@@ -121,7 +129,8 @@ class ResourceRelation(SQLModel, table=True):
         )
     )
     to_resource_type: str = Field(primary_key=True)
-    to_resource_key: str = Field(primary_key=True)  # resourceId as given by Config
+    to_resource_key: str = Field(primary_key=True)
+    to_resource_field: str = Field(default="resourceId", primary_key=True)
     # NULL when no matching resource exists
     to_resource_id: int | None = Field(
         default=None,

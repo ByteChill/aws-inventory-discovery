@@ -139,7 +139,7 @@ type ScopeCandidate = {
 
 ### `GET /resources/{id}/relationships`
 - 参数：`direction=out|in|both`（默认 `both`）、分页。
-- 返回：`Page<{ direction: "out" | "in"; relationName: string; resourceType: string; resourceKey: string; resource: ResourceItem | null }>`。`resource` 为空表示库里没有对应的资源。
+- 返回：`Page<{ direction: "out" | "in"; relationName: string; resourceType: string; resourceKey: string; resource: ResourceItem | null }>`。`resourceKey` 是关系里保存的引用值：出边可能是目标资源的 `resourceId`，也可能是 ARN（派生规则声明 `toField: "arn"` 时）；入边的 `resourceKey` 是来源资源的 `resourceId`。`resource` 为空表示这个引用还没有解析到库里的资源；非空时优先用它展示名称和链接。
 
 ### `POST /resources/refresh`
 - 参数：`wait`（秒，0–20，默认 0）。

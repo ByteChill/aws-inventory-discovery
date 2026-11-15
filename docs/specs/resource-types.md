@@ -30,6 +30,7 @@
 | `mapping.transform` | `{ Config 路径: 转换名 }` | 否 | 值类型的转换，见 2.3 |
 | `mapping.preserveKeysUnder` | CloudControl 路径[] | 否 | 这些路径下的子键是用户数据（如环境变量名），**不改大小写** |
 | `redact` | `[{ "path": Config 路径, "mode": "values" \| "drop" \| "summarize", "by": 字段 }]` | 否 | 脱敏，见第 3 节。`by` 只用于、也必须用于 `summarize` |
+| `derivedRelationships` | `[{ "name": string, "toType": string, "toField"?: "resourceId" \| "arn", "fromPath": Config 路径 }]` | 否 | 显式声明从 `configuration` 派生到另一个资源类型的关系，见 2.4 |
 | `volatile` | Config 路径[] | 否 | 会自己变化的字段：存储，但不参与内容哈希 |
 | `columns` | 见 1.2 | 否 | 资源列表上的类型专属列，`key` 不能重复 |
 
@@ -96,7 +97,7 @@
 | `arn` | `identity.arnFrom` 或 `identity.arnTemplate` |
 | `resourceName` | `identity.nameFrom` |
 | `tags` | Cloud Control 的标签属性（默认 `Tags`，由 `mapping.tagsProperty` 指定）`[{Key, Value}]` 转为 `[{key, value}]`；所有类型通用，标签属性不进入 `configuration` |
-| `relationships` | Cloud Control 没有，保留库里现有的值（新资源为空） |
+| `relationships` | Config 用 Config 的；Cloud Control 没有，按 2.4 的派生规则从映射后的 `configuration` 生成。两者合并，Config 优先 |
 | `configurationItemCaptureTime` | 不修改；Cloud Control 的观察时间另存 `live_observed_at` |
 
 ### 2.2 `configuration` 的转换
@@ -121,6 +122,35 @@
 | `toIsoDatetime` | 时间戳或其他时间格式转为 ISO 8601 UTC |
 
 需要新的转换时，在 `types/mapping.py` 的转换字典里显式加一项。
+
+### 2.4 派生关系
+
+有些类型之间有明确的引用，但 Config 的 `relationships` 没有给出这条边（ECS Service 的 `TaskDefinition` 就是例子）。类型配置可以用 `derivedRelationships` 显式声明，格式：
+
+```json
+"derivedRelationships": [
+  { "name": "TaskDefinition", "toType": "AWS::ECS::TaskDefinition", "fromPath": "TaskDefinition" },
+  { "name": "TargetGroup", "toType": "AWS::ElasticLoadBalancingV2::TargetGroup", "toField": "arn", "fromPath": "LoadBalancers[].TargetGroupArn" }
+]
+```
+
+| 字段 | 说明 |
+|---|---|
+| `name` | 关系名称，dashboard 按它分组；同一个类型里不能重复 |
+| `toType` | 目标资源类型，必须在注册表里存在，否则启动失败 |
+| `toField` | 可选，`resourceId`（默认）或 `arn`；表示 `fromPath` 的值要和目标资源的哪个字段比较 |
+| `fromPath` | 本类型 `configuration` 里的路径；`[]` 表示遍历数组的每个元素，例如 `vpcConfig.subnetIds[]`、`LoadBalancers[].TargetGroupArn` |
+
+规则：
+- 路径里的 `[]` 只能作为整个字段名的后缀，不能写数组下标或其它表达式；加载时不合法就失败。嵌套数组（如 `A[].B[].C`）也支持。
+- `toField: "resourceId"` 时按目标类型的 `resourceId` 解析；`toField: "arn"` 时按目标资源的 `arn` 解析。很多类型没有独立于 ARN 的 ID，所以两种都要支持。
+- Config 提供的关系优先。引用文本完全相同时直接去重；目标入库后如果 Config 的 resourceId 引用和派生规则的 ARN 引用指向同一行，也只保留 Config 的那条（保留派生规则提供的显示名）。
+- 每次写入都按当前 `configuration` 重算。`configuration` 里没有这个值，或值不是非空字符串时，不生成这条边；之前生成的派生边会被删除。
+- 派生边在数据库的资源 JSON 里带 `"origin": "derived"`，Config 边省略 `origin`。关系仍然不参与内容哈希，不算资源变化。
+- 目标资源还没入库时，关系表里的 `to_resource_id` 为空；目标入库后由迟到解析补上。
+- ARN 查找限定同一账号、同一区域（全局目标使用 `global`）；不跨账号或跨区域猜测。同范围出现多个 ARN 候选时保持未解析。
+- 当前登记的规则覆盖 ECS Service → TaskDefinition / Cluster / Target Group、Instance → VPC / Subnet / Image、Subnet / SecurityGroup / Target Group → VPC、Target Group → Load Balancer、Lambda → Subnet / SecurityGroup、Secret → Rotation Lambda。字段没有被数据源采集到时不会凭空生成边。
+- 暂不登记 ECS Secret 引用（还需区分 Secrets Manager、SSM 和带版本/JSON key 后缀的 ARN）、安全组规则引用（还需处理所属账号和 Cloud Control 的不同规则结构）、Route 53 → VPC（还需明确全局来源到区域目标的语义）。这些限制不影响数组路径本身。
 
 ## 3. 脱敏
 

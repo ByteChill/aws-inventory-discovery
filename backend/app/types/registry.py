@@ -36,6 +36,13 @@ class TypeRegistry:
             if spec.type_name in specs:
                 raise RegistryError(f"{file.name}: duplicate type {spec.type_name}")
             specs[spec.type_name] = spec
+        for spec in specs.values():
+            for relationship in spec.derived_relationships:
+                if relationship.to_type not in specs:
+                    raise RegistryError(
+                        f"{spec.file_name}: derived relationship {relationship.name!r} "
+                        f"points to unknown type {relationship.to_type}"
+                    )
         return cls(specs)
 
     def get(self, type_name: str) -> ResourceTypeSpec:

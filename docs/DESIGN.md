@@ -118,6 +118,7 @@ api 和 worker 只通过数据库协作：api 写扫描请求和任务，worker 
 - **数据来源**：Config 是否支持，Cloud Control 是否支持；两者都不支持时，由这个类型的 `Hooks` 对象提供服务 API 读取函数（如 AMI）。
 - **映射**：每个类型选一种键风格（`mapping.keyCase`）：`camel`（默认，字段名首字母改成小写，嵌套字段也一样）或 `pascal`（保持 Cloud Control 的 PascalCase）。Config 的键风格因类型而异：VPC、Subnet、LoadBalancer、Instance、Lambda 是 lowerCamelCase，ECS、Secret、SNS、SQS、Route 53 保留 PascalCase（M1 核对）。文件里列出映射覆盖的 Cloud Control 属性（`mapping.properties`，叠加时靠它知道哪些字段「被清空」），再写例外：`rename`、`exclude`、`transform`（如 Config 里布尔值是字符串 `"true"` / `"false"`，用 `toString`）。覆盖的路径只能整体替换数组，不能穿过数组（加载时拒绝）。
 - **脱敏字段**：要脱敏的字段路径。
+- **派生关系**：类型配置里可以显式声明 `derivedRelationships`，从 `configuration` 的字段（包括 `[]` 数组元素）派生到另一个资源类型的关系（如 ECS Service → TaskDefinition）。目标可以按它的 `resourceId` 或 ARN 解析。只做显式规则，不做通用推导；计算在 Writer 里完成。
 - **会自己变化的字段**：存下来，但不参与内容哈希。
 - **列定义**：dashboard 上的类型专属列，包括显示名称（中英文）、数据类型、取值路径。
 
@@ -144,8 +145,11 @@ api 和 worker 只通过数据库协作：api 写扫描请求和任务，worker 
 - EC2 的 `userData`：丢弃
 
 ### 5.4 关系
-- 只用 Config 提供的 `relationships`。从 Cloud Control 的属性推导关系推迟到以后。
-- 资源上原样保留 `relationships` 数组；另存到关系表，用来反查（这个 VPC 里有哪些资源、这个安全组被谁用了），并对应到库里的资源，方便跳转。关系指向的资源还没入库时，`to_resource_id` 先为空，目标资源入库时再补上（迟到的解析）。
+- 关系有两个来源：Config 提供的 `relationships`，以及资源类型配置里显式声明的派生关系（`derivedRelationships`）。不做通用或模糊推导。
+- Config 提供的关系优先。派生关系从写入时的 `configuration` 取值；`fromPath` 支持 `[]` 遍历数组，一条规则可以产生多条边。规则用 `toField` 指定把值当作目标类型的 `resourceId`（默认）还是 ARN。解析范围是同一个账号：区域相同，目标是全局资源时不限区域。目标还没入库时 `to_resource_id` 为空，目标入库后再补上；多条引用解析到同一个目标时只保留 Config 的那条。
+- 每次写入都按当前 `configuration` 重算派生关系；`configuration` 里没有的值对应的旧派生关系会被删除。派生关系在数据库的资源 JSON 里带 `origin: "derived"`，Config 关系的 `origin` 省略。
+- 资源上保存合并后的 `relationships` 数组；Config 已提供的名称优先，缺失时可以用派生规则名称补齐。另存到关系表，用来反查（这个 VPC 里有哪些资源、这个安全组被谁用了），并对应到库里的资源，方便跳转。
+- 写入事务提交后，再按资源身份排序锁住关联来源资源，用当前存储数据重新解析出边和入边。关系更新始终先锁来源资源再锁关系表；复查 worker 的 claim token。目标 ARN 在同一账号、区域、类型里匹配多行时保持未解析，不任意选取。
 - 关系的变化不算资源变化：只有关系变了（按集合比较），只更新关系和关系表，不计入「更新」，也不改 `last_changed_at`。
 
 ### 5.5 只保留当前状态
@@ -225,10 +229,11 @@ CREATE TABLE t_inv_aws_resource (
 CREATE TABLE t_inv_aws_resource_relation (
   from_resource_id  bigint NOT NULL REFERENCES t_inv_aws_resource ON DELETE CASCADE,
   to_resource_type  text   NOT NULL,
-  to_resource_key   text   NOT NULL,     -- Config 给的 resourceId
+  to_resource_key   text   NOT NULL,     -- 引用值：resourceId 或 ARN
+  to_resource_field text   NOT NULL,     -- resourceId / arn
   to_resource_id    bigint REFERENCES t_inv_aws_resource ON DELETE SET NULL,  -- 找不到对应资源时为空
   relation_name     text   NOT NULL,
-  PRIMARY KEY (from_resource_id, to_resource_type, to_resource_key, relation_name)
+  PRIMARY KEY (from_resource_id, to_resource_type, to_resource_key, to_resource_field, relation_name)
 );
 -- 索引：to_resource_id
 
@@ -735,7 +740,6 @@ aws-inventory-discovery/
 | 功能 | v1 期间的替代做法 |
 |---|---|
 | 巡检页 | 用资源列表的类型专属列筛选和标签筛选 |
-| 从 Cloud Control 的属性推导关系 | 关系只用 Config 提供的 |
 | 资源类型管理页 | 在扫描页的失败汇总里按类型查看 |
 | worker 在线状态表、依赖服务和 endpoint 的健康检查 | 部署时用 `doctor` 命令检查连通性；worker 是否在线看任务的心跳；容器自己的健康检查看心跳文件 |
 | 页面上暂停 / 恢复定时扫描 | 用 `SWEEP_ENABLED` 环境变量 |

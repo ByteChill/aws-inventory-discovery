@@ -132,6 +132,7 @@
 - [x] findings 汇总：表 `t_inv_aws_finding_summary`（按资源身份存 critical / high / medium / low 计数和最高分，迁移 0007）；没有行表示还没检查过，不等于「没有问题」；AMI 类型声明 `findings: true`
 - [x] findings 服务 ③ 客户端（`app/aws/findings.py`，地址 `FINDINGS_SERVICE_URL`）：worker 扫 AMI 时按镜像 ID 读取并写入汇总表，失败只记日志、不影响扫描
 - [x] 报表字段：AMI 增加 `deprecationTime`；有 findings 的类型增加 4 个级别计数和最高分；主体类型的 `derivedRelationships` 可以在条件里用一跳关联字段（如 EC2 的 `image.creationDate`、`image.findingsHighCount`），编译成关联表上的 `EXISTS`；关联字段也可以作为显示列，值是关联目标上该字段的去重数组
+- [x] 关联字段可以引用目标类型穿过数组的 `reportFields`（如 ECS 服务的 `taskdefinition.image`）：条件表示任一关联目标的任一元素满足，显示列把所有元素摊平、去重；关联本身仍然只走一跳
 - [x] 报表 UI：条件字段按通用 / 类型 / 关联分组，关联字段带说明；显示列可选关联字段；超长资源名在结果表里截断，不再压到账号列
 - [x] 侧栏：Inventory 改为和扫描、报表并列的一级入口，带图标和总数，常驻展开；概览不再是单独一行
 - [x] 参考报表已在本地演示：AMI「过期或有高危发现」（10 条）、运行中的 EC2「使用了过期或有高危发现的 AMI」（7 条）；moto 不能设置 AMI 创建时间和弃用时间，本地只能演示 findings 分支，时间分支由后端测试覆盖

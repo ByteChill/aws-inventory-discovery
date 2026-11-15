@@ -26,6 +26,7 @@ from sqlalchemy import (
     not_,
     or_,
     select,
+    true,
 )
 from sqlalchemy.dialects.postgresql import JSONB, JSONPATH
 from sqlalchemy.exc import IntegrityError
@@ -257,11 +258,13 @@ def _never_null(predicate: ColumnElement[Any]) -> ColumnElement[Any]:
     return func.coalesce(predicate, false())
 
 
-def _jsonpath_exists(path: str, predicate: str | None = None) -> ColumnElement[Any]:
+def _jsonpath_exists(
+    path: str, predicate: str | None = None, *, table: Any = RESOURCE
+) -> ColumnElement[Any]:
     full = path if predicate is None else f"{path} ? ({predicate})"
     return _never_null(
         func.jsonb_path_exists(
-            R.configuration, cast(literal(full), JSONPATH), cast(literal("{}"), JSONB)
+            table.c.configuration, cast(literal(full), JSONPATH), cast(literal("{}"), JSONB)
         )
     )
 
@@ -271,21 +274,23 @@ def _string_literal(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _array_condition(field: ResolvedField, op: str, value: Any) -> ColumnElement[Any]:
+def _array_condition(
+    field: ResolvedField, op: str, value: Any, *, table: Any = RESOURCE
+) -> ColumnElement[Any]:
     assert field.jsonpath is not None
     path = field.jsonpath
     if op == "exists":
-        return _jsonpath_exists(path)
+        return _jsonpath_exists(path, table=table)
     if op == "notExists":
-        return not_(_jsonpath_exists(path))
+        return not_(_jsonpath_exists(path, table=table))
     if op in ("eq", "neq"):
         predicate = f"@ == {_string_literal(value)}"
-        found = _jsonpath_exists(path, predicate)
+        found = _jsonpath_exists(path, predicate, table=table)
         return found if op == "eq" else not_(found)
     if op in ("in", "notIn"):
         values = [str(item) for item in value]
         predicate = " || ".join(f"@ == {_string_literal(item)}" for item in values)
-        found = _jsonpath_exists(path, predicate)
+        found = _jsonpath_exists(path, predicate, table=table)
         return found if op == "in" else not_(found)
     if op in ("contains", "startsWith"):
         pattern = (
@@ -294,7 +299,7 @@ def _array_condition(field: ResolvedField, op: str, value: Any) -> ColumnElement
             else ("^" + re.escape(str(value)))
         )
         predicate = f'@ like_regex {_string_literal(pattern)} flag "i"'
-        return _jsonpath_exists(path, predicate)
+        return _jsonpath_exists(path, predicate, table=table)
     raise ApiError(422, "validation_error", f"字段 {field.key} 不支持 {op}", {"field": field.key})
 
 
@@ -345,6 +350,20 @@ def _scalar_condition(field: ResolvedField, op: str, value: Any) -> ColumnElemen
     raise ApiError(422, "validation_error", f"字段 {field.key} 不支持 {op}", {"field": field.key})
 
 
+def _relation_name_filter(spec: Any, prefix: str, to_type: str) -> ColumnElement[Any] | None:
+    """Disambiguate two declared relationships that point at the same target type.
+
+    Edges carry the relationship name (derived edges use the declared name). With only one
+    declaration to a target type the name is not filtered, so edges that Config supplies
+    under its own naming still count.
+    """
+    same_target = [item for item in spec.derived_relationships if item.to_type == to_type]
+    if len(same_target) < 2:
+        return None
+    declared = next(item for item in same_target if item.name.lower() == prefix)
+    return RELATION.c.relation_name == declared.name
+
+
 def _related_column(key: str, spec: Any, registry: TypeRegistry) -> ResolvedField:
     """A related resource's value as a display column: every value, deduplicated.
 
@@ -354,22 +373,39 @@ def _related_column(key: str, spec: Any, registry: TypeRegistry) -> ResolvedFiel
     prefix, _, related_key = key.partition(".")
     to_type = relation_prefixes(spec.type_name, registry).get(prefix)
     target_spec = registry.get(to_type) if to_type is not None else None
-    if target_spec is None or not related_key:
+    if to_type is None or target_spec is None or not related_key:
         raise ApiError(422, "validation_error", f"当前主体类型没有字段 {key}", {"field": key})
     target = RESOURCE.alias("related")
     field = _related_field(related_key, target, target_spec)
-    assert field.expr is not None
-    values = func.array_agg(func.distinct(field.expr)).filter(field.expr.is_not(None))
-    expr = (
-        select(values)
-        .select_from(RELATION.join(target, RELATION.c.to_resource_id == target.c.id))
-        .where(
-            RELATION.c.from_resource_id == R.id,
-            RELATION.c.to_resource_type == to_type,
+    if field.jsonpath is not None:
+        # An array-crossing target field: flatten every element of every related resource.
+        elements = (
+            func.jsonb_array_elements_text(
+                func.jsonb_path_query_array(
+                    target.c.configuration, cast(literal(field.jsonpath), JSONPATH)
+                )
+            )
+            .table_valued("value")
+            .alias("element")
         )
-        .correlate(RESOURCE)
-        .scalar_subquery()
-    )
+        values = func.array_agg(func.distinct(elements.c.value)).filter(
+            elements.c.value.is_not(None)
+        )
+        source = RELATION.join(target, RELATION.c.to_resource_id == target.c.id).join(
+            elements, true()
+        )
+    else:
+        assert field.expr is not None
+        values = func.array_agg(func.distinct(field.expr)).filter(field.expr.is_not(None))
+        source = RELATION.join(target, RELATION.c.to_resource_id == target.c.id)
+    filters: list[ColumnElement[Any]] = [
+        RELATION.c.from_resource_id == R.id,
+        RELATION.c.to_resource_type == to_type,
+    ]
+    name_filter = _relation_name_filter(spec, prefix, to_type)
+    if name_filter is not None:
+        filters.append(name_filter)
+    expr = select(values).select_from(source).where(*filters).correlate(RESOURCE).scalar_subquery()
     return ResolvedField(
         key,
         field.type,
@@ -401,11 +437,6 @@ def _related_field(key: str, table: Any, spec: Any) -> ResolvedField:
             label_en=common.en,
             mono=common.mono,
         )
-    if spec.findings and key in FINDING_FIELDS:
-        zh, en = FINDING_LABELS[key]
-        return ResolvedField(
-            key, "number", expr=_findings_expr(key, table), label_zh=zh, label_en=en
-        )
     column = next((item for item in spec.columns if item.key == key), None)
     if column is not None:
         path = column_paths(spec)[key]
@@ -418,7 +449,17 @@ def _related_field(key: str, table: Any, spec: Any) -> ResolvedField:
             mono=column.mono,
         )
     report_field = next((item for item in spec.report_fields if item.key == key), None)
-    if report_field is not None and "[]" not in report_field.path:
+    if report_field is not None:
+        if "[]" in report_field.path:
+            # Crossing an array: a condition means "any element matches"; a display column
+            # flattens every element of every related resource (see `_related_column`).
+            return ResolvedField(
+                key,
+                report_field.type,
+                jsonpath=_jsonpath(report_field.path),
+                label_zh=report_field.label.zh_cn,
+                label_en=report_field.label.en,
+            )
         path = ColumnPath(
             key=key,
             type=report_field.type,
@@ -433,6 +474,11 @@ def _related_field(key: str, table: Any, spec: Any) -> ResolvedField:
             label_zh=report_field.label.zh_cn,
             label_en=report_field.label.en,
         )
+    if spec.findings and key in FINDING_FIELDS:
+        zh, en = FINDING_LABELS[key]
+        return ResolvedField(
+            key, "number", expr=_findings_expr(key, table), label_zh=zh, label_en=en
+        )
     raise ApiError(422, "validation_error", f"关联资源没有字段 {key}", {"field": key})
 
 
@@ -441,23 +487,33 @@ def _related_condition(
 ) -> ColumnElement[Any]:
     """`image.creationDate`: any related resource of the declared type matches."""
     assert condition.field is not None and condition.op is not None
+    subject_type = definition.subject_type
+    assert subject_type is not None
     prefix, _, key = condition.field.partition(".")
-    to_type = relation_prefixes(definition.subject_type, registry).get(prefix)
+    to_type = relation_prefixes(subject_type, registry).get(prefix)
     if to_type is None:
         raise ApiError(
             422, "validation_error", f"当前主体类型没有关联 {prefix}", {"field": condition.field}
         )
     target = RESOURCE.alias("related")
     field = _related_field(key, target, registry.get(to_type))
-    predicate = _scalar_condition(field, condition.op, condition.value)
+    predicate = (
+        _array_condition(field, condition.op, condition.value, table=target)
+        if field.jsonpath is not None
+        else _scalar_condition(field, condition.op, condition.value)
+    )
+    filters: list[ColumnElement[Any]] = [
+        RELATION.c.from_resource_id == R.id,
+        RELATION.c.to_resource_type == to_type,
+        predicate,
+    ]
+    name_filter = _relation_name_filter(registry.get(subject_type), prefix, to_type)
+    if name_filter is not None:
+        filters.append(name_filter)
     return (
         select(literal(1))
         .select_from(RELATION.join(target, RELATION.c.to_resource_id == target.c.id))
-        .where(
-            RELATION.c.from_resource_id == R.id,
-            RELATION.c.to_resource_type == to_type,
-            predicate,
-        )
+        .where(*filters)
         .exists()
     )
 
@@ -556,37 +612,44 @@ def field_palette(
     if subject_type is not None:
         spec = registry.get(subject_type)
         taken = {field.key for field in fields}
-        fields.extend(
-            ReportFieldInfo(
-                key=column.key,
-                label=label_of(column.label, language),
-                type=column.type,
-                group="type",
-            )
-            for column in spec.columns
-            if column.key not in taken
-        )
-        fields.extend(
-            ReportFieldInfo(
-                key=field.key,
-                label=label_of(field.label, language),
-                type=field.type,
-                array="[]" in field.path,
-                group="type",
-            )
-            for field in spec.report_fields
-        )
-        if spec.findings:
-            fields.extend(
+        for column in spec.columns:
+            if column.key in taken:
+                continue
+            taken.add(column.key)
+            fields.append(
                 ReportFieldInfo(
-                    key=key,
-                    label=zh if language == "zh-CN" else en,
-                    type=FINDING_FIELDS[key],
+                    key=column.key,
+                    label=label_of(column.label, language),
+                    type=column.type,
                     group="type",
                 )
-                for key, (zh, en) in FINDING_LABELS.items()
             )
-        taken = {field.key for field in fields}
+        for report_field in spec.report_fields:
+            if report_field.key in taken:
+                continue
+            taken.add(report_field.key)
+            fields.append(
+                ReportFieldInfo(
+                    key=report_field.key,
+                    label=label_of(report_field.label, language),
+                    type=report_field.type,
+                    array="[]" in report_field.path,
+                    group="type",
+                )
+            )
+        if spec.findings:
+            for key, (zh, en) in FINDING_LABELS.items():
+                if key in taken:
+                    continue
+                taken.add(key)
+                fields.append(
+                    ReportFieldInfo(
+                        key=key,
+                        label=zh if language == "zh-CN" else en,
+                        type=FINDING_FIELDS[key],
+                        group="type",
+                    )
+                )
         for relationship in spec.derived_relationships:
             target = registry.get(relationship.to_type)
             prefix = relationship.name.lower()
@@ -609,6 +672,7 @@ def field_palette(
                 key = f"{prefix}.{column.key}"
                 if key in taken:
                     continue
+                taken.add(key)
                 fields.append(
                     ReportFieldInfo(
                         key=key,
@@ -620,8 +684,9 @@ def field_palette(
                 )
             for report_field in target.report_fields:
                 key = f"{prefix}.{report_field.key}"
-                if "[]" in report_field.path or key in taken:
+                if key in taken:
                     continue
+                taken.add(key)
                 fields.append(
                     ReportFieldInfo(
                         key=key,
@@ -636,6 +701,7 @@ def field_palette(
                     key = f"{prefix}.{field_key}"
                     if key in taken:
                         continue
+                    taken.add(key)
                     fields.append(
                         ReportFieldInfo(
                             key=key,

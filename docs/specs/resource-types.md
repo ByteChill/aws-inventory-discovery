@@ -59,7 +59,7 @@
 
 `reportFields`（[reports.md](reports.md) 3.3）给自定义报表提供字段，字段和列一样有 `key`、`label`、`type`、`path`，区别是 **`path` 可以用 `[]` 穿过数组**，例如 ECS 任务定义的 `ContainerDefinitions[].Image`。穿过数组的字段必须是 `type: "text"`，报表条件的语义是「数组里**任一**元素满足」；不穿过数组时用法和列相同，所以同一个字段一般只写在 `columns`（列表要显示）或 `reportFields`（只有报表需要，或要穿过数组）中的一处。报表的字段清单是通用列、标签、关系计数、`columns`、`reportFields`、findings 字段和关联字段的并集，同名时以通用列优先，其次是 `columns`。
 
-`findings: true` 的类型还会多出 `findingsCriticalCount`、`findingsHighCount`、`findingsMediumCount`、`findingsLowCount`、`findingsMaxScore` 五个 `number` 字段（当前汇总，没有行时为空）。类型配置声明的每个 `derivedRelationships` 还会给报表提供 `<关系名>.<字段>` 形式的一跳关联字段，目标字段同样来自通用列、`columns`、`reportFields` 和 findings；关联字段既能用于条件，也能作为显示列（列值是关联目标上该字段的去重数组，[reports.md](reports.md) 3.3）。
+`findings: true` 的类型还会多出 `findingsCriticalCount`、`findingsHighCount`、`findingsMediumCount`、`findingsLowCount`、`findingsMaxScore` 五个 `number` 字段（当前汇总，没有行时为空）。类型配置声明的每个 `derivedRelationships` 还会给报表提供 `<关系名>.<字段>` 形式的一跳关联字段，目标字段同样来自通用列、`columns`、`reportFields` 和 findings；目标字段可以是穿过数组的 `reportFields`，此时正向条件的语义是「任一关联目标的数组里任一元素满足」（否定操作符先在一个目标内部取反），显示列把所有关联目标的元素摊平去重（[reports.md](reports.md) 3.3）。
 
 报表定义不能使用类型的 `redact` 隐藏的字段：脱敏在写入前完成，报表看到的已经是脱敏后的 `configuration`。
 
@@ -280,3 +280,21 @@ TYPE_HOOKS: dict[str, Hooks] = {
 | Route 53 Hosted Zone | 关联 VPC 数（`vpcCount` ← `VPCs` 数组长度，0 表示公有区域） | 是否私有、记录数（Config 和 CFN 里都没有；是否私有可由「关联 VPC 数」推出）、备注（只有 Cloud Control 有） |
 
 某一列的值在当前这条记录的数据来源里没有时，列显示为空（`null`）。一个列的 `key` 和通用列重名时（ECS Task Definition 的 `status`），查询参数里类型专属列一律加 `attr.` 前缀，见 [api.md](api.md)。
+
+## 6. 新增资源类型的步骤
+
+配置驱动的部分只改数据，不用改代码；只有配置文件表达不了的逻辑才写 `Hooks`（第 4 节）。
+
+1. **确认数据来源**：查 CloudFormation 资源类型 schema（`primaryIdentifier`、handlers）、`awslabs/aws-config-resource-schema` 和 Config 支持的资源类型列表，确定 `sources.config`、`sources.cloudControl.read` / `list`。三者都不支持时才用 `sources.native` 并写 `list_live` / `get_live`。
+2. **取样本**：把官方文档里的响应样本放进 `backend/tests/fixtures/aws/<type>/`，每个目录一个 `SOURCE.md` 注明来源 URL。样本只来自官方资料或真实响应，不手编字段形状。
+3. **写配置文件**：`backend/app/types/specs/<type 的小写点分形式>.json`，逐项对照 1.1。容易错的几处：
+   - `identity`：`identifier`（复合 Identifier 用数组）、`resourceIdFrom`、`arnFrom` 与 `arnTemplate` 二选一、`nameFrom`；
+   - `mapping.keyCase`：Config 保留 CloudFormation 键风格的（ECS、Secret、SNS、SQS、Route 53）写 `pascal`，其余默认 `camel`；
+   - `mapping.properties`：列出映射覆盖的全部 Cloud Control 属性，叠加靠它清掉被删除的字段；
+   - `mapping.tagsProperty`：标签属性不叫 `Tags` 的类型（Route 53）要写；
+   - `redact`：任何可能含敏感值的字段（密码、环境变量、订阅端点、`userData`）都要脱敏。
+4. **补列**：资源列表需要的写 `columns`（`path` 不能穿过数组，数组用 `count` 列）；只有报表需要、或要穿过数组的写 `reportFields`（穿过数组必须 `text`，见 1.2.1）。
+5. **补关系**：Config 没给但确定存在的引用写 `derivedRelationships`（2.4），并确认目标类型已在注册表里。
+6. **只在必要时写 `Hooks`**：配置文件表达不了的读取或标识符推导，在 `backend/app/types/hooks.py` 里加函数并登记到 `TYPE_HOOKS`；启动时会校验 `sources.native` 与登记的钩子是否一致。`get_live` 必须区分「读到了 / 明确不存在 / 出错」（第 4 节）。
+7. **跑校验和测试**：`cd backend && uv run pytest tests/test_resource_types.py`（配置校验），再跑完整 `uv run pytest`；参数化的映射、脱敏、列测试会自动纳入新类型，按样本行计算期望值。`cd backend && uv run ruff check . && uv run ty check`。
+8. **更新文档**：第 5 节的类型清单和 5.1 的列（新增类型或列时）、`backend/tests/fixtures/aws/VERIFICATION.md` 的核对结果、`docs/PROGRESS.md` 的对应任务。

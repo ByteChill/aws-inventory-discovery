@@ -118,7 +118,7 @@ CREATE TABLE t_inv_aws_finding_summary (
 
 **findings 字段**：没有汇总行时值为 NULL，因此 `findingsHighCount eq 0` 只匹配真正检查过且没有高危发现的资源，未检查的资源不会出现。级别由 findings 服务 ③ 判定，报表不按分数重新分级。
 
-**关联字段**：前缀是 `derivedRelationships` 里的关系名（小写），后面可以跟目标类型的通用字段、类型专属列、`reportFields` 和 findings 字段（例如 EC2 的 `image.creationDate`、`image.deprecationTime`、`image.findingsHighCount`）。语义是「存在一条关联边，且目标资源满足条件」，只走**一跳**，不穿过数组。作为显示列时，值是所有关联目标上该字段的**去重数组**（一个目标就是单元素，没有目标时为空），因此不能排序。
+**关联字段**：前缀是 `derivedRelationships` 里的关系名（小写），后面可以跟目标类型的通用字段、类型专属列、`reportFields` 和 findings 字段（例如 EC2 的 `image.creationDate`、`image.deprecationTime`、`image.findingsHighCount`，ECS 服务的 `taskdefinition.image`）。语义是「存在一条关联边，且目标资源满足条件」；关联本身只走**一跳**，不再从目标资源继续走关联，但目标字段可以穿过数组（`reportFields` 的 `[]`）。穿过数组时，正向操作符（`contains` / `eq` / `in` / `startsWith` / `exists`）表示关联目标的数组里**任一**元素满足，`neq` / `notIn` / `notExists` 先在一个目标内部取反（该目标**没有任何**元素满足，或没有该字段），再要求存在这样一条关联。作为显示列时，值是所有关联目标上该字段的**去重数组**（穿过数组时把所有元素摊平；一个目标就是单元素，没有目标时为空），因此不能排序。
 
 ## 4. 求值
 
@@ -132,7 +132,7 @@ CREATE TABLE t_inv_aws_finding_summary (
 
 findings 字段是 `t_inv_aws_finding_summary` 上按资源身份取值的标量子查询，没有汇总行时得到 NULL；相对时间条件编译成 `now() - make_interval(...)` 或 `now()` 的比较。关联字段编译成关联表 `t_inv_aws_resource_relation` 上的 `EXISTS`：关联边从当前资源出发、指向声明的关系目标类型，并在目标资源行上判断字段条件；一条边都没有时为 false。
 
-**NULL 语义**：每个叶子条件都被包成「不匹配 = false」（`coalesce(predicate, false)`），所以 `not` 严格是「不满足」，能把字段为空的行包括进来。例如 `not(name eq "x")` 会包括没有名称的资源，和 `neq` 一致。数组字段的 `neq` / `notIn` 是「没有任何元素匹配」。findings 没有汇总行时同样按 NULL 处理：`not(findingsHighCount gt 0)` 会**包括**还没检查过的资源。
+**NULL 语义**：每个叶子条件都被包成「不匹配 = false」（`coalesce(predicate, false)`），所以 `not` 严格是「不满足」，能把字段为空的行包括进来。例如 `not(name eq "x")` 会包括没有名称的资源，和 `neq` 一致。主体类型自己的数组字段，`neq` / `notIn` 是「没有任何元素匹配」；关联字段里的数组先在一个关联目标内部取反，再要求存在这样的目标，见 3.3。findings 没有汇总行时同样按 NULL 处理：`not(findingsHighCount gt 0)` 会**包括**还没检查过的资源。
 
 **范围**：dashboard 的 `s=app:<EIM>` / `s=acct:<账号>` 会额外限定 `eim_id` 或 `account_id`，与资源列表的范围一致；不带 `s` 时是全组织。
 

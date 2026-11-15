@@ -142,9 +142,11 @@ def allowed_fields(subject_type: str | None, registry: TypeRegistry) -> dict[str
         # A common field wins over a type column of the same key (see `resolve_field`).
         fields.setdefault(column.key, column.type)
     for report_field in spec.report_fields:
-        fields[report_field.key] = report_field.type
+        # The same precedence as `resolve_field`: common fields and columns win.
+        fields.setdefault(report_field.key, report_field.type)
     if spec.findings:
-        fields.update(FINDING_FIELDS)
+        for key, field_type in FINDING_FIELDS.items():
+            fields.setdefault(key, field_type)
     # One hop over a declared relationship: `image.creationDate`. Config's own relationships
     # are not declared here, so they cannot be used in a saved definition.
     for relationship in spec.derived_relationships:
@@ -158,9 +160,8 @@ def allowed_fields(subject_type: str | None, registry: TypeRegistry) -> dict[str
         for column in target.columns:
             fields.setdefault(f"{prefix}.{column.key}", column.type)
         for report_field in target.report_fields:
-            # A related value has one value; an array-crossing field has no single value.
-            if "[]" not in report_field.path:
-                fields.setdefault(f"{prefix}.{report_field.key}", report_field.type)
+            # An array-crossing field is usable: a condition means "any element matches".
+            fields.setdefault(f"{prefix}.{report_field.key}", report_field.type)
         if target.findings:
             for key, field_type in FINDING_FIELDS.items():
                 fields.setdefault(f"{prefix}.{key}", field_type)

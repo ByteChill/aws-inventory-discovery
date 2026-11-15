@@ -13,6 +13,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AccountsIndexRouteImport } from './routes/accounts/index'
 import { Route as AccountsAccountIdRouteImport } from './routes/accounts/$accountId'
 import { Route as AppsIndexRouteImport } from './routes/apps/index'
+import { Route as ReportsIndexRouteImport } from './routes/reports/index'
+import { Route as ReportsIdRouteImport } from './routes/reports/$id'
 import { Route as ResourcesIndexRouteImport } from './routes/resources/index'
 import { Route as ResourcesIdRouteImport } from './routes/resources/$id'
 import { Route as ScanScopesScanShardIdRouteImport } from './routes/scan-scopes/$scanShardId'
@@ -38,6 +40,16 @@ const AccountsAccountIdRoute = AccountsAccountIdRouteImport.update({
 const AppsIndexRoute = AppsIndexRouteImport.update({
   id: '/apps/',
   path: '/apps/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReportsIndexRoute = ReportsIndexRouteImport.update({
+  id: '/reports/',
+  path: '/reports/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReportsIdRoute = ReportsIdRouteImport.update({
+  id: '/reports/$id',
+  path: '/reports/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResourcesIndexRoute = ResourcesIndexRouteImport.update({
@@ -74,24 +86,28 @@ const TasksIdRoute = TasksIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
+  '/reports/$id': typeof ReportsIdRoute
   '/resources/$id': typeof ResourcesIdRoute
   '/scan-scopes/$scanShardId': typeof ScanScopesScanShardIdRoute
   '/scans/$id': typeof ScansIdRoute
   '/tasks/$id': typeof TasksIdRoute
   '/accounts/': typeof AccountsIndexRoute
   '/apps/': typeof AppsIndexRoute
+  '/reports/': typeof ReportsIndexRoute
   '/resources/': typeof ResourcesIndexRoute
   '/scans/': typeof ScansIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
+  '/reports/$id': typeof ReportsIdRoute
   '/resources/$id': typeof ResourcesIdRoute
   '/scan-scopes/$scanShardId': typeof ScanScopesScanShardIdRoute
   '/scans/$id': typeof ScansIdRoute
   '/tasks/$id': typeof TasksIdRoute
   '/accounts': typeof AccountsIndexRoute
   '/apps': typeof AppsIndexRoute
+  '/reports': typeof ReportsIndexRoute
   '/resources': typeof ResourcesIndexRoute
   '/scans': typeof ScansIndexRoute
 }
@@ -99,12 +115,14 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
+  '/reports/$id': typeof ReportsIdRoute
   '/resources/$id': typeof ResourcesIdRoute
   '/scan-scopes/$scanShardId': typeof ScanScopesScanShardIdRoute
   '/scans/$id': typeof ScansIdRoute
   '/tasks/$id': typeof TasksIdRoute
   '/accounts/': typeof AccountsIndexRoute
   '/apps/': typeof AppsIndexRoute
+  '/reports/': typeof ReportsIndexRoute
   '/resources/': typeof ResourcesIndexRoute
   '/scans/': typeof ScansIndexRoute
 }
@@ -113,36 +131,42 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/accounts/$accountId'
+    | '/reports/$id'
     | '/resources/$id'
     | '/scan-scopes/$scanShardId'
     | '/scans/$id'
     | '/tasks/$id'
     | '/accounts/'
     | '/apps/'
+    | '/reports/'
     | '/resources/'
     | '/scans/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/accounts/$accountId'
+    | '/reports/$id'
     | '/resources/$id'
     | '/scan-scopes/$scanShardId'
     | '/scans/$id'
     | '/tasks/$id'
     | '/accounts'
     | '/apps'
+    | '/reports'
     | '/resources'
     | '/scans'
   id:
     | '__root__'
     | '/'
     | '/accounts/$accountId'
+    | '/reports/$id'
     | '/resources/$id'
     | '/scan-scopes/$scanShardId'
     | '/scans/$id'
     | '/tasks/$id'
     | '/accounts/'
     | '/apps/'
+    | '/reports/'
     | '/resources/'
     | '/scans/'
   fileRoutesById: FileRoutesById
@@ -150,12 +174,14 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AccountsAccountIdRoute: typeof AccountsAccountIdRoute
+  ReportsIdRoute: typeof ReportsIdRoute
   ResourcesIdRoute: typeof ResourcesIdRoute
   ScanScopesScanShardIdRoute: typeof ScanScopesScanShardIdRoute
   ScansIdRoute: typeof ScansIdRoute
   TasksIdRoute: typeof TasksIdRoute
   AccountsIndexRoute: typeof AccountsIndexRoute
   AppsIndexRoute: typeof AppsIndexRoute
+  ReportsIndexRoute: typeof ReportsIndexRoute
   ResourcesIndexRoute: typeof ResourcesIndexRoute
   ScansIndexRoute: typeof ScansIndexRoute
 }
@@ -188,6 +214,20 @@ declare module '@tanstack/react-router' {
       path: '/apps'
       fullPath: '/apps/'
       preLoaderRoute: typeof AppsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reports/': {
+      id: '/reports/'
+      path: '/reports'
+      fullPath: '/reports/'
+      preLoaderRoute: typeof ReportsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reports/$id': {
+      id: '/reports/$id'
+      path: '/reports/$id'
+      fullPath: '/reports/$id'
+      preLoaderRoute: typeof ReportsIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/resources/': {
@@ -238,12 +278,14 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccountsAccountIdRoute: AccountsAccountIdRoute,
+  ReportsIdRoute: ReportsIdRoute,
   ResourcesIdRoute: ResourcesIdRoute,
   ScanScopesScanShardIdRoute: ScanScopesScanShardIdRoute,
   ScansIdRoute: ScansIdRoute,
   TasksIdRoute: TasksIdRoute,
   AccountsIndexRoute: AccountsIndexRoute,
   AppsIndexRoute: AppsIndexRoute,
+  ReportsIndexRoute: ReportsIndexRoute,
   ResourcesIndexRoute: ResourcesIndexRoute,
   ScansIndexRoute: ScansIndexRoute,
 }

@@ -1,8 +1,10 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router"
 import {
   ArrowLeft,
+  Boxes,
   ChevronDown,
   ChevronRight,
+  ClipboardList,
   LayoutDashboard,
   PanelLeftClose,
   ScanSearch,
@@ -133,7 +135,12 @@ export function Sidebar({
     const search = { ...(location.search as Record<string, unknown>) }
     if (value) search.s = value
     else delete search.s
-    if (location.pathname === "/" || location.pathname === "/resources") {
+    // Pages that read the global scope keep their place; anything else returns to the overview.
+    if (
+      location.pathname === "/" ||
+      location.pathname === "/resources" ||
+      location.pathname.startsWith("/reports")
+    ) {
       navigate({ to: location.pathname, search, replace: true })
     } else {
       navigate({ to: "/", search: value ? { s: value } : {} })
@@ -258,26 +265,26 @@ export function Sidebar({
           className="flex-1 overflow-auto px-2.5 pb-4"
           aria-label={t("nav.main")}
         >
-          <p className="px-3 pt-3 pb-1.5 text-xs font-semibold text-muted-foreground">
-            {t("nav.inventory")}
-          </p>
-          <Link
-            to="/"
-            search={scopeValue(scope) ? { s: scopeValue(scope) } : {}}
-            onClick={onClose}
-            aria-current={overviewActive ? "page" : undefined}
+          <div
             className={cn(
-              linkBase,
-              "gap-1.5 font-semibold",
+              "mt-1 flex items-center rounded-md",
               overviewActive && linkActive,
             )}
           >
-            <LayoutDashboard className="size-4 text-muted-foreground" />
-            {t("nav.overview")}
-            <span className="ml-auto text-xs font-normal text-muted-foreground">
-              {formatNumber(total, locale)}
-            </span>
-          </Link>
+            <Link
+              to="/"
+              search={scopeValue(scope) ? { s: scopeValue(scope) } : {}}
+              onClick={onClose}
+              aria-current={overviewActive ? "page" : undefined}
+              className="flex min-h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md px-2.5 py-1 font-semibold hover:bg-subtle-strong"
+            >
+              <Boxes className="size-4 shrink-0 text-muted-foreground" />
+              <span className="truncate">{t("nav.inventory")}</span>
+              <span className="ml-auto text-xs font-normal text-muted-foreground">
+                {formatNumber(total, locale)}
+              </span>
+            </Link>
+          </div>
 
           {groups.map((group) => {
             const isCollapsed = collapsed.has(group.key)
@@ -333,10 +340,7 @@ export function Sidebar({
             )
           })}
 
-          <div className="mt-4 border-t pt-3">
-            <p className="px-3 pb-1.5 text-xs font-semibold text-muted-foreground">
-              {t("nav.scanManagement")}
-            </p>
+          <div className="mt-4 space-y-0.5 border-t pt-3">
             <Link
               to="/scans"
               onClick={onClose}
@@ -354,6 +358,22 @@ export function Sidebar({
                   {t("nav.runningScans", { count: running })}
                 </span>
               )}
+            </Link>
+            <Link
+              to="/reports"
+              search={{ s: scopeValue(scope) }}
+              onClick={onClose}
+              aria-current={
+                location.pathname.startsWith("/reports") ? "page" : undefined
+              }
+              className={cn(
+                linkBase,
+                "font-semibold",
+                location.pathname.startsWith("/reports") && linkActive,
+              )}
+            >
+              <ClipboardList className="size-4 text-muted-foreground" />
+              {t("reports.title")}
             </Link>
           </div>
         </nav>

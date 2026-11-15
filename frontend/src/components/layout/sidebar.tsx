@@ -176,16 +176,23 @@ export function Sidebar({
         aria-label={t("nav.main")}
       >
         <div className="flex items-center gap-2.5 px-[22px] pt-[18px] pb-3.5 font-semibold max-[1180px]:px-4">
-          <span
-            aria-hidden="true"
-            className="grid grid-cols-2 gap-[3px] text-primary"
+          <Link
+            to="/"
+            search={scopeValue(scope) ? { s: scopeValue(scope) } : {}}
+            onClick={onClose}
+            className="flex min-w-0 items-center gap-2.5 rounded-md transition-colors hover:text-primary"
           >
-            <i className="size-[7px] rounded-[2px] bg-current" />
-            <i className="size-[7px] rounded-[2px] bg-current" />
-            <i className="size-[7px] rounded-[2px] bg-current" />
-            <i className="size-[7px] rounded-[2px] bg-current opacity-40" />
-          </span>
-          <span className="min-w-0 truncate">{t("app.name")}</span>
+            <span
+              aria-hidden="true"
+              className="grid grid-cols-2 gap-[3px] text-primary"
+            >
+              <i className="size-[7px] rounded-[2px] bg-current" />
+              <i className="size-[7px] rounded-[2px] bg-current" />
+              <i className="size-[7px] rounded-[2px] bg-current" />
+              <i className="size-[7px] rounded-[2px] bg-current opacity-40" />
+            </span>
+            <span className="min-w-0 truncate">{t("app.name")}</span>
+          </Link>
           <button
             type="button"
             onClick={onClose}

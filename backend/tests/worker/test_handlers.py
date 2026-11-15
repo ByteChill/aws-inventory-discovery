@@ -110,6 +110,12 @@ def add_task(
     return task
 
 
+def cancel_in_own_session(engine: Engine, scan_request_id: int) -> None:
+    """Cancel from the worker thread without sharing the test thread's Session."""
+    with Session(engine, expire_on_commit=False) as session:
+        queue.cancel_request(session, scan_request_id)
+
+
 def claimed_task(
     session: Session,
     account: str,
@@ -261,7 +267,10 @@ def test_cancel_while_paging_stops_after_the_current_page_and_deletes_nothing(
     ghost = ghost_queue(aws, account_id, engine, scanner)
     task = add_task(session, account_id, "shard", QUEUE, "cloudcontrol")
     after_nth_write(
-        scanner, monkeypatch, 1, lambda: queue.cancel_request(session, task.scan_request_id)
+        scanner,
+        monkeypatch,
+        1,
+        lambda: cancel_in_own_session(engine, task.scan_request_id),
     )
 
     done = run_until_settled(worker, session, task)
@@ -285,7 +294,10 @@ def test_cancel_during_the_last_page_skips_the_deletion_judgement(
     ghost = ghost_queue(aws, account_id, engine, scanner)
     task = add_task(session, account_id, "shard", QUEUE, "cloudcontrol")
     after_nth_write(
-        scanner, monkeypatch, 2, lambda: queue.cancel_request(session, task.scan_request_id)
+        scanner,
+        monkeypatch,
+        2,
+        lambda: cancel_in_own_session(engine, task.scan_request_id),
     )
 
     done = run_until_settled(worker, session, task)

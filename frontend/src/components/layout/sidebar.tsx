@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   PanelLeftClose,
   ScanSearch,
+  UsersRound,
 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
@@ -60,6 +61,7 @@ export function Sidebar({
     location.pathname.startsWith("/scans") ||
     location.pathname.startsWith("/tasks") ||
     location.pathname.startsWith("/scan-scopes")
+  const accountsActive = location.pathname.startsWith("/accounts")
   const selectedScope = (location.search as { s?: string }).s
   const [inventoryScope, setInventoryScope] = useState(selectedScope)
   useEffect(() => {
@@ -106,9 +108,7 @@ export function Sidebar({
     )
 
   const overviewActive =
-    location.pathname === "/" ||
-    location.pathname === "/apps" ||
-    location.pathname.startsWith("/accounts")
+    location.pathname === "/" || location.pathname === "/apps"
   const running = summary.data?.sweep ? 1 : 0
   const total = [...counts.values()].reduce((a, b) => a + b, 0)
 
@@ -348,6 +348,19 @@ export function Sidebar({
           })}
 
           <div className="mt-4 space-y-0.5 border-t pt-3">
+            <Link
+              to="/accounts"
+              onClick={onClose}
+              aria-current={accountsActive ? "page" : undefined}
+              className={cn(
+                linkBase,
+                "font-semibold",
+                accountsActive && linkActive,
+              )}
+            >
+              <UsersRound className="size-4 text-muted-foreground" />
+              {t("accounts.title")}
+            </Link>
             <Link
               to="/scans"
               onClick={onClose}

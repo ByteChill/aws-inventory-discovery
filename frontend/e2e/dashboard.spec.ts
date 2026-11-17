@@ -337,7 +337,15 @@ test("账号：搜索后整行进入资源范围，覆盖表和账号范围的�
     `/resources?pageSize=1&accountId=${account.accountId}`,
   )
 
-  await page.goto("accounts")
+  await page.goto("./")
+  await page
+    .getByRole("navigation", { name: t("nav.main") })
+    .getByRole("link", { name: t("accounts.title") })
+    .click()
+  await expect(page).toHaveURL(/\/accounts$/)
+  await expect(
+    page.getByRole("heading", { name: t("accounts.title"), level: 1 }),
+  ).toBeVisible()
   await page
     .getByRole("searchbox", { name: t("accounts.searchPlaceholder") })
     .fill(account.accountId)

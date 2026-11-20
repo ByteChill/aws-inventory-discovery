@@ -675,11 +675,21 @@ def test_a_relation_field_can_cross_an_array_on_the_target(
 
     # Export joins the array with ";" and carries every matching service.
     exported = client.get(f"{API}/{body['id']}/export?format=csv")
-    assert exported.status_code == 200
-    header, *rows = exported.text.removeprefix("﻿").splitlines()
-    assert "镜像" in header
-    assert {frozenset(row.strip('"').split(";")) for row in rows} == {
+    assert exported.status_code == 200, exported.text
+    lines = list(csv.reader(io.StringIO(exported.content.decode("utf-8-sig"))))
+    header, *rows = lines
+    assert header[0].endswith("镜像")
+    assert {frozenset(row[0].split(";")) for row in rows} == {
         frozenset(by_service[service_id]) for service_id in matching
+    }
+    assert all(len(row) == len(header) for row in rows)
+
+    exported_jsonl = client.get(f"{API}/{body['id']}/export?format=jsonl")
+    assert exported_jsonl.status_code == 200, exported_jsonl.text
+    items = [json.loads(line) for line in exported_jsonl.text.splitlines()]
+    assert {item["id"] for item in items} == matching
+    assert {item["id"]: set(item["values"]["taskdefinition.image"]) for item in items} == {
+        service_id: by_service[service_id] for service_id in matching
     }
 
 
